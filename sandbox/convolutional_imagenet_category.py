@@ -90,10 +90,14 @@ def main(argv=None):  # pylint: disable=unused-argument
   test_slice = np.zeros(1290129).astype(np.bool); test_slice[1000000 + _N: 1000000 + _N + _M] = True
   train_data = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
                                              preprocess=preprocess,
-                                             postprocess=postprocess, subslice = train_slice)
+                                             postprocess=postprocess, 
+                                             subslice = train_slice,
+                                             pad=True)
   validation_dp = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
                                                 preprocess=preprocess,
-                                                postprocess=postprocess, subslice = validation_slice)
+                                                postprocess=postprocess, 
+                                                subslice = validation_slice,
+                                                pad=True)
   validation_data = []
   validation_labels = []
   for i in range(NUM_VALIDATION_BATCHES):
@@ -105,7 +109,8 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   test_dp = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
                                             preprocess=preprocess,
-                                            postprocess=postprocess, subslice = test_slice)
+                                            postprocess=postprocess, 
+                                            subslice = test_slice, pad=True)
   test_data = []
   test_labels = []
   for i in range(NUM_TEST_BATCHES):
