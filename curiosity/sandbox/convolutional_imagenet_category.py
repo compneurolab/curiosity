@@ -33,7 +33,7 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-import hdf5provider
+from curiosity.utils import hdf5provider
 
 IMAGE_SIZE = 256
 NUM_CHANNELS = 3
