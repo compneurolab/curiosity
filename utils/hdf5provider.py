@@ -11,7 +11,8 @@ class HDF5DataProvider(object):
                  subslice=None,
                  mini_batch_size=None,
                  preprocess=None,
-                 postprocess=None):
+                 postprocess=None,
+                 pad=False):
         self.hdf5source = hdf5source
         self.sourcelist = sourcelist
         self.file = h5py.File(self.hdf5source, 'r')
@@ -55,6 +56,7 @@ class HDF5DataProvider(object):
         self.total_batches = int(math.ceil(self.data_length / float(self.batch_size)))
         self.curr_batch_num = 0
         self.curr_epoch = 1
+        self.pad = pad
 
     def setEpochBatch(self, epoch, batch_num):
         self.curr_epoch = epoch
@@ -75,6 +77,9 @@ class HDF5DataProvider(object):
         data = {}
         startv = cbn * self.batch_size 
         endv = (cbn + 1) * self.batch_size
+        if self.pad and endv > self.data_length:
+            startv = self.data_length - self.batch_size
+            endv = startv + self.batch_size
         sourcelist = self.sourcelist
         for source in sourcelist:
             data[source] = self.getData(self.data[source], slice(startv, endv))
