@@ -36,15 +36,16 @@ import tensorflow as tf
 from curiosity.utils import hdf5provider
 
 IMAGE_SIZE = 256
-ENCODE_DIMS = 512
+ENCODE_DIMS = 1024
 NUM_CHANNELS = 3
 PIXEL_DEPTH = 255
 SEED = 66478  # Set to None for random seed.
 BATCH_SIZE = 64
-NUM_EPOCHS = 1
+NUM_EPOCHS = 5
 EVAL_BATCH_SIZE = 64
 EVAL_FREQUENCY = 100  # Number of steps between evaluations.
-
+NUM_VALIDATION_BATCHES = 5
+NUM_TEST_BATCHES = 5
 
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
@@ -77,19 +78,22 @@ def main(argv=None):  # pylint: disable=unused-argument
   hdf5source = '/data/imagenet_dataset/hdf5_cached_from_om7/data.raw'
   sourcelist = ['data']
   norml = lambda x: (x - (PIXEL_DEPTH/2.0)) / PIXEL_DEPTH
-  postprocess = {'data': lambda x, _: norml(x).reshape((norml(x).shape[0], 3, 256, 256)).swapaxes(1, 2).swapaxes(2, 3)}
+  postprocess = {'data': lambda x, _: norml(x).reshape((x.shape[0], 3, 256, 256)).swapaxes(1, 2).swapaxes(2, 3)}
   train_slice = np.zeros(1290129).astype(np.bool); train_slice[:1000000] = True
-  validation_slice = np.zeros(1290129).astype(np.bool); validation_slice[1000000: 1000512] = True
-  test_slice = np.zeros(1290129).astype(np.bool); test_slice[1000512: 1001024] = True
+  _N = NUM_VALIDATION_BATCHES * BATCH_SIZE
+  validation_slice = np.zeros(1290129).astype(np.bool); validation_slice[1000000: 1000000 + _N] = True
+  _M = NUM_TEST_BATCHES * BATCH_SIZE
+  test_slice = np.zeros(1290129).astype(np.bool); test_slice[1000000 + _N: 1000000 + _N + _M] = True
   train_data = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
-                                             pad=True,
-                                     postprocess=postprocess, subslice = train_slice)
+                                             postprocess=postprocess, 
+                                             subslice = train_slice,
+                                             pad=True)
   validation_data = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
                                      postprocess=postprocess, subslice = validation_slice)
-  validation_data = np.row_stack([validation_data.getBatch(i)['data'] for i in range(8)])
+  validation_data = np.row_stack([validation_data.getBatch(i)['data'] for i in range(NUM_VALIDATION_BATCHES)])
   test_data = hdf5provider.HDF5DataProvider(hdf5source, sourcelist, BATCH_SIZE,
                                      postprocess=postprocess, subslice = test_slice)
-  test_data = np.row_stack([test_data.getBatch(i)['data'] for i in range(8)]) 
+  test_data = np.row_stack([test_data.getBatch(i)['data'] for i in range(NUM_TEST_BATCHES)]) 
 
 
   num_epochs = NUM_EPOCHS
@@ -102,71 +106,152 @@ def main(argv=None):  # pylint: disable=unused-argument
       tf.float32,
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
+
   conv1_weights = tf.Variable(
-      tf.truncated_normal([7, 7, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
+      tf.truncated_normal([7, 7, NUM_CHANNELS, 64],
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1_biases = tf.Variable(tf.zeros([32]), name='conv1b')
+  conv1_biases = tf.Variable(tf.zeros([64]), name='conv1b')
 
   conv2_weights = tf.Variable(
-      tf.truncated_normal([7, 7, 32, NUM_CHANNELS],  # 5x5 filter, depth 32.
-                          stddev=0.1,
+      tf.truncated_normal([5, 5, 64, 256], 
+                          stddev=0.01,
                           seed=SEED),
       name = 'conv2w' )
-  conv2_biases = tf.Variable(tf.zeros([NUM_CHANNELS]), name='conv2b')
+  conv2_biases = tf.Variable(tf.zeros([256]), name='conv2b')
 
-  fc1_weights = tf.Variable(  # fully connected, depth 512.
+  conv3_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 256, 512], 
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'convw' )
+  conv3_biases = tf.Variable(tf.zeros([512]), name='conv3b')
+
+  conv4_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 512, 1024],  
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv4w' )
+  conv4_biases = tf.Variable(tf.zeros([1024]), name='conv4b')
+
+  conv5_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 1024, 512],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv5w' )
+  conv5_biases = tf.Variable(tf.zeros([512]), name='conv5b')
+  
+  conv6_weights = tf.Variable(
+      tf.truncated_normal([7, 7, 32, 32],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv6w' )
+  conv6_biases = tf.Variable(tf.zeros([32]), name='conv6b')
+
+  conv7_weights = tf.Variable(
+      tf.truncated_normal([7, 7, 32, 3],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv7w' )
+  conv7_biases = tf.Variable(tf.zeros([3]), name='conv7b')
+
+  
+  fc1_weights = tf.Variable(
       tf.truncated_normal(
-          [IMAGE_SIZE // 2 * IMAGE_SIZE // 2 * 32, ENCODE_DIMS],
+          [7 * 7 * 512, ENCODE_DIMS],
           stddev=0.01,
           seed=SEED), name='fc1w')
   fc1_biases = tf.Variable(tf.constant(0.01, shape=[ENCODE_DIMS]), name='fc1b')
 
   fc2_weights = tf.Variable(  # fully connected, depth 512.
       tf.truncated_normal(
-          [ENCODE_DIMS, IMAGE_SIZE // 2 * IMAGE_SIZE // 2 * 32],
+          [ENCODE_DIMS, IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 32],
           stddev=0.01,
-          seed=SEED), name='fc1w')
-  fc2_biases = tf.Variable(tf.constant(0.01, shape=[IMAGE_SIZE // 2 * IMAGE_SIZE // 2 * 32]), name='fc1b')
-
+          seed=SEED), name='fc2w')
+  fc2_biases = tf.Variable(tf.constant(0.01, shape=[IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 32]), name='fc2b')
+ 
+ 
   def model(data, train=False):
     """The Model definition."""
 
-    conv = tf.nn.conv2d(data,
-                        conv1_weights,
-                        strides=[1, 1, 1, 1],
+    conv1 = tf.nn.conv2d(data,
+                      conv1_weights,
+                        strides=[1, 4, 4, 1],
                         padding='SAME')
-    conv = tf.nn.relu(tf.nn.bias_add(conv, conv1_biases))
+    conv1 = tf.nn.relu(tf.nn.bias_add(conv1, conv1_biases), name='conv1')
 
-    pool = tf.nn.max_pool(conv,
-                          ksize=[1, 2, 2, 1],
+    pool1 = tf.nn.max_pool(conv1,
+                          ksize=[1, 3, 3, 1],
                           strides=[1, 2, 2, 1],
-                          padding='SAME')
+                          padding='VALID', name='pool1')
 
-    pool_shape = pool.get_shape().as_list()
-    flatten = tf.reshape(pool, [pool_shape[0], pool_shape[1] * pool_shape[2] * pool_shape[3]])
-
-    encode = tf.matmul(flatten, fc1_weights) + fc1_biases
-
-    hidden = tf.matmul(encode, fc2_weights) + fc2_biases
-    
-    hidden_shape = hidden.get_shape().as_list()
-    unflatten = tf.reshape(hidden, [hidden_shape[0], IMAGE_SIZE//2, IMAGE_SIZE//2, 32])
-
-    unpool = tf.image.resize_images(unflatten, IMAGE_SIZE, IMAGE_SIZE)
-
-    conv = tf.nn.conv2d(unpool,
+    conv2 = tf.nn.conv2d(pool1,
                         conv2_weights,
                         strides=[1, 1, 1, 1],
                         padding='SAME')
-    conv = tf.nn.bias_add(conv, conv2_biases)
+    conv2 = tf.nn.relu(tf.nn.bias_add(conv2, conv2_biases), name='conv2')
+
+    pool2 = tf.nn.max_pool(conv2,
+                          ksize=[1, 3, 3, 1],
+                          strides=[1, 2, 2, 1],
+                          padding='VALID', name='pool2')
+
+    conv3 = tf.nn.conv2d(pool2,
+                        conv3_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv3 = tf.nn.relu(tf.nn.bias_add(conv3, conv3_biases), name='conv3')
+
+    conv4 = tf.nn.conv2d(conv3,
+                        conv4_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv4 = tf.nn.relu(tf.nn.bias_add(conv4, conv4_biases), name='conv4')
     
-    return conv
-  
+    conv5 = tf.nn.conv2d(conv4,
+                        conv5_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv5 = tf.nn.relu(tf.nn.bias_add(conv5, conv5_biases), name='conv5')
+
+    pool5 = tf.nn.max_pool(conv5,
+                          ksize=[1, 3, 3, 1],
+                          strides=[1, 2, 2, 1],
+                          padding='VALID', name='pool5')
+
+    pool5_shape = pool5.get_shape().as_list()
+    flatten = tf.reshape(pool5, [pool5_shape[0], np.prod(pool5_shape[1:])])
+    
+    encode = tf.matmul(flatten, fc1_weights) + fc1_biases
+
+    hidden = tf.matmul(encode, fc2_weights) + fc2_biases
+
+    hidden_shape = hidden.get_shape().as_list()
+    unflatten = tf.reshape(hidden, [hidden_shape[0], IMAGE_SIZE//4, IMAGE_SIZE//4, 32])
+
+    unpool = tf.image.resize_images(unflatten, IMAGE_SIZE//2, IMAGE_SIZE//2)
+
+    conv6 = tf.nn.conv2d(unpool,
+                    conv6_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv6 = tf.nn.bias_add(conv6, conv6_biases)
+
+    unpool2 = tf.image.resize_images(conv6, IMAGE_SIZE, IMAGE_SIZE)
+
+    conv7 = tf.nn.conv2d(unpool2,
+                    conv7_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv7 = tf.nn.bias_add(conv7, conv7_biases)
+
+
+    return conv7
+
   train_prediction = model(train_data_node, True)  
-  loss= tf.nn.l2_loss(train_prediction - train_data_node) / (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * BATCH_SIZE)
-  #loss = tf.mul(loss, 1./1000)
+  loss = tf.nn.l2_loss(train_prediction - train_data_node) / (IMAGE_SIZE*IMAGE_SIZE*NUM_CHANNELS*BATCH_SIZE)
+  #loss = tf.mul(loss, 1./100000000000)
 
   #regularizers = tf.nn.l2_loss(fc1_weights) + tf.nn.l2_loss(fc1_biases)
   #loss += 5e-4 * regularizers
@@ -181,6 +266,7 @@ def main(argv=None):  # pylint: disable=unused-argument
       staircase=True)
 
   optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss, global_step=batch)
+  #optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=batch)
 
   eval_prediction = model(eval_data)
 
@@ -190,7 +276,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     size = data.shape[0]
     if size < EVAL_BATCH_SIZE:
       raise ValueError("batch size for evals larger than dataset: %d" % size)
-    predictions = np.ndarray(shape=(size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS), dtype=np.float32)
+    predictions = np.ndarray(shape=(size, IMAGE_SIZE, IMAGE_SIZE, 3), dtype=np.float32)
     for begin in xrange(0, size, EVAL_BATCH_SIZE):
       end = begin + EVAL_BATCH_SIZE
       if end <= size:

@@ -29,6 +29,7 @@ import sys
 import time
 
 import numpy
+import numpy as np
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -147,77 +148,127 @@ def main(argv=None):  # pylint: disable=unused-argument
       tf.float32,
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
-  # The variables below hold all the trainable weights. They are passed an
-  # initial value which will be assigned when we call:
-  # {tf.initialize_all_variables().run()}
   conv1_weights = tf.Variable(
-      tf.truncated_normal([7, 7, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
+      tf.truncated_normal([3, 3, NUM_CHANNELS, 64],
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1_biases = tf.Variable(tf.zeros([32]), name='conv1b')
+  conv1_biases = tf.Variable(tf.zeros([64]), name='conv1b')
 
   conv2_weights = tf.Variable(
-      tf.truncated_normal([7, 7, 32, 1],  # 5x5 filter, depth 32.
-                          stddev=0.1,
+      tf.truncated_normal([3, 3, 64, 64],
+                          stddev=0.01,
                           seed=SEED),
       name = 'conv2w' )
-  conv2_biases = tf.Variable(tf.zeros([1]), name='conv2b')
+  conv2_biases = tf.Variable(tf.zeros([64]), name='conv2b')
+  
+  conv3_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 64, 64],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv3w' )
+  conv3_biases = tf.Variable(tf.zeros([64]), name='conv3b')
 
-  fc1_weights = tf.Variable(  # fully connected, depth 512.
+  conv4_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 64, 64],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv4w' )
+  conv4_biases = tf.Variable(tf.zeros([64]), name='conv4b')
+
+  conv5_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 64, 64],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv5w' )
+  conv5_biases = tf.Variable(tf.zeros([64]), name='conv5b')
+
+  conv6_weights = tf.Variable(
+      tf.truncated_normal([3, 3, 64, NUM_CHANNELS],
+                          stddev=0.01,
+                          seed=SEED),
+      name = 'conv6w' )
+  conv6_biases = tf.Variable(tf.zeros([NUM_CHANNELS]), name='conv6b')
+
+  fc1_weights = tf.Variable(
       tf.truncated_normal(
-          [IMAGE_SIZE // 2 * IMAGE_SIZE // 2 * 32, 64],
+          [IMAGE_SIZE//4 * IMAGE_SIZE//4 * 64, 64],
           stddev=0.01,
           seed=SEED), name='fc1w')
   fc1_biases = tf.Variable(tf.constant(0.01, shape=[64]), name='fc1b')
-
+  
   fc2_weights = tf.Variable(  # fully connected, depth 512.
       tf.truncated_normal(
-          [64, 32 * 14 * 14],
+          [64, 64 * IMAGE_SIZE//4 * IMAGE_SIZE//4 ],
           stddev=0.01,
-          seed=SEED), name='fc1w')
-  fc2_biases = tf.Variable(tf.constant(0.01, shape=[32 * IMAGE_SIZE//2 * IMAGE_SIZE//2]), name='fc1b')
+          seed=SEED), name='fc2w')
+  fc2_biases = tf.Variable(tf.constant(0.01, shape=[64 * IMAGE_SIZE//4 * IMAGE_SIZE//4]), name='fc2b')
 
-
-  # We will replicate the model structure for the training subgraph, as well
-  # as the evaluation subgraphs, while sharing the trainable parameters.
 
   def model(data, train=False):
     """The Model definition."""
-    # 2D convolution, with 'SAME' padding (i.e. the output feature map has
-    # the same size as the input). Note that {strides} is a 4D array whose
 
-    conv = tf.nn.conv2d(data,
-                        conv1_weights,
+    conv1 = tf.nn.conv2d(data,
+                      conv1_weights,
                         strides=[1, 1, 1, 1],
                         padding='SAME')
-    conv = tf.nn.relu(tf.nn.bias_add(conv, conv1_biases))
+    conv1 = tf.nn.relu(tf.nn.bias_add(conv1, conv1_biases), name='conv1')
 
-    pool = tf.nn.max_pool(conv,
+    conv2 = tf.nn.conv2d(conv1,
+                        conv2_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv2 = tf.nn.relu(tf.nn.bias_add(conv2, conv2_biases), name='conv2')
+    
+    pool1 = tf.nn.max_pool(conv2,
                           ksize=[1, 2, 2, 1],
                           strides=[1, 2, 2, 1],
-                          padding='SAME')
+                          padding='SAME', name='pool1')
 
-    pool_shape = pool.get_shape().as_list()
-    flatten = tf.reshape(pool, [pool_shape[0], pool_shape[1] * pool_shape[2] * pool_shape[3]])
+    conv3 = tf.nn.conv2d(pool1,
+                        conv3_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv3 = tf.nn.relu(tf.nn.bias_add(conv3, conv3_biases), name='conv2')
+
+    pool2 = tf.nn.max_pool(conv3,
+                          ksize=[1, 2, 2, 1],
+                          strides=[1, 2, 2, 1],
+                          padding='SAME', name='pool2')
+
+    pool2_shape = pool2.get_shape().as_list()
+    flatten = tf.reshape(pool2, [pool2_shape[0], np.prod(pool2_shape[1:])])
 
     encode = tf.matmul(flatten, fc1_weights) + fc1_biases
 
     hidden = tf.matmul(encode, fc2_weights) + fc2_biases
-    
+
     hidden_shape = hidden.get_shape().as_list()
-    unflatten = tf.reshape(hidden, [hidden_shape[0], IMAGE_SIZE//2, IMAGE_SIZE//2, 32])
+    unflatten = tf.reshape(hidden, [hidden_shape[0], IMAGE_SIZE//4, IMAGE_SIZE//4, 64])
 
-    unpool = tf.image.resize_images(unflatten, IMAGE_SIZE, IMAGE_SIZE)
+    conv4 = tf.nn.conv2d(unflatten,
+                    conv4_weights,
+                      strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv4 = tf.nn.relu(tf.nn.bias_add(conv4, conv4_biases))
 
-    conv = tf.nn.conv2d(unpool,
-                        conv2_weights,
+    unpool = tf.image.resize_images(conv4, IMAGE_SIZE//2, IMAGE_SIZE//2)
+    
+    conv5 = tf.nn.conv2d(unpool,
+                    conv5_weights,
                         strides=[1, 1, 1, 1],
                         padding='SAME')
-    conv = tf.nn.bias_add(conv, conv2_biases)
+    conv5 = tf.nn.relu(tf.nn.bias_add(conv5, conv5_biases))
 
-    
-    return conv
+    unpool2 = tf.image.resize_images(conv5, IMAGE_SIZE, IMAGE_SIZE)
+
+    conv6 = tf.nn.conv2d(unpool2,
+                    conv6_weights,
+                        strides=[1, 1, 1, 1],
+                        padding='SAME')
+    conv6 = tf.nn.bias_add(conv6, conv6_biases)
+
+    return conv6
   
   train_prediction = model(train_data_node, True)  
   loss = tf.nn.l2_loss(tf.sub(train_prediction, train_data_node)) / (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * BATCH_SIZE)
