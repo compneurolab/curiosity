@@ -114,25 +114,11 @@ def main(argv=None):  # pylint: disable=unused-argument
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   conv1_weights = tf.Variable(
-      tf.truncated_normal([7, 7, NUM_CHANNELS, 48],  
+      tf.truncated_normal([7, 7, NUM_CHANNELS, 32],  
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1_biases = tf.Variable(tf.zeros([48]), name='conv1b')
-
-  conv1a_weights = tf.Variable(
-      tf.truncated_normal([5, 5, 48, 64],  # 5x5 filter, depth 32.
-                          stddev=0.01,
-                          seed=SEED),
-      name = 'conv1w' )
-  conv1a_biases = tf.Variable(tf.zeros([64]), name='conv1b')
-
-  conv1b_weights = tf.Variable(
-      tf.truncated_normal([3, 3, 64, 128],  # 5x5 filter, depth 32.
-                          stddev=0.01,
-                          seed=SEED),
-      name = 'conv1w' )
-  conv1b_biases = tf.Variable(tf.zeros([128]), name='conv1b')
+  conv1_biases = tf.Variable(tf.zeros([32]), name='conv1b')
 
   conv2_weights = tf.Variable(
       tf.truncated_normal([7, 7, 32, NUM_CHANNELS],  # 5x5 filter, depth 32.
@@ -143,7 +129,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   fc1_weights = tf.Variable(  # fully connected, depth 512.
       tf.truncated_normal(
-          [IMAGE_SIZE // 16 * IMAGE_SIZE // 16 * 128, ENCODE_DIMS],
+          [IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 32, ENCODE_DIMS],
           stddev=0.01,
           seed=SEED), name='fc1w')
   fc1_biases = tf.Variable(tf.constant(0.01, shape=[ENCODE_DIMS]), name='fc1b')
@@ -171,29 +157,6 @@ def main(argv=None):  # pylint: disable=unused-argument
                           strides=[1, 2, 2, 1],
                           padding='SAME')
 
-    conv = tf.nn.conv2d(pool,
-                        conv1a_weights,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    conv = tf.nn.relu(tf.nn.bias_add(conv, conv1a_biases))
-
-    pool = tf.nn.max_pool(conv,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
-                          padding='SAME')
-
-    conv = tf.nn.conv2d(pool,
-                        conv1b_weights,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    conv = tf.nn.relu(tf.nn.bias_add(conv, conv1b_biases))
-
-    pool = tf.nn.max_pool(conv,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
-                          padding='SAME')
-
-
     pool_shape = pool.get_shape().as_list()
     flatten = tf.reshape(pool, [pool_shape[0], pool_shape[1] * pool_shape[2] * pool_shape[3]])
 
@@ -211,7 +174,6 @@ def main(argv=None):  # pylint: disable=unused-argument
                         strides=[1, 1, 1, 1],
                         padding='SAME')
     conv = tf.nn.bias_add(conv, conv2_biases)
-
 
     return conv
 

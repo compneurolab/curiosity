@@ -19,7 +19,7 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-IMAGE_SIZE = 256
+IMAGE_SIZE = 128
 ENCODE_DIMS = 1024
 NUM_CHANNELS = 3
 PIXEL_DEPTH = 255
@@ -84,7 +84,7 @@ def getNextBatch(N, start):
       msg['msg']['vel'] = [.3 * rng.uniform(), 0.15 * rng.uniform(), 0.3 * rng.uniform()]
            
     #every so often moves to a new area
-    if timestep % 10 == 0 or len(objs) == 0:
+    if timestep % 1800 == 0 or len(objs) == 0:
       print('teleporting at %d ... ' % timestep)
       msg['msg']['teleport_random'] = True
 
@@ -92,8 +92,8 @@ def getNextBatch(N, start):
     norms.append(normalsarray)
     sock.send_json(msg)
 
-  batch = {'images': norml(np.array(ims)),
-           'normals': norml(np.array(norms))}
+  batch = {'images': norml(np.array(ims)[:, ::2, ::2]),
+           'normals': norml(np.array(norms)[:, ::2, ::2])}
   return batch
 
 
@@ -109,30 +109,26 @@ def main(argv=None):  # pylint: disable=unused-argument
       tf.float32,
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
-  normals_node = tf.placeholder(
-        tf.float32,
-      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
   conv1_weights = tf.Variable(
-      tf.truncated_normal([7, 7, NUM_CHANNELS, 48],  
+      tf.truncated_normal([7, 7, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1_biases = tf.Variable(tf.zeros([48]), name='conv1b')
+  conv1_biases = tf.Variable(tf.zeros([32]), name='conv1b')
 
   conv1a_weights = tf.Variable(
-      tf.truncated_normal([5, 5, 48, 64],  # 5x5 filter, depth 32.
+      tf.truncated_normal([5, 5, 32, 32],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1a_biases = tf.Variable(tf.zeros([64]), name='conv1b')
+  conv1a_biases = tf.Variable(tf.zeros([32]), name='conv1b')
 
   conv1b_weights = tf.Variable(
-      tf.truncated_normal([3, 3, 64, 128],  # 5x5 filter, depth 32.
+      tf.truncated_normal([3, 3, 32, 32],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
       name = 'conv1w' )
-  conv1b_biases = tf.Variable(tf.zeros([128]), name='conv1b')
+  conv1b_biases = tf.Variable(tf.zeros([32]), name='conv1b')
 
   conv2_weights = tf.Variable(
       tf.truncated_normal([7, 7, 32, NUM_CHANNELS],  # 5x5 filter, depth 32.
@@ -143,7 +139,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   fc1_weights = tf.Variable(  # fully connected, depth 512.
       tf.truncated_normal(
-          [IMAGE_SIZE // 16 * IMAGE_SIZE // 16 * 128, ENCODE_DIMS],
+          [IMAGE_SIZE // 16 * IMAGE_SIZE // 16 * 32, ENCODE_DIMS],
           stddev=0.01,
           seed=SEED), name='fc1w')
   fc1_biases = tf.Variable(tf.constant(0.01, shape=[ENCODE_DIMS]), name='fc1b')
@@ -217,7 +213,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   train_prediction = model(train_data_node, True)  
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * BATCH_SIZE
-  loss = tf.nn.l2_loss(train_prediction - normals_node) / norm
+  loss = tf.nn.l2_loss(train_prediction - train_data_node) / norm
 
   batch = tf.Variable(0, trainable=False)
 
@@ -236,13 +232,12 @@ def main(argv=None):  # pylint: disable=unused-argument
     print('Initialized!')
     for step in xrange(NUM_TRAIN_STEPS // BATCH_SIZE):
       batch_data = getNextBatch(BATCH_SIZE, step * BATCH_SIZE)
-      feed_dict = {train_data_node: batch_data['images'],
-                   normals_node: batch_data['normals']}
+      feed_dict = {train_data_node: batch_data['images']}
       # Run the graph and fetch some of the nodes.
       _, l, lr, predictions = sess.run(
           [optimizer, loss, learning_rate, train_prediction],
           feed_dict=feed_dict)
-      print(step, l, lr)
+      print(step, l)
 
 
 def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
