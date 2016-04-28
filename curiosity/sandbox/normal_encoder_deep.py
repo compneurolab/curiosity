@@ -124,40 +124,40 @@ def main(argv=None):  # pylint: disable=unused-argument
       tf.truncated_normal([5, 5, 48, 64],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
-      name = 'conv1w' )
-  conv2_biases = tf.Variable(tf.zeros([64]), name='conv1b')
+      name = 'conv2w')
+  conv2_biases = tf.Variable(tf.zeros([64]), name='conv2b')
 
   conv3_weights = tf.Variable(
       tf.truncated_normal([3, 3, 64, 128],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
-      name = 'conv1w' )
-  conv3_biases = tf.Variable(tf.zeros([128]), name='conv1b')
+      name = 'conv3w' )
+  conv3_biases = tf.Variable(tf.zeros([128]), name='conv3b')
 
   conv4_weights = tf.Variable(
       tf.truncated_normal([3, 3, 128, 256],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
-      name = 'conv1w' )
-  conv4_biases = tf.Variable(tf.zeros([256]), name='conv1b')
+      name = 'conv4w' )
+  conv4_biases = tf.Variable(tf.zeros([256]), name='conv4b')
 
   conv5_weights = tf.Variable(
       tf.truncated_normal([3, 3, 256, 128],  # 5x5 filter, depth 32.
                           stddev=0.01,
                           seed=SEED),
-      name = 'conv1w' )
-  conv5_biases = tf.Variable(tf.zeros([128]), name='conv1b')
+      name = 'conv5w' )
+  conv5_biases = tf.Variable(tf.zeros([128]), name='conv5b')
 
   conv6_weights = tf.Variable(
       tf.truncated_normal([7, 7, 32, NUM_CHANNELS],  # 5x5 filter, depth 32.
                           stddev=0.1,
                           seed=SEED),
-      name = 'conv2w' )
-  conv6_biases = tf.Variable(tf.zeros([NUM_CHANNELS]), name='conv2b')
+      name = 'conv6w' )
+  conv6_biases = tf.Variable(tf.zeros([NUM_CHANNELS]), name='conv6b')
 
   fc1_weights = tf.Variable(  # fully connected, depth 512.
       tf.truncated_normal(
-          [IMAGE_SIZE // 16 * IMAGE_SIZE // 16 * 128, ENCODE_DIMS],
+          [15 * 15 * 128, ENCODE_DIMS],
           stddev=0.01,
           seed=SEED), name='fc1w')
   fc1_biases = tf.Variable(tf.constant(0.01, shape=[ENCODE_DIMS]), name='fc1b')
@@ -209,10 +209,10 @@ def main(argv=None):  # pylint: disable=unused-argument
     conv4 = tf.nn.relu(tf.nn.bias_add(conv4, conv4_biases))
 
     conv5 = tf.nn.conv2d(conv4,
-                        conv4_weights,
+                        conv5_weights,
                         strides=[1, 1, 1, 1],
                         padding='SAME')
-    conv5 = tf.nn.relu(tf.nn.bias_add(conv4, conv4_biases))
+    conv5 = tf.nn.relu(tf.nn.bias_add(conv5, conv5_biases))
 
     pool5 = tf.nn.max_pool(conv5,
                           ksize=[1, 3, 3, 1],
