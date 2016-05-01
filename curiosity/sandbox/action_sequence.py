@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from StringIO import StringIO
 import math
+import itertools
 import sys
 import copy
 import numpy as np
@@ -107,8 +108,15 @@ def getEpisode():
 
 
 def process_action(action):
-   act = action.get('actions', [{'action_pos': [0, 0], 'force': [0, 0, 0], 'torque': [0, 0, 0]}])[0]
-   return [action.get('vel', 0), action.get('ang_vel', 0)] + act['action_pos'] + act['force'] + a['torque']
+   act = action.get('actions', [])
+   if len(act) == 0:
+     act = {'action_pos': [0, 0], 'force': [0, 0, 0], 'torque': [0, 0, 0]}
+   else:
+     act = act[0]
+     
+   actvec = action.get('vel', [0, 0, 0]) + action.get('ang_vel', [0, 0, 0]) + act['action_pos'] + act['force'] + act['torque']
+
+   return actvec 
 
 
 def getNextBatch(N):
@@ -117,25 +125,25 @@ def getNextBatch(N):
   actions = batch['actions']
   k = len(batch['normals'])
   obss = []
-  futures = []
+  future_inds = []
   time_diffs = []
-  actions = []
+  actionss = []
+  back_length = max(OBSERVATION_LENGTH, MAX_NUM_ACTIONS)
   for i in range(N):
-    j0 = rng.randint(k - OBSERVATION_LENGTH)
+    j0 = rng.randint(k - back_length)
     j1 = rng.randint(low = j0 + OBSERVATION_LENGTH, high=k)
     newshape = (IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH)
     obs = normals[j0: j0 + OBSERVATION_LENGTH].transpose((1, 2, 3, 0)).reshape(newshape)
-    obs.append(obs)
+    obss.append(obs)
     future_inds.append(j1)
     time_diffs.append(j1 - j0)
-    action_seq = itertools.chain(*[process_actions(actions[_j]) for _j in range(j0, j0 + OBSERVATION_LENGTH)])
-    actions.append(action_seq)
+    action_seq = list(itertools.chain(*[process_action(actions[_j]) for _j in range(j0, j0 + MAX_NUM_ACTIONS)]))
+    actionss.append(action_seq)
 
   batch = {'observations': np.array(obss),
             'future': normals[future_inds],
-            'actions': np.array(actions),
-            'time_diffs': np.array(time_diffs)}
-            
+            'actions': np.array(actionss),
+            'time_diff': np.array(time_diffs)}
   return batch
 
 
@@ -312,12 +320,10 @@ def main(argv):
     tf.initialize_all_variables().run()
     print('Initialized!')
     for episode in xrange(NUM_EPISODES):
-      print('there')
       batch_data = getNextBatch(BATCH_SIZE)
-      print('here')
       feed_dict = {observation_node: batch_data['observations'],
                    actions_node: batch_data['actions'], 
-                   time_node: batch_data['time_diff'], 
+                   time_node: batch_data['time_diff'][:, np.newaxis], 
                    future_node: batch_data['future']}
 
       _, l, lr, predictions = sess.run(
