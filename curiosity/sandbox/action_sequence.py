@@ -26,7 +26,8 @@ NUM_CHANNELS = 3
 PIXEL_DEPTH = 255
 SEED = 0  # Set to None for random seed.
 BATCH_SIZE = 64
-NUM_EPISIDOES = 1000000
+NUM_EPISODES = 1000000
+EPISODE_LENGTH = 50
 OBSERVATION_LENGTH = 2
 ENCODE_DEPTH = 1
 PHYSNET_DEPTH = 2
@@ -39,7 +40,7 @@ rng = np.random.RandomState(0)
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
 
-if 0:
+if 1:
   ctx = zmq.Context()
   sock = ctx.socket(zmq.REQ)
 
@@ -55,6 +56,7 @@ def getEpisode():
   norms = []
   actions = []
   timestep = 0
+  first = True 
   while timestep < EPISODE_LENGTH + 1:
     info, nstr, ostr, imstr = handle_message(sock)
     objarray = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
@@ -62,12 +64,13 @@ def getEpisode():
     imarray = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
     msg = {'n': 4,
            'msg': {"msg_type": "CLIENT_INPUT",
+                   "actions": [],
                    "get_obj_data": False}}
 
     objarray = 256**2 * objarray[:, :, 0] + 256 * objarray[:, :, 1] + objarray[:, :, 2]
     objs = np.unique(objarray) 
     objs = objs[objs > 2] 
-    if timestep == 0 or len(objs) == 0:
+    if first or len(objs) == 0:
       print('teleporting at %d ... ' % timestep)
       msg['msg']['teleport_random'] = True
     else:
@@ -89,7 +92,7 @@ def getEpisode():
       ims.append(imarray)
       norms.append(normalsarray)
       actions.append(copy.deepcopy(msg['msg']))
-
+    first = False
     sock.send_json(msg)
 
   def norml(x):
@@ -118,11 +121,11 @@ def getNextBatch(N):
   time_diffs = []
   actions = []
   for i in range(N):
-    j0 = rng.randint(k - OBSERVATION_LENGTH + 1)
-    j1 = rng.randint(low=j0 + OBSERVATION_LENGTH + 1, high=k)
+    j0 = rng.randint(k - OBSERVATION_LENGTH)
+    j1 = rng.randint(low = j0 + OBSERVATION_LENGTH, high=k)
     newshape = (IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH)
     obs = normals[j0: j0 + OBSERVATION_LENGTH].transpose((1, 2, 3, 0)).reshape(newshape)
-    objs.append(obs)
+    obs.append(obs)
     future_inds.append(j1)
     time_diffs.append(j1 - j0)
     action_seq = itertools.chain(*[process_actions(actions[_j]) for _j in range(j0, j0 + OBSERVATION_LENGTH)])
@@ -143,7 +146,7 @@ def error_rate(predictions, imgs):
 
 def getDecodeNumFilters(i, N):
   if i < N:
-     return 32
+     return 4
   else:
      return NUM_CHANNELS
 
@@ -157,12 +160,14 @@ def getDecodeSizes(N, initial_size, final_size):
   l = np.around(np.power(2, np.arange(s, e, increment)))
   if len(l) < N + 1:
     l = np.concatenate([l, [final_size]])
+  l = l.astype(np.int) 
   return l
   
 def getPhysnetNumFilters(i, N):
-  return 32
+  return 4
 
 def getEncodeNumFilters(i, N):
+  return 4
   L = [64, 128, 256, 512, 1024, 512]
   return L[i] if i < len(L) else 256
 
@@ -204,7 +209,7 @@ def main(argv):
                              shape=(BATCH_SIZE, 1))
 
 
-  def model(observation_node, actions_node, time_node):
+  def model(obs_node, actions_node, time_node):
     """The Model definition."""
 
     # encoding phase for image-shaped observations == could be empty
@@ -220,32 +225,27 @@ def main(argv):
                                            stddev=0.01,
                                            seed=SEED))
       b = tf.Variable(tf.zeros([nf]))
-      for obs in observations:
-         obs = tf.nn.relu(tf.nn.conv2d(obs, 
-                                       W,
-                                       strides=[1, cs, cs, 1],
-                                       padding='SAME'))
-         obs = tf.nn.bias_add(obs, b)
-         obs = tf.nn.max_pool(obs, 
-                              ksize=[1, pfs, pfs, 1], 
-                              strides=[1, ps, ps, 1], 
-                              padding='SAME')
+      obs_node = tf.nn.relu(tf.nn.conv2d(obs_node, 
+                                         W,
+                                         strides=[1, cs, cs, 1],
+                                         padding='SAME'))
+      obs_node = tf.nn.bias_add(obs_node, b)
+      obs_node = tf.nn.max_pool(obs_node, 
+                                ksize=[1, pfs, pfs, 1], 
+                                strides=[1, ps, ps, 1], 
+                                padding='SAME')
       nf0 = nf 
       imsize = imsize // (cs * ps)
-                      
+      
     #flatten the observations
-    observations_flattened = []
-    for obs in observations:
-      obs_shape = obs.get_shape().as_list()
-      obsf = tf.reshape(obs, [obs_shape[0], np.prod(obs_shape[1:])])
-      observations_flattened.append(obsf)
+    obs_shape = obs_node.get_shape().as_list()
+    obs_flat = tf.reshape(obs_node, [obs_shape[0], np.prod(obs_shape[1:])])
                     
-    #concatenate
-    concat = tf.concat(1, observations_flatten + [actions, time])
-    
+    #concatenate223
+    concat = tf.concat(1, [obs_flat, actions_node, time_node])
     #apply physics neural network: currently MLP
     #TODO: maybe should be convnet?   time channel? + action channels?  recurrence? 
-    nf0 = imsize * imsize * nf0
+    nf0 = imsize * imsize * nf0 + MAX_NUM_ACTIONS * ATOMIC_ACTION_LENGTH + 1
     for i in range(1, PHYSNET_DEPTH + 1):
       nf = getPhysnetNumFilters(i, PHYSNET_DEPTH)
       W = tf.Variable(tf.truncated_normal([nf0, nf],
@@ -258,7 +258,7 @@ def main(argv):
     #decode
     #first, unflatten
     nf = getDecodeNumFilters(0, DECODE_DEPTH)
-    ds0 = math.ceil(math.sqrt(nf0 / nf))
+    ds0 = int(math.ceil(math.sqrt(nf0 / nf)))
     dsizes = getDecodeSizes(DECODE_DEPTH, ds0, IMAGE_SIZE)
     ds = dsizes[0]
     if ds * ds * nf != nf0:
@@ -293,7 +293,7 @@ def main(argv):
 
     return decode
 
-  train_prediction = model(observation_nodes, actions_node, time_node)  
+  train_prediction = model(observation_node, actions_node, time_node)  
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * BATCH_SIZE
   loss = tf.nn.l2_loss(train_prediction - future_node) / norm
 
@@ -312,7 +312,9 @@ def main(argv):
     tf.initialize_all_variables().run()
     print('Initialized!')
     for episode in xrange(NUM_EPISODES):
+      print('there')
       batch_data = getNextBatch(BATCH_SIZE)
+      print('here')
       feed_dict = {observation_node: batch_data['observations'],
                    actions_node: batch_data['actions'], 
                    time_node: batch_data['time_diff'], 
@@ -344,6 +346,11 @@ def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
             _f.write(msg)
     return [msg, img0, img1, img2]
 
+
+def choose_action_position(objarray):
+  xs, ys = (objarray > 2).nonzero()
+  pos = zip(xs, ys)
+  return pos[rng.randint(len(pos))]
 
 if __name__ == '__main__':
   tf.app.run()
