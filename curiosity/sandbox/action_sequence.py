@@ -41,25 +41,26 @@ rng = np.random.RandomState(0)
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
 
-if 1:
-  ctx = zmq.Context()
-  sock = ctx.socket(zmq.REQ)
+ctx = zmq.Context()
+sock = ctx.socket(zmq.REQ)
 
-  print("connecting...")
-  sock.connect("tcp://18.93.15.188:23042")
-  print("...connected")
-  sock.send(json.dumps({'n': 4, 'msg': {"msg_type": "CLIENT_JOIN"}}))
-  print("...joined")
+print("connecting...")
+sock.connect("tcp://18.93.15.188:23042")
+print("...connected")
+sock.send(json.dumps({'n': 4, 'msg': {"msg_type": "CLIENT_JOIN"}}))
+print("...joined")
 
 
-def getEpisode():
+def getEpisode(epnum):
   ims = []
   norms = []
   actions = []
   timestep = 0
   first = True 
+  chosen = False
   while timestep < EPISODE_LENGTH + 1:
-    info, nstr, ostr, imstr = handle_message(sock)
+    pf = str(epnum) + '_' + str(timestep)
+    info, nstr, ostr, imstr = handle_message(sock) # write=True, outdir='sequences', prefix=pf)
     objarray = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
     normalsarray = np.asarray(Image.open(StringIO(nstr)).convert('RGB'))
     imarray = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
@@ -75,18 +76,19 @@ def getEpisode():
       print('teleporting at %d ... ' % timestep)
       msg['msg']['teleport_random'] = True
     else:
-      x, y = choose_action_position(objarray)
-      o = objarray[x, y]
+      if not chosen:
+        x, y = choose_action_position(objarray)
+        o = objarray[x, y]
+        force = [rng.choice([-20, 0, 20]), 40, rng.choice([-20, 0, 20])]
+        chosen = True
       if timestep < MAX_NUM_ACTIONS:
         msg['msg']['actions'] = [{'id': str(o),
                                   'action_pos': [x, y],
-                                  'force': [rng.choice([-10, 0, 10]),
-                                            20,
-                                            rng.choice([-10, 0, 10])],
+                                  'force': force,
                                   'torque': [0, 0, 0]}]
       #every few frames, shift around a little 
-      if timestep % 5 == 0:
-        msg['msg']['vel'] = [.3 * rng.uniform(), 0.15 * rng.uniform(), 0.3 * rng.uniform()]
+      #if timestep % 10 == 0:
+      #  msg['msg']['vel'] = [.1 * rng.uniform(), 0.05 * rng.uniform(), 0.1 * rng.uniform()]
       
       timestep += 1
            
@@ -119,8 +121,8 @@ def process_action(action):
    return actvec 
 
 
-def getNextBatch(N):
-  batch = getEpisode()
+def getNextBatch(N, epnum):
+  batch = getEpisode(epnum)
   normals = batch['normals']
   actions = batch['actions']
   k = len(batch['normals'])
@@ -128,7 +130,7 @@ def getNextBatch(N):
   future_inds = []
   time_diffs = []
   actionss = []
-  back_length = max(OBSERVATION_LENGTH, MAX_NUM_ACTIONS)
+  back_length = max(OBSERVATION_LENGTH, MAX_NUM_ACTIONS, 45)
   for i in range(N):
     j0 = rng.randint(k - back_length)
     j1 = rng.randint(low = j0 + OBSERVATION_LENGTH, high=k)
@@ -320,7 +322,7 @@ def main(argv):
     tf.initialize_all_variables().run()
     print('Initialized!')
     for episode in xrange(NUM_EPISODES):
-      batch_data = getNextBatch(BATCH_SIZE)
+      batch_data = getNextBatch(BATCH_SIZE, episode)
       feed_dict = {observation_node: batch_data['observations'],
                    actions_node: batch_data['actions'], 
                    time_node: batch_data['time_diff'][:, np.newaxis], 
