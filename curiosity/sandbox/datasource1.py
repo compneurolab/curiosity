@@ -1,3 +1,4 @@
+import os
 from StringIO import StringIO
 from PIL import Image
 import numpy as np
@@ -5,7 +6,7 @@ import h5py
 import json
 import zmq
 
-def handle_message(sock):
+def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
     info = sock.recv()
     nstr = sock.recv()
     narray = np.asarray(Image.open(StringIO(nstr)).convert('RGB'))
@@ -13,6 +14,17 @@ def handle_message(sock):
     oarray = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
     imstr = sock.recv()
     imarray = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
+    if write:
+        if not os.path.exists(outdir):
+            os.mkdir(outdir)
+        with open(os.path.join(outdir, 'image_%s.%s' % (prefix, imtype)), 'w') as _f:
+            _f.write(imstr)
+        with open(os.path.join(outdir, 'objects_%s.%s' % (prefix, imtype)), 'w') as _f:
+            _f.write(ostr)
+        with open(os.path.join(outdir, 'normals_%s.%s' % (prefix, imtype)), 'w') as _f:
+            _f.write(nstr)
+        with open(os.path.join(outdir, 'info_%s.json' % prefix), 'w') as _f:
+            _f.write(info)
     return [info, narray, oarray, imarray]
 
 
@@ -64,7 +76,9 @@ while True:
         objs = []
         norms = []
         for i in range(bsize):
-            info, narray, oarray, imarray = handle_message(sock)
+            info, narray, oarray, imarray = handle_message(sock, 
+                                                           write=True, 
+                                                           outdir='/data2/datasource1_ims', prefix=str(i))
             msg = {'n': 4,
                    'msg': {"msg_type": "CLIENT_INPUT",
                            "get_obj_data": False,
@@ -88,6 +102,7 @@ while True:
         normals[start: end] = norms
         objects[start: end] = objs
         valid[start: end] = True
+    file.flush()
     print("Sending batch %d" % bn)
     ims = images[start: end] 
     norms = normals[start: end] 
