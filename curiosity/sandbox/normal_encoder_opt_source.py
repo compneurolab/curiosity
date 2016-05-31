@@ -348,7 +348,6 @@ def model(data, rng, cfg):
 
 
 def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0):
-
   conn = pm.MongoClient('localhost', 29101)
   db = conn['normal_encoder_opt']
   coll = db['optimization_0'] 
@@ -472,7 +471,7 @@ if __name__ == '__main__':
   parser.add_argument('--seed', type=int, help='seed for config', default=0)
   parser.add_argument('--cfgfile', type=str, help="Config to load model specs from")
   parser.add_argument('--savedir', type=str, default='.')
-  parser.add_argument('--dosave', type=bool, default=True)
+  parser.add_argument('--dosave', type=int, default=1)
   parser.add_argument('--learningrate', type=float, default=1.)
   args = vars(parser.parse_args())
   main(**args) 
