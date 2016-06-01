@@ -409,18 +409,25 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
 
   start_time = time.time()
   with tf.Session() as sess:
-    if init:
+    if init or not dosave:
       tf.initialize_all_variables().run()
-      saver = tf.train.Saver()
+      #saver = tf.train.Saver()
       print('Initialized!')
       step0 = -1
     else:
       step0 = max(coll.find({'experiment_id': experiment_id}).distinct('step'))
-      pathval = os.path.join(sdir, '%d.ckpt' % step0)
-      assert os.path.exists(pathval)
-      saver = tf.train.Saver()
-      saver.restore(sess, pathval)
-      print("Restored from %s" % pathval)
+      
+      #pathval = os.path.join(sdir, '%d.ckpt' % step0)
+      Vars = tf.all_variables()
+      for v in Vars:
+        pth = os.path.join(sdir, '%s.%d.npy' % (v.name.replace('/', '__'), step0))
+        val = np.load(pth)
+        sess.run(v.assign(val))
+      #assert os.path.exists(pathval)
+      #saver = tf.train.Saver()
+      #saver.restore(sess, pathval)
+      
+      print("Restored from %s/_%d" % (sdir, step0))
 
     for step in xrange(step0 + 1, NUM_TRAIN_STEPS // BATCH_SIZE):
       batch_data = getNextBatch(step)
@@ -434,9 +441,14 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
       spath = os.path.join(sdir, 'predictions.npy')
       np.save(spath, predictions)
       if step % SAVE_FREQUENCY == 0:
-        pathval = os.path.join(sdir, '%d.ckpt' % step)
+        #pathval = os.path.join(sdir, '%d.ckpt' % step)
         if dosave:
-          save_path = saver.save(sess, pathval)
+          #save_path = saver.save(sess, pathval)
+          Vars = tf.all_variables()
+          for v in Vars:
+            pth = os.path.join(sdir, '%s.%d.npy' % (v.name.replace('/', '__'), step))
+            val = v.eval()
+            np.save(pth, val)
         rec = {'experiment_id': experiment_id, 
                'cfg': preprocess_config(cfg),
                'step': step,
@@ -463,6 +475,9 @@ def postprocess_config(cfg):
       for _k in ks:
         cfg[k][int(_k)] = cfg[k].pop(_k)
   return cfg
+
+def get_variable(name):
+  return [_x for _x in tf.all_variables() if _x.name == name][0]
 
         
 if __name__ == '__main__':
