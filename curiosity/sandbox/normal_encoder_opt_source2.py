@@ -351,7 +351,7 @@ def model(data, rng, cfg):
   return decode, cfg0
 
 
-DBNAME = 'normal_encoder_opt'
+DBNAME = 'normal_encoder_opt2'
 COLNAME = 'optimization_0'
 def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0):
   conn = pm.MongoClient('localhost', 29101)
