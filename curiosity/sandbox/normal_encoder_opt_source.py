@@ -25,7 +25,7 @@ NUM_CHANNELS = 3
 PIXEL_DEPTH = 255
 BATCH_SIZE = 64
 NUM_TRAIN_STEPS = 10000000
-SAVE_FREQUENCY = 10
+SAVE_FREQUENCY = 500
 
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
