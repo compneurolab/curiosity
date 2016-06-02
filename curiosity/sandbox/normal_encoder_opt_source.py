@@ -37,9 +37,13 @@ print("connecting...")
 sock.connect("tcp://18.93.3.135:23042")
 print("...connected")
 
+THRES = 100
+
+class HiLossError(Exception):
+  pass
 
 def norml(x):
-   return (x - PIXEL_DEPTH/2.0) / PIXEL_DEPTH
+  return (x - PIXEL_DEPTH/2.0) / PIXEL_DEPTH
 
 
 def recv_array(socket, flags=0, copy=True, track=False):
@@ -347,10 +351,12 @@ def model(data, rng, cfg):
   return decode, cfg0
 
 
+DBNAME = 'normal_encoder_opt'
+COLNAME = 'optimization_0'
 def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0):
   conn = pm.MongoClient('localhost', 29101)
-  db = conn['normal_encoder_opt']
-  coll = db['optimization_0'] 
+  db = conn[DBNAME]
+  coll = db[COLNAME] 
   r = coll.find_one({"experiment_id": experiment_id})
   if r:
     init = False
@@ -403,7 +409,7 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
 
   optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss, global_step=batch)
 
-  sdir = os.path.join(savedir, experiment_id)
+  sdir = os.path.join(savedir, DBNAME, COLNAME, experiment_id)
   if not os.path.exists(sdir):
     os.makedirs(sdir)
 
@@ -416,18 +422,17 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
       step0 = -1
     else:
       step0 = max(coll.find({'experiment_id': experiment_id}).distinct('step'))
-      
       #pathval = os.path.join(sdir, '%d.ckpt' % step0)
       Vars = tf.all_variables()
       for v in Vars:
-        pth = os.path.join(sdir, '%s.%d.npy' % (v.name.replace('/', '__'), step0))
+        pth = get_checkpoint_path(sdir, v.name.replace('/', '__'), step0)
         val = np.load(pth)
         sess.run(v.assign(val))
       #assert os.path.exists(pathval)
       #saver = tf.train.Saver()
       #saver.restore(sess, pathval)
       
-      print("Restored from %s/_%d" % (sdir, step0))
+      print("Restored from %s at timestep %d" % (sdir, step0))
 
     for step in xrange(step0 + 1, NUM_TRAIN_STEPS // BATCH_SIZE):
       batch_data = getNextBatch(step)
@@ -437,7 +442,11 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
       _, l, lr, predictions = sess.run(
           [optimizer, loss, learning_rate, train_prediction],
           feed_dict=feed_dict)
+
       print(step, l, lr)
+      if l > THRES:
+        raise HiLossError("Loss: %.3f, Thres: %.3f" % (l, THRES))
+
       spath = os.path.join(sdir, 'predictions.npy')
       np.save(spath, predictions)
       if step % SAVE_FREQUENCY == 0:
@@ -446,7 +455,7 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
           #save_path = saver.save(sess, pathval)
           Vars = tf.all_variables()
           for v in Vars:
-            pth = os.path.join(sdir, '%s.%d.npy' % (v.name.replace('/', '__'), step))
+            pth = get_checkpoint_path(sdir, v.name.replace('/', '__'), step)
             val = v.eval()
             np.save(pth, val)
         rec = {'experiment_id': experiment_id, 
@@ -479,6 +488,12 @@ def postprocess_config(cfg):
 def get_variable(name):
   return [_x for _x in tf.all_variables() if _x.name == name][0]
 
+def get_checkpoint_path(dirn, vname, step):
+  cdir = os.path.join(dirn, vname)
+  if not os.path.exists(cdir):
+    os.makedirs(cdir)
+  return os.path.join(cdir, '%d.npy' % step)
+
         
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -490,3 +505,4 @@ if __name__ == '__main__':
   parser.add_argument('--learningrate', type=float, default=1.)
   args = vars(parser.parse_args())
   main(**args) 
+  
