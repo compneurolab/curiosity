@@ -4,4 +4,4 @@ export IND=$SLURM_ARRAY_TASK_ID
 cd /home/yamins
 python make_tunnel.py
 cd /om/user/yamins/src/curiosity/scripts
-python -c "import normalopt; normalopt.main($IND, '/om/user/yamins/src', '/om/user/yamins/tensorflow_checkpoint_cache')"
+python -c "import normalopt; normalopt.main($IND, srcdir='/om/user/yamins/src', savedir='/om/user/yamins/tensorflow_checkpoint_cache')"
