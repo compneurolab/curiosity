@@ -24,8 +24,9 @@ IMAGE_SIZE = 256
 NUM_CHANNELS = 3
 PIXEL_DEPTH = 255
 BATCH_SIZE = 64
-NUM_TRAIN_STEPS = 10000000
-SAVE_FREQUENCY = 500
+NUM_TRAIN_STEPS = 2048000
+TEST_FREQUENCY = 20
+SAVE_MULTIPLE = 25
 
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
@@ -86,7 +87,7 @@ def getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=None):
     if 'conv' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['conv']:
         return cfg['encode'][i]['conv']['filter_size']  
-  L = [3, 5, 7, 9, 11, 13, 15]
+  L = [1, 3, 5, 7, 9, 11, 13, 15]
   if prev is not None:
     L = [_l for _l in L if _l <= prev]
   return rng.choice(L)
@@ -351,13 +352,11 @@ def model(data, rng, cfg):
   return decode, cfg0
 
 
-DBNAME = 'normal_encoder_opt'
-COLNAME = 'optimization_0'
-def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0):
+def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95):
   conn = pm.MongoClient('localhost', 29101)
-  db = conn[DBNAME]
-  coll = db[COLNAME] 
-  r = coll.find_one({"experiment_id": experiment_id})
+  db = conn[dbname]
+  coll = db[colname] 
+  r = coll.find_one({"experiment_id": experiment_id, 'saved_filters': True})
   if r:
     init = False
     r = coll.find_one({'experiment_id': experiment_id, 'step': -1})
@@ -387,7 +386,7 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
   if not init: 
     assert cfg1 == cfg, (cfg1, cfg)
   else:
-    assert not coll.find_one({'experiment_id': experiment_id})
+    assert not coll.find_one({'experiment_id': experiment_id, 'saved_filters': True})
     rec = {'experiment_id': experiment_id,
            'cfg': preprocess_config(cfg),
            'seed': seed,
@@ -403,13 +402,13 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
   learning_rate = tf.train.exponential_decay(
       learningrate,                # Base learning rate.
       batch * BATCH_SIZE,  # Current index into the dataset.
-      100000,          # Decay step.
-      0.95,                # Decay rate.
+      decaystep,          # Decay step.
+      decayrate,                # Decay rate.
       staircase=True)
 
   optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss, global_step=batch)
 
-  sdir = os.path.join(savedir, DBNAME, COLNAME, experiment_id)
+  sdir = os.path.join(savedir, dbname, colname, experiment_id)
   if not os.path.exists(sdir):
     os.makedirs(sdir)
 
@@ -421,7 +420,7 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
       print('Initialized!')
       step0 = -1
     else:
-      step0 = max(coll.find({'experiment_id': experiment_id}).distinct('step'))
+      step0 = max(coll.find({'experiment_id': experiment_id, 'saved_filters': True}).distinct('step'))
       #pathval = os.path.join(sdir, '%d.ckpt' % step0)
       Vars = tf.all_variables()
       for v in Vars:
@@ -449,17 +448,21 @@ def main(experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learning
 
       spath = os.path.join(sdir, 'predictions.npy')
       np.save(spath, predictions)
-      if step % SAVE_FREQUENCY == 0:
+      if step % TEST_FREQUENCY == 0:
         #pathval = os.path.join(sdir, '%d.ckpt' % step)
-        if dosave:
+        if dosave and (step % (TEST_FREQUENCY * SAVE_MULTIPLE) == 0):
           #save_path = saver.save(sess, pathval)
           Vars = tf.all_variables()
           for v in Vars:
             pth = get_checkpoint_path(sdir, v.name.replace('/', '__'), step)
             val = v.eval()
             np.save(pth, val)
+          saved_filters = True
+        else:
+          saved_filters = False
         rec = {'experiment_id': experiment_id, 
                'cfg': preprocess_config(cfg),
+               'saved_filters': saved_filters,
                'step': step,
                'loss': float(l),
                'learning_rate': float(lr)}
@@ -497,12 +500,16 @@ def get_checkpoint_path(dirn, vname, step):
         
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
+  parser.add_argument('dbname', type=str, help="dbname string value")
+  parser.add_argument('colname', type=str, help="colname string value")
   parser.add_argument('experiment_id', type=str, help="Experiment ID string value")
   parser.add_argument('--seed', type=int, help='seed for config', default=0)
   parser.add_argument('--cfgfile', type=str, help="Config to load model specs from")
   parser.add_argument('--savedir', type=str, default='.')
   parser.add_argument('--dosave', type=int, default=1)
   parser.add_argument('--learningrate', type=float, default=1.)
+  parser.add_argument('--decaystep', type=int, default=100000)
+  parser.add_argument('--decayrate', type=float, default=0.95)
   args = vars(parser.parse_args())
   main(**args) 
   
