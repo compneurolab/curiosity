@@ -352,7 +352,9 @@ def model(data, rng, cfg):
   return decode, cfg0
 
 
-def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95):
+def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95, num_train_steps=None):
+  if num_train_steps is None:
+    num_train_steps = NUM_TRAIN_STEPS
   conn = pm.MongoClient('localhost', 29101)
   db = conn[dbname]
   coll = db[colname] 
@@ -433,7 +435,7 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
       
       print("Restored from %s at timestep %d" % (sdir, step0))
 
-    for step in xrange(step0 + 1, NUM_TRAIN_STEPS // BATCH_SIZE):
+    for step in xrange(step0 + 1, num_train_steps // BATCH_SIZE):
       batch_data = getNextBatch(step)
       feed_dict = {image_node: batch_data['images'],
                    normals_node: batch_data['normals']}
@@ -510,6 +512,7 @@ if __name__ == '__main__':
   parser.add_argument('--learningrate', type=float, default=1.)
   parser.add_argument('--decaystep', type=int, default=100000)
   parser.add_argument('--decayrate', type=float, default=0.95)
+  parser.add_argument('--num_train_steps', type=int, default=2048000)
   args = vars(parser.parse_args())
   main(**args) 
   
