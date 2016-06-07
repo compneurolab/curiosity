@@ -87,7 +87,7 @@ def getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=None):
     if 'conv' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['conv']:
         return cfg['encode'][i]['conv']['filter_size']  
-  L = [1, 3, 5, 7, 9, 11, 13, 15]
+  L = [1, 3, 5, 7, 9, 11, 13, 15, 23]
   if prev is not None:
     L = [_l for _l in L if _l <= prev]
   return rng.choice(L)
@@ -126,7 +126,7 @@ def getEncodePoolFilterSize(i, encode_depth, rng, cfg):
     if 'pool' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['pool']:
         return cfg['encode'][i]['pool']['filter_size']
-  return rng.choice([2, 3, 5])
+  return rng.choice([2, 3, 4, 5])
 
 def getEncodePoolStride(i, encode_depth, rng, cfg):  
   if 'encode' in cfg and (i in cfg['encode']):
@@ -181,7 +181,7 @@ def getDecodeFilterSize(i, decode_depth, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
      if 'filter_size' in cfg['decode'][i]:
        return cfg['decode'][i]['filter_size']
-  return 7
+  return rng.choice([1, 3, 5, 7, 9, 11])
 
 def getDecodeSize(i, decode_depth, init, final, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
