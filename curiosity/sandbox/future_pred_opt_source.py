@@ -495,8 +495,8 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
 
     for step in xrange(step0 + 1, NUM_TRAIN_STEPS // BATCH_SIZE):
       batch_data = getNextBatch(step, rng)
-      with open('/home/yamins/borkstep%d.p' % step, 'w') as _f:
-        cPickle.dump(batch_data, _f)
+      #with open('/home/yamins/borkstep%d.p' % step, 'w') as _f:
+      #  cPickle.dump(batch_data, _f)
       feed_dict = {observations_node: batch_data['observations'],
                    future_normals_node: batch_data['future_normals'],
                    actions_node: batch_data['actions'],
