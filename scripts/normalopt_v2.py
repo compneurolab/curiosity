@@ -11,14 +11,14 @@ def main(ind, dbname, colname, srcdir, savedir, gpu=0, script='normal_encoder_op
             seed = ind * num_tries + n
             print('Seed: %d' % seed)
             experiment_id = "seed:%d_learningrate:%f_decaystep:%d_decayrate:%f" % (seed, learningrate, decaystep, decayrate)
-            if max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq:
+            if conn[dbname][colname].find({'experiment_id': experiment_id}).count() > 0 and max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq:
                 print('Breaking out at %s' % experiment_id)
                 break
             cmd_tmp = """CUDA_VISIBLE_DEVICES=%d python %s/curiosity/curiosity/sandbox/%s %s %s %s --seed %d --learningrate=%f --savedir=%s --decaystep=%d --decayrate=%f --num_train_steps=%d --erase_earlier=%d"""
             cmd = cmd_tmp % (gpu, srcdir, script, dbname, colname, experiment_id, seed, learningrate, savedir, decaystep, decayrate, num_train_steps, erase_earlier)
             print('CMD: %s' % cmd)
             os.system(cmd)
-            if max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq:
+            if conn[dbname][colname].find({'experiment_id': experiment_id}) > 0 and max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq:
                 print('Breaking out at %s due to enough steps' % experiment_id)
                 break
             elif conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step') == [-1]:
