@@ -18,7 +18,7 @@ def main(ind, dbname, colname, srcdir, savedir, gpu=0, script='normal_encoder_op
             cmd = cmd_tmp % (gpu, srcdir, script, dbname, colname, experiment_id, seed, learningrate, savedir, decaystep, decayrate, num_train_steps, erase_earlier)
             print('CMD: %s' % cmd)
             os.system(cmd)
-            if conn[dbname][colname].find({'experiment_id': experiment_id}) > 0 and (max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq):
+            if conn[dbname][colname].find({'experiment_id': experiment_id}).count() > 0 and (max(conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step')) >= num_train_steps/bsize - 5 * test_freq):
                 print('Breaking out at %s due to enough steps' % experiment_id)
                 break
             elif conn[dbname][colname].find({'experiment_id': experiment_id}).distinct('step') == [-1]:
