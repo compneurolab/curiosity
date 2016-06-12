@@ -2,7 +2,7 @@ import os
 import pymongo as pm
 conn = pm.MongoClient(port=29101)
 
-num_tries = 10
+num_tries = 100
 bsize = 64
 test_freq = 20
 def main(ind, dbname, colname, srcdir, savedir, gpu=0, script='normal_encoder_opt_source.py', decayrate=0.95, decaystep=100000, num_train_steps=2048000, erase_earlier=0):
