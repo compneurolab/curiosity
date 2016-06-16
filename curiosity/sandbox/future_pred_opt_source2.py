@@ -28,7 +28,7 @@ PIXEL_DEPTH = 255
 BATCH_SIZE = 96
 NUM_TRAIN_STEPS = 2048000
 TEST_FREQUENCY = 20
-SAVE_MULTIPLE = 25
+SAVE_MULTIPLE = 1
 OBSERVATION_LENGTH = 2
 ATOMIC_ACTION_LENGTH = 14
 MAX_NUM_ACTIONS = 10
@@ -409,7 +409,9 @@ def model(data, actions_node, time_node, rng, cfg):
   return decode, cfg0
 
 
-def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95):
+def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95, num_train_steps=None, erase_earlier=None):
+  if num_train_steps is None:
+    num_train_steps = NUM_TRAIN_STEPS
   conn = pm.MongoClient('localhost', 29101)
   db = conn[dbname]
   coll = db[colname] 
@@ -525,6 +527,14 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
             pth = get_checkpoint_path(sdir, v.name.replace('/', '__'), step)
             val = v.eval()
             np.save(pth, val)
+            if erase_earlier:
+              dirn = os.path.split(pth)[0]
+              L = os.listdir(dirn)
+              nL = [int(_l[:-4]) for _l in L if _l.endswith('.npy') and isint(_l[:-4])]
+              nL.sort()
+              for _l in nL[:-erase_earlier]:
+                delpth = os.path.join(dirn, str(_l) + '.npy')
+                os.remove(delpth)
           saved_filters = True
         else:
           saved_filters = False
@@ -565,6 +575,14 @@ def get_checkpoint_path(dirn, vname, step):
     os.makedirs(cdir)
   return os.path.join(cdir, '%d.npy' % step)
 
+def isint(x):
+  try:
+    int(x)
+  except:
+    return False
+  else:
+    return True
+
         
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -578,6 +596,8 @@ if __name__ == '__main__':
   parser.add_argument('--learningrate', type=float, default=1.)
   parser.add_argument('--decaystep', type=int, default=100000)
   parser.add_argument('--decayrate', type=float, default=0.95)
+  parser.add_argument('--num_train_steps', type=int, default=2048000)
+  parser.add_argument('--erase_earlier', type=int, default=0)
   args = vars(parser.parse_args())
   main(**args) 
   
