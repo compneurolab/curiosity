@@ -1,0 +1,2 @@
+class HiLossError(Exception):
+  pass

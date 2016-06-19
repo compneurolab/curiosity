@@ -1,16 +1,7 @@
-"""
-coupled symmetric model with from-below coupling
-     --top-down is freely parameterized num-channels but from-below and top-down have same spatial extent 
-     --top-down and bottom-up are combined via convolution to the correct num-channel shape:
-        I = ReluConv(concat(top_down, bottom_up))
-     --error is compuated as:
-       (future_bottom_up - current_I)**2
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import argparse
 import sys
 import copy
@@ -19,7 +10,6 @@ import time
 import os
 import zmq
 import struct
-import cPickle
 import json
 import pymongo as pm
 from PIL import Image
@@ -36,10 +26,7 @@ PIXEL_DEPTH = 255
 BATCH_SIZE = 64
 NUM_TRAIN_STEPS = 2048000
 TEST_FREQUENCY = 20
-SAVE_MULTIPLE = 25
-OBSERVATION_LENGTH = 1
-ATOMIC_ACTION_LENGTH = 14
-MAX_NUM_ACTIONS = 10
+SAVE_MULTIPLE = 1
 
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
@@ -48,7 +35,7 @@ ctx = zmq.Context()
 sock = ctx.socket(zmq.REQ)
 
 print("connecting...")
-sock.connect("tcp://18.93.3.135:23043")
+sock.connect("tcp://18.93.3.135:23042")
 print("...connected")
 
 THRES = 100
@@ -69,69 +56,14 @@ def recv_array(socket, flags=0, copy=True, track=False):
   return A.reshape(md['shape'])
 
 
-def process_action(action):
-   act = action.get('actions', [])
-   if len(act) == 0:
-     act = {'action_pos': [0, 0], 'force': [0, 0, 0], 'torque': [0, 0, 0]}
-   else:
-     act = act[0]
-   actvec = action.get('vel', [0, 0, 0]) + action.get('ang_vel', [0, 0, 0]) + act.get('action_pos', [0, 0]) + act.get('force', [0, 0, 0]) + act.get('torque', [0, 0, 0])
-   return actvec
-
-def getNextBatch(N, rng):
+def getNextBatch(N):
   sock.send_json({'batch_num': N, 
-                  'batch_size': 128})
-  info = sock.recv_json()
-  ims = norml(recv_array(sock))
-  norms = norml(recv_array(sock))
+                  'batch_size': BATCH_SIZE})
+  ims = recv_array(sock)
+  norms = recv_array(sock)
   objs = recv_array(sock)
-
-  obss = []
-  time_diffs = []
-  actionss = []
-  future_inds = []  
-  while (len(obss) < BATCH_SIZE):
-    i = rng.randint(len(ims))
-    if i < OBSERVATION_LENGTH - 1:
-      continue
-    _b = [info[j].get('teleport_random', False) for j in range(i-OBSERVATION_LENGTH+1, i+1)]
-    if any(_b):
-      continue
-    
-    for j in range(i, min(i+1+MAX_NUM_ACTIONS, len(info))):
-      if info[j].get('teleport_random', False):
-        break
-    if j == i:
-      continue
-      
-    t = rng.randint(i+1, j+1)
-
-    if (t, t-i) in zip(future_inds, time_diffs):
-      continue
-
-    future_inds.append(t)
-    time_diffs.append(t - i)
-    
-    newshape = (IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH)
-    obs = ims[i - OBSERVATION_LENGTH + 1: i + 1].transpose((1, 2, 3, 0)).reshape(newshape)
-    obss.append(obs)
-    
-    fut = ims[t - OBSERVATION_LENGTH + 1: t + 1].transpose((1, 2, 3, 0)).reshape(newshape)
-    futs.append(fut)    
-    
-    action_seq = []
-    for _j in range(i, i + MAX_NUM_ACTIONS):
-      if _j < len(info):
-         action_seq.extend(process_action(info[_j]))
-      else:
-         action_seq.extend([0] * ATOMIC_ACTION_LENGTH)
-    actionss.append(action_seq)
-
-  batch = {'observations': np.array(obss),
-           'future': np.array(futs),
-           'actions': np.array(actionss),
-           'time_diff': np.array(time_diffs) }
-
+  batch = {'images': norml(ims),
+           'normals': norml(norms)}
   return batch
 
 
@@ -155,7 +87,7 @@ def getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=None):
     if 'conv' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['conv']:
         return cfg['encode'][i]['conv']['filter_size']  
-  L = [1, 3, 5, 7, 9, 11, 13, 15]
+  L = [1, 3, 5, 7, 9, 11, 13, 15, 23]
   if prev is not None:
     L = [_l for _l in L if _l <= prev]
   return rng.choice(L)
@@ -194,7 +126,7 @@ def getEncodePoolFilterSize(i, encode_depth, rng, cfg):
     if 'pool' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['pool']:
         return cfg['encode'][i]['pool']['filter_size']
-  return rng.choice([2, 3, 5])
+  return rng.choice([2, 3, 4, 5])
 
 def getEncodePoolStride(i, encode_depth, rng, cfg):  
   if 'encode' in cfg and (i in cfg['encode']):
@@ -249,7 +181,7 @@ def getDecodeFilterSize(i, decode_depth, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
      if 'filter_size' in cfg['decode'][i]:
        return cfg['decode'][i]['filter_size']
-  return 7
+  return rng.choice([1, 3, 5, 7, 9, 11])
 
 def getDecodeSize(i, decode_depth, init, final, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
@@ -281,22 +213,20 @@ def getFilterSeed(rng, cfg):
     return rng.randint(10000)
   
 
-def model(current, future, actions_node, time_node, rng, cfg):
+def model(data, rng, cfg):
   """The Model definition."""
   cfg0 = {} 
 
   fseed = getFilterSeed(rng, cfg)
   
   #encoding
-  nf0 = NUM_CHANNELS * OBSERVATION_LENGTH
+  nf0 = NUM_CHANNELS 
   imsize = IMAGE_SIZE
   encode_depth = getEncodeDepth(rng, cfg)
   cfg0['encode_depth'] = encode_depth
   print('Encode depth: %d' % encode_depth)
-  encode_nodes_current = []
-  encode_nodes_current.append(current)
-  encode_nodes_future = []
-  encode_nodes_future.append(future)
+  encode_nodes = []
+  encode_nodes.append(data)
   cfs0 = None
   cfg0['encode'] = {}
   for i in range(1, encode_depth + 1):
@@ -311,19 +241,14 @@ def model(current, future, actions_node, time_node, rng, cfg):
     W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
                                         stddev=0.01,
                                         seed=fseed))
-    new_encode_node_current = tf.nn.conv2d(encode_nodes_current[i-1], W,
+    new_encode_node = tf.nn.conv2d(encode_nodes[i-1], W,
                                strides = [1, cs, cs, 1],
                                padding='SAME')
-    new_encode_node_current = tf.nn.relu(new_encode_node_current)
-    new_encode_node_future = tf.nn.conv2d(encode_nodes_future[i-1], W,
-                               strides = [1, cs, cs, 1],
-                               padding='SAME')
-    new_encode_node_future = tf.nn.relu(new_encode_node_future)
+    new_encode_node = tf.nn.relu(new_encode_node)
     b = tf.Variable(tf.zeros([nf]))
-    new_encode_node_current = tf.nn.bias_add(new_encode_node_current, b)
-    new_encode_node_future = tf.nn.bias_add(new_encode_node_future, b)
+    new_encode_node = tf.nn.bias_add(new_encode_node, b)
     imsize = imsize // cs
-    print('Encode conv %d with size %d stride %d num channels %d numfilters %d for shape' % (i, cfs, cs, nf0, nf), new_encode_node_current.get_shape().as_list())    
+    print('Encode conv %d with size %d stride %d num channels %d numfilters %d for shape' % (i, cfs, cs, nf0, nf), new_encode_node.get_shape().as_list())    
     do_pool = getEncodeDoPool(i, encode_depth, rng, cfg)
     if do_pool:
       pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg)
@@ -336,28 +261,22 @@ def model(current, future, actions_node, time_node, rng, cfg):
         pfunc = tf.nn.max_pool
       elif pool_type == 'avg':
         pfunc = tf.nn.avg_pool
-      new_encode_node_current = pfunc(new_encode_node_current,
+      new_encode_node = pfunc(new_encode_node,
                           ksize = [1, pfs, pfs, 1],
                           strides = [1, ps, ps, 1],
                           padding='SAME')
-      new_encode_node_future = pfunc(new_encode_node_current_future,
-                          ksize = [1, pfs, pfs, 1],
-                          strides = [1, ps, ps, 1],
-                          padding='SAME')                        
       print('Encode %s pool %d with size %d stride %d for shape' % (pool_type, i, pfs, ps),
-                    new_encode_node_current.get_shape().as_list())
+                    new_encode_node.get_shape().as_list())
       imsize = imsize // ps
     nf0 = nf
 
-    encode_nodes_current.append(new_encode_node_current)   
-    encode_nodes_future.append(new_encode_node_future)
+    encode_nodes.append(new_encode_node)   
 
-  encode_node = encode_nodes_current[-1]
+  encode_node = encode_nodes[-1]
   enc_shape = encode_node.get_shape().as_list()
   encode_flat = tf.reshape(encode_node, [enc_shape[0], np.prod(enc_shape[1:])])
   print('Flatten to shape %s' % encode_flat.get_shape().as_list())
 
-  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
   #hidden
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg)
@@ -376,78 +295,66 @@ def model(current, future, actions_node, time_node, rng, cfg):
     nf0 = nf
 
   #decode
-  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
-  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg)
-  cfg0['decode'] = {0: {'num_filters': nf1}}
-  if ds * ds * nf1 != nf0:
-    W = tf.Variable(tf.truncated_normal([nf0, ds * ds * nf1],
+  decode_depth = getDecodeDepth(rng, cfg)
+  cfg0['decode_depth'] = decode_depth
+  print('Decode depth: %d' % decode_depth)
+  nf = getDecodeNumFilters(0, decode_depth, rng, cfg)
+  cfg0['decode'] = {0: {'num_filters': nf}}
+  ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg)
+  cfg0['decode'][0]['size'] = ds
+  if ds * ds * nf != nf0:
+    W = tf.Variable(tf.truncated_normal([nf0, ds * ds * nf],
                                         stddev = 0.01,
                                         seed=fseed))
-    b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf1]))
+    b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf]))
     hidden = tf.matmul(hidden, W) + b
-    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
-  decode = tf.reshape(hidden, [BATCH_SIZE, ds, ds, nf1])  
+    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf, ds))
+  decode = tf.reshape(hidden, [BATCH_SIZE, ds, ds, nf])  
   print("Unflattening to", decode.get_shape().as_list())
-  
-  pred = tf.concat(3, [decode, encode_nodes_current[encode_depth]])
-  nf = encode_nodes_future[encode_depth].get_shape().as_list()[-1]
-  cfs = cfg0['encode'][encode_depth]['conv']['filter_size']
-  W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-										stddev=0.1,
-										seed=fseed))
-  b = tf.Variable(tf.zeros([nf]))
-  pred = tf.nn.conv2d(pred,
-						  W,
-						  strides=[1, 1, 1, 1],
-						  padding='SAME')
-  pred = tf.nn.bias_add(pred, b)
-  
-  norm = (ds**2) * BATCH_SIZE * nf
-  loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth]) / norm
-  for i in range(1, encode_depth + 1):
-    nf0 = nf1
-    ds = encode_nodes_future[encode_depth - i].get_shape().as_list()[1]
+  for i in range(1, decode_depth + 1):
+    nf0 = nf
+    ds = getDecodeSize(i, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg)
+    cfg0['decode'][i] = {'size': ds}
+    if i == decode_depth:
+       assert ds == IMAGE_SIZE, (ds, IMAGE_SIZE)
     decode = tf.image.resize_images(decode, ds, ds)
     print('Decode resize %d to shape' % i, decode.get_shape().as_list())
-    cfs = getDecodeFilterSize(i, encode_depth, rng, cfg)
-    cfg0['decode'][i] = {'filter_size': cfs}
-    nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg)
-    cfg0['decode'][i]['num_filters'] = nf1
+    add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg)
+    if add_bypass != None:
+      bypass_layer = encode_nodes[add_bypass]
+      bypass_shape = bypass_layer.get_shape().as_list()
+      if bypass_shape[1] != ds:
+        bypass_layer = tf.image.resize_images(bypass_layer, ds, ds)
+      decode = tf.concat(3, [decode, bypass_layer])
+      print('Decode bypass from %d at %d for shape' % (add_bypass, i), decode.get_shape().as_list())
+      nf0 = nf0 + bypass_shape[-1]
+      cfg0['decode'][i]['bypass'] = add_bypass
+    cfs = getDecodeFilterSize(i, decode_depth, rng, cfg)
+    cfg0['decode'][i]['filter_size'] = cfs
+    nf = getDecodeNumFilters(i, decode_depth, rng, cfg)
+    cfg0['decode'][i]['num_filters'] = nf
+    if i == decode_depth:
+      assert nf == NUM_CHANNELS, (nf, NUM_CHANNELS)
     W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
                                         stddev=0.1,
                                         seed=fseed))
-    b = tf.Variable(tf.zeros([nf1]))
+    b = tf.Variable(tf.zeros([nf]))
     decode = tf.nn.conv2d(decode,
                           W,
                           strides=[1, 1, 1, 1],
                           padding='SAME')
     decode = tf.nn.bias_add(decode, b)
-    
-    pred = tf.concat(3, [decode, encode_nodes_current[encode_depth - i]])
-    
-    cfs = cfg0['encode'][encode_depth - i]['conv']['filter_size']  #set some other way?
-    nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-                                        stddev=0.1,
-                                        seed=fseed))
-    b = tf.Variable(tf.zeros([nf]))
-    pred = tf.nn.conv2d(pred,
-                        W,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    pred = tf.nn.bias_add(pred, b)
+    print('Decode conv %d with size %d num channels %d numfilters %d for shape' % (i, cfs, nf0, nf), decode.get_shape().as_list())
 
-    if i < encode_depth:  #add relu to all but last ... need this?
+    if i < decode_depth:  #add relu to all but last ... need this?
       decode = tf.nn.relu(decode)
-      pred = tf.nn.relu(pred)
-    
-    norm = (ds**2) * BATCH_SIZE * nf
-    loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i]) / norm
- 
-  return loss, cfg0
+
+  return decode, cfg0
 
 
-def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95):
+def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosave=True, learningrate=1.0, decaystep=100000, decayrate=0.95, num_train_steps=None, erase_earlier=None):
+  if num_train_steps is None:
+    num_train_steps = NUM_TRAIN_STEPS
   conn = pm.MongoClient('localhost', 29101)
   db = conn[dbname]
   coll = db[colname] 
@@ -469,22 +376,15 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
   
   rng = np.random.RandomState(seed=seed)
 
-  current_node = tf.placeholder(
+  image_node = tf.placeholder(
       tf.float32,
-      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH))
+      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
-  future_node = tf.placeholder(
+  normals_node = tf.placeholder(
         tf.float32,
-      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH))
-
-  actions_node = tf.placeholder(tf.float32,
-                                shape=(BATCH_SIZE,
-                                       ATOMIC_ACTION_LENGTH * MAX_NUM_ACTIONS))
+      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
   
-  time_node = tf.placeholder(tf.float32,
-                             shape=(BATCH_SIZE, 1))
-
-  loss, cfg = model(current_node, future_node, actions_node, time_node, rng=rng, cfg=cfg0)
+  train_prediction, cfg = model(image_node, rng=rng, cfg=cfg0)
   if not init: 
     assert cfg1 == cfg, (cfg1, cfg)
   else:
@@ -495,6 +395,9 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
            'cfg0': preprocess_config(cfg0),
            'step': -1}
     coll.insert(rec)
+
+  norm = (IMAGE_SIZE**2) * NUM_CHANNELS * BATCH_SIZE
+  loss = tf.nn.l2_loss(train_prediction - normals_node) / norm
 
   batch = tf.Variable(0, trainable=False)
 
@@ -532,14 +435,10 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
       
       print("Restored from %s at timestep %d" % (sdir, step0))
 
-    for step in xrange(step0 + 1, NUM_TRAIN_STEPS // BATCH_SIZE):
-      batch_data = getNextBatch(step, rng)
-      #with open('/home/yamins/borkstep%d.p' % step, 'w') as _f:
-      #  cPickle.dump(batch_data, _f)
-      feed_dict = {current_node: batch_data['observations'],
-                   future_node: batch_data['future'],
-                   actions_node: batch_data['actions'],
-                   time_node: batch_data['time_diff'][:, np.newaxis]}
+    for step in xrange(step0 + 1, num_train_steps // BATCH_SIZE):
+      batch_data = getNextBatch(step)
+      feed_dict = {image_node: batch_data['images'],
+                   normals_node: batch_data['normals']}
       # Run the graph and fetch some of the nodes.
       _, l, lr, predictions = sess.run(
           [optimizer, loss, learning_rate, train_prediction],
@@ -560,6 +459,14 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
             pth = get_checkpoint_path(sdir, v.name.replace('/', '__'), step)
             val = v.eval()
             np.save(pth, val)
+            if erase_earlier:
+              dirn = os.path.split(pth)[0]
+              L = os.listdir(dirn)
+              nL = [int(_l[:-4]) for _l in L if _l.endswith('.npy') and isint(_l[:-4])]
+              nL.sort()
+              for _l in nL[:-erase_earlier]:
+                delpth = os.path.join(dirn, str(_l) + '.npy')
+                os.remove(delpth)
           saved_filters = True
         else:
           saved_filters = False
@@ -600,6 +507,13 @@ def get_checkpoint_path(dirn, vname, step):
     os.makedirs(cdir)
   return os.path.join(cdir, '%d.npy' % step)
 
+def isint(x):
+  try:
+    int(x)
+  except:
+    return False
+  else:
+    return True 
         
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -613,6 +527,8 @@ if __name__ == '__main__':
   parser.add_argument('--learningrate', type=float, default=1.)
   parser.add_argument('--decaystep', type=int, default=100000)
   parser.add_argument('--decayrate', type=float, default=0.95)
+  parser.add_argument('--num_train_steps', type=int, default=2048000)
+  parser.add_argument('--erase_earlier', type=int, default=0)
   args = vars(parser.parse_args())
   main(**args) 
   

@@ -1,3 +1,9 @@
+"""
+coupled symmetric model:
+    -- no from-below coupling in of pixel info in each prediction
+    -- bottom-up and top-down rep have same dim and loss is directly computed between:
+       (future_bottom_up  - present_top_down)**2
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

@@ -1,3 +1,13 @@
+"""
+coupled symmetric model with from-below coupling 
+    -- bottom-up and top down rep have the same dim
+    -- so the coupled top-down and bottom-up structure when concatted have 2 * num_channel shape, which is then reformatted to correct shape (just 1 * num_channel shape) via ReluConv, producing intermediate:
+           I = ReluConv(top_down, bottom_up)
+    -- loss is computed as
+       (future_bottom_up - current_I)**2
+
+this design is probably stupid
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

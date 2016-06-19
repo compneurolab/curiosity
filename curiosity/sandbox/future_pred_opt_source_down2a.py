@@ -1,3 +1,8 @@
+"""
+coupled symmetric model with from-below coupling 
+    -- first top-down has freely parameterized num-channel shape
+       subsequent ones have same as bottom up
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
