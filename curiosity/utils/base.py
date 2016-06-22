@@ -33,9 +33,13 @@ def run(dbname,
         colname,
         experiment_id,
         model_func,
+        model_func_kwargs,
         data_func,
+        data_func_kwargs,
         num_train_steps,
         batch_size,
+        slippage=0,
+        slippage_error=False,
         seed=0,
         cfgfile=None,
         savedir='.',
@@ -68,7 +72,7 @@ def run(dbname,
 
   rng = np.random.RandomState(seed=seed)
 
-  outnodedict, innodedict, cfg = model_func(rng, batch_size, cfg=cfg0)
+  outnodedict, innodedict, cfg = model_func(rng, batch_size, cfg0, slippage, slippage_error, **model_func_kwargs)
   assert 'loss' in outnodedict
   outnodenames, outnodes = zip(*outnodedict.items())
 
@@ -119,7 +123,7 @@ def run(dbname,
       print("Restored from %s at timestep %d" % (sdir, step0))
 
     for step in xrange(step0 + 1, num_train_steps // batch_size):
-      batch_data = data_func(step, rng, batch_size)
+      batch_data = data_func(step, batch_size, **data_func_kwargs)
       feed_dict = {innodedict[k]: batch_data[k] for k in innodedict}
       outvals = sess.run(outnodes1, feed_dict=feed_dict)
       lossval = outvals[outnodes1.index('loss')]
@@ -167,11 +171,15 @@ def get_cli():
   parser.add_argument('colname', type=str, help="colname string value")
   parser.add_argument('experiment_id', type=str, help="Experiment ID string value")
   parser.add_argument('model_func', type=str, help="Model Func Path")  
+  parser.add_argument('--model_func_kwargs', type=json.loads, help="Model Func Kwargs", default='{}')  
   parser.add_argument('data_func', type=str, help="Data Func Path")
+  parser.add_argument('--data_func_kwargs', type=json.loads, help="Data Func Kwargs", default='{}')  
   parser.add_argument('num_train_steps', type=int, help="Number of training steps")
   parser.add_argument('batch_size', type=int, help="Batch Size")
   parser.add_argument('--seed', type=int, help='seed for config', default=0)
   parser.add_argument('--cfgfile', type=str, help="Config to load model specs from")
+  parser.add_argument('--slippage', type=float, default=0., help="slippage to depart from given config")
+  parser.add_argument('--slippage_error', type=bool, default=False, help="raise error if slippage is nonzero but changes made")
   parser.add_argument('--savedir', type=str, default='.')
   parser.add_argument('--dosave', type=int, default=1)
   parser.add_argument('--base_learningrate', type=float, default=1.)

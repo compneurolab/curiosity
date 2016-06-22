@@ -1,20 +1,16 @@
-"""
-asymmetric model with bypass
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 
 import numpy as np
 import tensorflow as tf
 
 IMAGE_SIZE = 256
 NUM_CHANNELS = 3
-OBSERVATION_LENGTH = 2
-ATOMIC_ACTION_LENGTH = 14
-MAX_NUM_ACTIONS = 10
 
+
+tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
+FLAGS = tf.app.flags.FLAGS
 
 def getEncodeDepth(rng, cfg):
   if 'encode_depth' in cfg:
@@ -31,7 +27,7 @@ def getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=None):
     if 'conv' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['conv']:
         return cfg['encode'][i]['conv']['filter_size']  
-  L = [1, 3, 5, 7, 9, 11, 13, 15]
+  L = [1, 3, 5, 7, 9, 11, 13, 15, 23]
   if prev is not None:
     L = [_l for _l in L if _l <= prev]
   return rng.choice(L)
@@ -70,7 +66,7 @@ def getEncodePoolFilterSize(i, encode_depth, rng, cfg):
     if 'pool' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['pool']:
         return cfg['encode'][i]['pool']['filter_size']
-  return rng.choice([2, 3, 5])
+  return rng.choice([2, 3, 4, 5])
 
 def getEncodePoolStride(i, encode_depth, rng, cfg):  
   if 'encode' in cfg and (i in cfg['encode']):
@@ -125,7 +121,7 @@ def getDecodeFilterSize(i, decode_depth, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
      if 'filter_size' in cfg['decode'][i]:
        return cfg['decode'][i]['filter_size']
-  return 7
+  return rng.choice([1, 3, 5, 7, 9, 11])
 
 def getDecodeSize(i, decode_depth, init, final, rng, cfg):
   if 'decode' in cfg and (i in cfg['decode']):
@@ -157,14 +153,16 @@ def getFilterSeed(rng, cfg):
     return rng.randint(10000)
   
 
-def model(data, actions_node, time_node, rng, cfg):
+def model(data, rng, cfg):
   """The Model definition."""
+
+
   cfg0 = {} 
 
   fseed = getFilterSeed(rng, cfg)
   
   #encoding
-  nf0 = NUM_CHANNELS * OBSERVATION_LENGTH
+  nf0 = NUM_CHANNELS 
   imsize = IMAGE_SIZE
   encode_depth = getEncodeDepth(rng, cfg)
   cfg0['encode_depth'] = encode_depth
@@ -221,7 +219,6 @@ def model(data, actions_node, time_node, rng, cfg):
   encode_flat = tf.reshape(encode_node, [enc_shape[0], np.prod(enc_shape[1:])])
   print('Flatten to shape %s' % encode_flat.get_shape().as_list())
 
-  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
   #hidden
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg)
@@ -298,38 +295,21 @@ def model(data, actions_node, time_node, rng, cfg):
 
 
 def get_model(rng, batch_size, cfg):
+  image_node = tf.placeholder(tf.float32,
+                              shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
-  observations_node = tf.placeholder(
-      tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH))
-
-  future_normals_node = tf.placeholder(
-        tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
-  actions_node = tf.placeholder(tf.float32,
-                                shape=(batch_size,
-                                       ATOMIC_ACTION_LENGTH * MAX_NUM_ACTIONS))
+  normals_node = tf.placeholder(tf.float32,
+                                shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
   
-  time_node = tf.placeholder(tf.float32,
-                             shape=(batch_size, 1))
-
-  train_prediction, cfg = model(observations_node, actions_node, time_node, 
-                                rng=rng, cfg=cfg)
+  train_prediction, cfg = model(image_node, rng, cfg)
 
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
-  loss = tf.nn.l2_loss(train_prediction - future_normals_node) / norm
+  loss = tf.nn.l2_loss(train_prediction - normals_node) / norm
 
-  innodedict = {'observations_node': observations_node,
-                'future_normals_node': future_normals_node,
-                'actions_node': actions_node,
-                'time_node': time_node}
+  innodedict = {'image_node': image_node,
+                'normals_node': normal_node}
 
   outnodedict = {'train_prediction': train_prediction,
                  'loss': loss}
-                
+
   return outnodedict, innodedict, cfg
-  
-
-
-

@@ -6,6 +6,10 @@ import h5py
 import json
 import zmq
 
+from curiosity.utils.io import (handle_sock,
+                                send_array, 
+                                recv_array)
+
 BATCH_SIZE = 256
 MULTSTART = -1
 
@@ -13,36 +17,6 @@ achoice = [-5, 0, 5]
 ACTION_LENGTH = 15
 ACTION_WAIT = 15
 
-def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
-    info = sock.recv()
-    nstr = sock.recv()
-    narray = np.asarray(Image.open(StringIO(nstr)).convert('RGB'))
-    ostr = sock.recv()
-    oarray = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
-    imstr = sock.recv()
-    imarray = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
-    if write:
-        if not os.path.exists(outdir):
-            os.mkdir(outdir)
-        with open(os.path.join(outdir, 'image_%s.%s' % (prefix, imtype)), 'w') as _f:
-            _f.write(imstr)
-        with open(os.path.join(outdir, 'objects_%s.%s' % (prefix, imtype)), 'w') as _f:
-            _f.write(ostr)
-        with open(os.path.join(outdir, 'normals_%s.%s' % (prefix, imtype)), 'w') as _f:
-            _f.write(nstr)
-        with open(os.path.join(outdir, 'info_%s.json' % prefix), 'w') as _f:
-            _f.write(info)
-    return [info, narray, oarray, imarray]
-
-
-def send_array(socket, A, flags=0, copy=True, track=False):
-    """send a numpy array with metadata"""
-    md = dict(
-        dtype = str(A.dtype),
-        shape = A.shape,
-    )
-    socket.send_json(md, flags|zmq.SNDMORE)
-    return socket.send(A, flags, copy=copy, track=track)
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.REQ)
@@ -104,7 +78,10 @@ def make_new_batch(bn):
                    'msg': {"msg_type": "CLIENT_INPUT",
                            "get_obj_data": False,
                            "actions": []}}
+    
             if i == 0:
+                if bn == 0:
+                    msg['msg']['get_obj_data'] = True
                 #print('turning at %d ... ' % i)
                 #msg['msg']['ang_vel'] = [0, 10 * (rng.uniform() - 1), 0]
                 #msg['msg']['vel'] = [0, 0, 1]
@@ -233,7 +210,7 @@ def make_new_batch(bn):
 while True:
     msg = sock2.recv_json()
     print(msg)
-    if 'command' in msg and msg['command'] == 'get_valid':
+    if msg.get('command') == 'get_valid':
         va = np.asarray(valid)
         undone = (va == 0).nonzero()[0]
         if len(undone) > 0:
@@ -242,6 +219,15 @@ while True:
         va = np.asarray(valid).nonzero()[0]
         batches = np.unique(np.floor(va / BATCH_SIZE)).astype(np.int)
         send_array(sock2, batches)
+    elif msg.get('command') == 'get_info':
+        bn = 0
+        make_new_batch(bn)
+        infopath = os.path.join(infodir, str(bn) + '.json')
+        infolist = json.loads(open(infopath).read())
+        msg = {'info': infolist[1],
+               'image_size': 256,
+               'num_channels': 3}
+        sock2.send_json(msg)
     else:      
         bn = msg['batch_num']
         bsize = BATCH_SIZE
