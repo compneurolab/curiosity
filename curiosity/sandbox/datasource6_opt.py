@@ -245,15 +245,16 @@ while True:
     else:      
         bn = msg['batch_num']
         bsize = BATCH_SIZE
+        bn1 = bn % (N / bsize)
         start = (bn * bsize) % N
         end = ((bn + 1) * bsize - 1) % N + 1
         make_new_batch(bn)
 
-        print("Sending batch %d" % bn)
+        print("Sending batch %d (%d)" % (bn, bn1))
         ims = images[start: end] 
         norms = normals[start: end] 
         objs = objects[start: end]
-        infopath = os.path.join(infodir, str(bn) + '.json')
+        infopath = os.path.join(infodir, str(bn1) + '.json')
         infolist = json.loads(open(infopath).read())
         sock2.send_json(infolist, flags=zmq.SNDMORE)
         send_array(sock2, ims, flags=zmq.SNDMORE)
