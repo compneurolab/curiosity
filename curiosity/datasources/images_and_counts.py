@@ -1,5 +1,6 @@
 """
-assuming input is pre-permuated hdf5 with images, normals, objects, and object id counts
+assuming input is (possibly pre-permuted) hdf5 with images and object id counts
+this code converts counts into distributions
 """
 import numpy as np
 import os
@@ -33,7 +34,7 @@ def getNextBatch(batch_num, batch_size, host, port, datapath):
   objidvec = np.zeros((batch_size, counts.shape[1] + 1)).astype(np.float)
   objidvec[:, 1:] = counts
   noobj = objidvec.sum(1) == 0
-  objidvec[noobj, -1] = 1
+  objidvec[noobj, 0] = 1
   objidvec = objidvec / objidvec.sum(1)[:, np.newaxis]
 
   batch = {'images': images,        #images
