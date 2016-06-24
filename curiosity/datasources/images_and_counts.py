@@ -7,11 +7,12 @@ import os
 import zmq
 
 from curiosity.utils.image import norml
+from curiosity.utils.io import recv_array
 
 ctx = zmq.Context()
 sock = None
 
-def initialize(host, post):
+def initialize(host, port):
   global ctx, sock
   sock = ctx.socket(zmq.REQ)
   print("connecting...")
@@ -27,7 +28,7 @@ def getNextBatch(batch_num, batch_size, host, port, datapath):
   sock.send_json({'batch_num': batch_num,
                   'batch_size': batch_size,
                   'path': datapath,
-                  'keys': ['images', 'counts']})
+                  'keys': [('randomperm', 'images'), ('randomperm', 'objectcounts')]})
   images = norml(recv_array(sock))
   counts = recv_array(sock)
 

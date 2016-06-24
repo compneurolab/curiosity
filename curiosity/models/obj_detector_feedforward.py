@@ -7,6 +7,7 @@ import zmq
 import tensorflow as tf
 
 import curiosity.utils.error as error
+from curiosity.utils.io import recv_array
 
 ctx = zmq.Context()
 sock = None
@@ -14,16 +15,16 @@ IMAGE_SIZE = None
 NUM_CHANNELS = None
 NUM_OBJECTS = None
 
-def initialize(host, post, datapath):
+def initialize(host, port, datapath):
   global ctx, sock, NUM_OBJECTS, NUM_CHANNELS, IMAGE_SIZE
-  sock = sock.socket(zmq.REQ)
+  sock = ctx.socket(zmq.REQ)
   print("connecting...")
   sock.connect("tcp://%s:%d" % (host, port))
   print("...connected")
   sock.send_json({'batch_size': 1,
                   'batch_num': 0,
-                  'datapath': datapath,
-                  'keys': ['images', 'counts'] 
+                  'path': datapath,
+                  'keys': [('randomperm', 'images'), ('randomperm', 'objectcounts')] 
                  })
   images = recv_array(sock)
   counts = recv_array(sock)
@@ -102,7 +103,7 @@ def getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=0):
     if 'pool' in cfg['encode'][i]:
       if 'filter_size' in cfg['encode'][i]['pool']:
         val = cfg['encode'][i]['pool']['filter_size']
-  if val is not None and rnv.uniform() > slippage:
+  if val is not None and rng.uniform() > slippage:
     return val
   return rng.choice([2, 3, 4, 5])
 
@@ -112,7 +113,7 @@ def getEncodePoolStride(i, encode_depth, rng, cfg, slippage=0):
     if 'pool' in cfg['encode'][i]:
       if 'stride' in cfg['encode'][i]['pool']:
         val = cfg['encode'][i]['pool']['stride']
-  if val is not None and rnv.uniform() > slippage:
+  if val is not None and rng.uniform() > slippage:
     return val   
   return 2
 
@@ -122,7 +123,7 @@ def getEncodePoolType(i, encode_depth, rng, cfg, slippage=0):
     if 'pool' in cfg['encode'][i]:
       if 'type' in cfg['encode'][i]['pool']:
         val = cfg['encode'][i]['pool']['type']
-  if val is not None and rnv.uniform() > slippage:
+  if val is not None and rng.uniform() > slippage:
     return val
   return rng.choice(['max', 'avg'])
 
@@ -143,7 +144,7 @@ def getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=0):
   if 'hidden' in cfg and (i in cfg['hidden']):
     if 'num_features' in cfg['hidden'][i]:
       val = cfg['hidden'][i]['num_features']
-  if val is not None and rnv.uniform() > slippage:
+  if val is not None and rng.uniform() > slippage:
     return val
   return 4096
   
@@ -250,7 +251,7 @@ def model(data, rng, cfg, slippage=0, slippage_error=False):
 def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
   global sock
   if sock is None:
-    initialize(host, post, datapath)
+    initialize(host, port, datapath)
 
   image_node = tf.placeholder(tf.float32,
                               shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))

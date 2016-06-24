@@ -74,7 +74,7 @@ def run(dbname,
 
   outnodedict, innodedict, cfg = model_func(rng, batch_size, cfg0, slippage, slippage_error, **model_func_kwargs)
   assert 'loss' in outnodedict
-  outnodenames, outnodes = zip(*outnodedict.items())
+  outnodenames, outnodes = map(list, zip(*outnodedict.items()))
 
   if not init:
     assert cfg1 == cfg, (cfg1, cfg)
@@ -126,13 +126,13 @@ def run(dbname,
       batch_data = data_func(step, batch_size, **data_func_kwargs)
       feed_dict = {innodedict[k]: batch_data[k] for k in innodedict}
       outvals = sess.run(outnodes1, feed_dict=feed_dict)
-      lossval = outvals[outnodes1.index('loss')]
-      learning_rate_val = outvals[outnodes1.index('learning_rate')]
+      lossval = outvals[outnodenames1.index('loss')]
+      learning_rate_val = outvals[outnodenames1.index('learning_rate')]
       print('Step: %d, loss: %f, learning rate: %f' % (step, 
                                                        lossval,
                                                        learning_rate_val))
       if lossval > loss_threshold:
-        raise error.HiLossError("Loss: %.3f, Thres: %.3f" % (l, THRES))
+        raise error.HiLossError("Loss: %.3f, Thres: %.3f" % (lossval, loss_threshold))
 
       for outnodename, outnodeval in zip(outnodenames, outvals):
         spath = os.path.join(sdir, '%s.npy' % outnodename)
@@ -154,7 +154,7 @@ def run(dbname,
                 delpth = os.path.join(dirn, str(_l) + '.npy')
                 os.remove(delpth)            
           saved_filters = True
-      else:
+        else:
           saved_filters = False
         rec = {'experiment_id': experiment_id,
                'cfg': preprocess_config(cfg),

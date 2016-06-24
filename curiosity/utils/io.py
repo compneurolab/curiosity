@@ -1,7 +1,7 @@
 from StringIO import StringIO
 
 from PIL import Image
-import numpy
+import numpy as np
 import zmq
 
 
