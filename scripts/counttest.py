@@ -1,12 +1,14 @@
 import copy
 
+import numpy as np
+
 import curiosity.utils.base as base
 import curiosity.models.obj_detector_feedforward as modelsource
 import curiosity.datasources.images_and_counts as datasource
 
 dbname = 'threeworld_count'
 colname = 'test'
-experiment_id = 'test0'
+experiment_id = 'test0_longdr'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23044,
@@ -19,6 +21,18 @@ slippage = 0
 cfgfile = '/home/yamins/curiosity/curiosity/configs/base_alexnet.cfg'
 savedir = '/data/countopt'
 erase_earlier = 3
+decaystep=1024000
+
+def corrfunc(indict, outdict):
+    actual = indict['object_count_distributions']
+    predicted = outdict['train_predictions']
+    fracs = []
+    for i in range(actual.shape[0]):
+        objs = actual[i].nonzero()[0]
+        frac = predicted[i][objs].sum() / np.abs(predicted[i]).sum()
+        fracs.append(frac)
+    return float(np.mean(fracs))
+
 
 base.run(dbname,
          colname,
@@ -33,4 +47,6 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=0.1)
+         base_learningrate=0.001,
+         decaystep=decaystep,
+         additional_metrics={'correctfrac': corrfunc})

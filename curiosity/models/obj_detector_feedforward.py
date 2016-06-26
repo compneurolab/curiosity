@@ -37,13 +37,14 @@ tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
 
 def getEncodeDepth(rng, cfg, slippage=0):
-  if not rng.uniform() < slippage and 'encode_depth' in cfg:
-    d = cfg['encode_depth'] 
-  else:
-    d = rng.choice([1, 2, 3, 4, 5])
-    if 'encode' in cfg:
-      maxv = max(cfg['encode'].keys())
-      d = max(d, maxv)
+  val = None
+  if 'encode_depth' in cfg:
+    val = cfg['encode_depth'] 
+  elif 'encode' in cfg:
+    val = max(cfg['encode'].keys())
+  if val is not None and rng.uniform() > slippage:
+    return val  
+  d = rng.choice([1, 2, 3, 4, 5]) 
   return d
 
 def getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=None, slippage=0):
@@ -128,14 +129,15 @@ def getEncodePoolType(i, encode_depth, rng, cfg, slippage=0):
   return rng.choice(['max', 'avg'])
 
 def getHiddenDepth(rng, cfg, slippage=0):
+  val = None
   if (not rng.uniform() < slippage) and 'hidden_depth' in cfg:
-    return cfg['hidden_depth']
-  else:
-    d = rng.choice([1, 2, 3])
-    if 'hidden' in cfg:
-       maxv = max(cfg['hidden'].keys())
-       d = max(d, maxv)
-    return d
+    val = cfg['hidden_depth']
+  elif 'hidden' in cfg:
+    val = max(cfg['hidden'].keys())
+  if val is not None and rng.uniform() > slippage:
+    return val
+  d = rng.choice([1, 2, 3])
+  return d
        
 def getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=0):
   if i == hidden_depth:

@@ -50,7 +50,8 @@ def run(dbname,
         loss_threshold=100,
         test_frequency=20,
         save_multiple=1,
-        erase_earlier=None):
+        erase_earlier=None,
+        additional_metrics=None):
   conn = pm.MongoClient('localhost', 29101)
   db = conn[dbname]
   coll = db[colname]
@@ -126,17 +127,27 @@ def run(dbname,
       batch_data = data_func(step, batch_size, **data_func_kwargs)
       feed_dict = {innodedict[k]: batch_data[k] for k in innodedict}
       outvals = sess.run(outnodes1, feed_dict=feed_dict)
-      lossval = outvals[outnodenames1.index('loss')]
-      learning_rate_val = outvals[outnodenames1.index('learning_rate')]
+      outval_dict = dict(zip(outnodenames1[:-1], outvals[:-1]))
+      lossval = outval_dict['loss']
+      learning_rate_val = outval_dict['learning_rate']
       print('Step: %d, loss: %f, learning rate: %f' % (step, 
                                                        lossval,
                                                        learning_rate_val))
       if lossval > loss_threshold:
         raise error.HiLossError("Loss: %.3f, Thres: %.3f" % (lossval, loss_threshold))
 
-      for outnodename, outnodeval in zip(outnodenames, outvals):
+      for outnodename, outnodeval in outval_dict.items():
         spath = os.path.join(sdir, '%s.npy' % outnodename)
         np.save(spath, outnodeval)
+
+      if additional_metrics is None:
+        additional_metrics = {}
+      metrics = {}
+      for metric_name, metric_func in additional_metrics.items():
+        metric_val = metric_func(batch_data, outval_dict)
+        metrics[metric_name] = metric_val
+      if additional_metrics:
+        print(metrics)
 
       if step % test_frequency == 0:
         if dosave and (step % (test_frequency * save_multiple) == 0):
@@ -162,6 +173,8 @@ def run(dbname,
                'step': step,
                'loss': float(lossval),
                'learning_rate': float(learning_rate_val)}
+        if metrics:
+          rec['metrics'] = metrics
         coll.insert(rec)
 
 
