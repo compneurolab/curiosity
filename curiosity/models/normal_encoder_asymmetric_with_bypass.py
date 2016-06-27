@@ -89,7 +89,7 @@ def getEncodeDoPool(i, encode_depth, rng, cfg, slippage=0):
       val = True
   if val is not None and rng.uniform() > slippage:
     return val
-  counts = recv_array(sock)  if i < 3 or i == encode_depth:
+  if i < 3 or i == encode_depth:
     return rng.uniform() < .75
   else:
     return rng.uniform() < .25
@@ -310,7 +310,7 @@ def model(data, rng, cfg, slippage=0, slippage_error=False):
     b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf]))
     hidden = tf.matmul(hidden, W) + b
     print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf, ds))
-  decode = tf.reshape(hidden, [BATCH_SIZE, ds, ds, nf])  
+  decode = tf.reshape(hidden, [enc_shape[0], ds, ds, nf])  
   print("Unflattening to", decode.get_shape().as_list())
   for i in range(1, decode_depth + 1):
     nf0 = nf
@@ -369,10 +369,10 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
   loss = tf.nn.l2_loss(train_prediction - normals_node) / norm
 
-  innodedict = {'image_node': image_node,
-                'normals_node': normal_node}
+  innodedict = {'images': image_node,
+                'normals': normals_node}
 
-  outnodedict = {'train_prediction': train_prediction,
+  outnodedict = {'train_predictions': train_prediction,
                  'loss': loss}
 
   return outnodedict, innodedict, cfg

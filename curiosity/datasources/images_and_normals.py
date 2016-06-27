@@ -6,11 +6,12 @@ import os
 import zmq
 
 from curiosity.utils.image import norml
+from curiosity.utils.io import recv_array
 
 ctx = zmq.Context()
 sock = None
 
-def initialize(host, post):
+def initialize(host, port):
   global ctx, sock
   sock = ctx.socket(zmq.REQ)
   print("connecting...")
