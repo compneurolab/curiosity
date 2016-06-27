@@ -27,7 +27,7 @@ def getNextBatch(batch_num, batch_size, host, port, datapath):
   sock.send_json({'batch_num': batch_num,
                   'batch_size': batch_size,
                   'path': datapath,
-                  'keys': ['images', 'normals']})
+                  'keys': [('randomperm', 'images'), ('randomperm', 'normals')]})
   images = norml(recv_array(sock))
   normals = norml(recv_array(sock))
 
