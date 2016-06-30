@@ -440,7 +440,7 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
       tf.float32,
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS * OBSERVATION_LENGTH))
 
-  future_normals_node = tf.placeholder(
+  future_node = tf.placeholder(
         tf.float32,
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
@@ -464,7 +464,7 @@ def main(dbname, colname, experiment_id, seed=0, cfgfile=None, savedir='.', dosa
     coll.insert(rec)
 
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * BATCH_SIZE
-  loss = tf.nn.l2_loss(train_prediction - future_normals_node) / norm
+  loss = tf.nn.l2_loss(train_prediction - future_node) / norm
 
   batch = tf.Variable(0, trainable=False)
 

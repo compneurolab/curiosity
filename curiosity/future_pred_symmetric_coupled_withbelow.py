@@ -413,7 +413,7 @@ def model(current, future, actions_node, time_node, rng, cfg):
     cfg0['decode'][i] = {'filter_size': cfs}
     nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg)
     cfg0['decode'][i]['num_filters'] = nf1
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
+    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf1],
                                         stddev=0.1,
                                         seed=fseed))
     b = tf.Variable(tf.zeros([nf1]))
