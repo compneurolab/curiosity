@@ -8,9 +8,6 @@ import zmq
 
 from curiosity.utils.io import recv_array
 
-tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
-FLAGS = tf.app.flags.FLAGS
-
 ctx = zmq.Context()
 sock = None
 IMAGE_SIZE = None
