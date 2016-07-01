@@ -1,14 +1,10 @@
 """
-coupled symmetric model with from-below coupling
-     --top-down is freely parameterized num-channels but from-below and top-down have same spatial extent 
-     --top-down and bottom-up are combined via convolution to the correct num-channel shape:
-        I = ReluConv(concat(top_down, bottom_up))
-     --error is compuated as:
-       (future_bottom_up - current_I)**2
+asymmetric model with bypass
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 
 import numpy as np
 import tensorflow as tf
@@ -32,9 +28,9 @@ def initialize(host, port, datapath):
                   'batch_num': 0,
                   'path': datapath,
                   'keys': [('randompermpairs', 'images0'), 
-                  	       ('randompermpairs', 'actions')]
+                           ('randompermpairs', 'actions')]
                  })
-  images0 = recv_array(sock)
+  images = recv_array(sock)
   actions = recv_array(sock)
   IMAGE_SIZE = images.shape[1]
   NUM_CHANNELS = images.shape[-1]
@@ -165,28 +161,22 @@ def getDecodeDepth(rng, cfg, slippage=0):
   return d
 
 def getDecodeNumFilters(i, decode_depth, rng, cfg, slippage=0):
-	val = None
-	if 'decode' in cfg and (i in cfg['decode']):
-	  if 'num_filters' in cfg['decode'][i]:
-		val = cfg['decode'][i]['num_filters']
-	if val is not None and rng.uniform() > slippage:
-	  return val
-	return 32
+  if i < decode_depth:
+    val = None
+    if 'decode' in cfg and (i in cfg['decode']):
+      if 'num_filters' in cfg['decode'][i]:
+        val = cfg['decode'][i]['num_filters']
+    if val is not None and rng.uniform() > slippage:
+      return val
+    return 32
+  else:
+    return NUM_CHANNELS
 
 def getDecodeFilterSize(i, decode_depth, rng, cfg, slippage=0):
   val = None
   if 'decode' in cfg and (i in cfg['decode']):
      if 'filter_size' in cfg['decode'][i]:
        val = cfg['decode'][i]['filter_size']
-  if val is not None and rng.uniform() > slippage:
-    return val
-  return rng.choice([1, 3, 5, 7, 9, 11])
-  
-def getDecodeFilterSize2(i, decode_depth, rng, cfg, slippage=0):
-  val = None
-  if 'decode' in cfg and (i in cfg['decode']):
-     if 'filter_size2' in cfg['decode'][i]:
-       val = cfg['decode'][i]['filter_size2']
   if val is not None and rng.uniform() > slippage:
     return val
   return rng.choice([1, 3, 5, 7, 9, 11])
@@ -226,7 +216,7 @@ def getFilterSeed(rng, cfg):
     return cfg['filter_seed']
   else:  
     return rng.randint(10000)
-
+  
 
 def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=False):
   """The Model definition."""
@@ -240,10 +230,8 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
   encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
   cfg0['encode_depth'] = encode_depth
   print('Encode depth: %d' % encode_depth)
-  encode_nodes_current = []
-  encode_nodes_current.append(current)
-  encode_nodes_future = []
-  encode_nodes_future.append(future)
+  encode_nodes = []
+  encode_nodes.append(data)
   cfs0 = None
   cfg0['encode'] = {}
   for i in range(1, encode_depth + 1):
@@ -258,19 +246,14 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
     W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
                                         stddev=0.01,
                                         seed=fseed))
-    new_encode_node_current = tf.nn.conv2d(encode_nodes_current[i-1], W,
+    new_encode_node = tf.nn.conv2d(encode_nodes[i-1], W,
                                strides = [1, cs, cs, 1],
                                padding='SAME')
-    new_encode_node_current = tf.nn.relu(new_encode_node_current)
-    new_encode_node_future = tf.nn.conv2d(encode_nodes_future[i-1], W,
-                               strides = [1, cs, cs, 1],
-                               padding='SAME')
-    new_encode_node_future = tf.nn.relu(new_encode_node_future)
+    new_encode_node = tf.nn.relu(new_encode_node)
     b = tf.Variable(tf.zeros([nf]))
-    new_encode_node_current = tf.nn.bias_add(new_encode_node_current, b)
-    new_encode_node_future = tf.nn.bias_add(new_encode_node_future, b)
+    new_encode_node = tf.nn.bias_add(new_encode_node, b)
     imsize = imsize // cs
-    print('Encode conv %d with size %d stride %d num channels %d numfilters %d for shape' % (i, cfs, cs, nf0, nf), new_encode_node_current.get_shape().as_list())    
+    print('Encode conv %d with size %d stride %d num channels %d numfilters %d for shape' % (i, cfs, cs, nf0, nf), new_encode_node.get_shape().as_list())    
     do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
     if do_pool:
       pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
@@ -283,23 +266,18 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
         pfunc = tf.nn.max_pool
       elif pool_type == 'avg':
         pfunc = tf.nn.avg_pool
-      new_encode_node_current = pfunc(new_encode_node_current,
+      new_encode_node = pfunc(new_encode_node,
                           ksize = [1, pfs, pfs, 1],
                           strides = [1, ps, ps, 1],
                           padding='SAME')
-      new_encode_node_future = pfunc(new_encode_node_current_future,
-                          ksize = [1, pfs, pfs, 1],
-                          strides = [1, ps, ps, 1],
-                          padding='SAME')                        
       print('Encode %s pool %d with size %d stride %d for shape' % (pool_type, i, pfs, ps),
-                    new_encode_node_current.get_shape().as_list())
+                    new_encode_node.get_shape().as_list())
       imsize = imsize // ps
     nf0 = nf
 
-    encode_nodes_current.append(new_encode_node_current)   
-    encode_nodes_future.append(new_encode_node_future)
+    encode_nodes.append(new_encode_node)   
 
-  encode_node = encode_nodes_current[-1]
+  encode_node = encode_nodes[-1]
   enc_shape = encode_node.get_shape().as_list()
   encode_flat = tf.reshape(encode_node, [enc_shape[0], np.prod(enc_shape[1:])])
   print('Flatten to shape %s' % encode_flat.get_shape().as_list())
@@ -323,76 +301,61 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
     nf0 = nf
 
   #decode
-  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
-  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
-  cfg0['decode'] = {0: {'num_filters': nf1}}
-  if ds * ds * nf1 != nf0:
-    W = tf.Variable(tf.truncated_normal([nf0, ds * ds * nf1],
+  decode_depth = getDecodeDepth(rng, cfg, slippage=slippage)
+  cfg0['decode_depth'] = decode_depth
+  print('Decode depth: %d' % decode_depth)
+  nf = getDecodeNumFilters(0, decode_depth, rng, cfg, slippage=slippage)
+  cfg0['decode'] = {0: {'num_filters': nf}}
+  ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
+  cfg0['decode'][0]['size'] = ds
+  if ds * ds * nf != nf0:
+    W = tf.Variable(tf.truncated_normal([nf0, ds * ds * nf],
                                         stddev = 0.01,
                                         seed=fseed))
-    b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf1]))
+    b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf]))
     hidden = tf.matmul(hidden, W) + b
-    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
-  decode = tf.reshape(hidden, [BATCH_SIZE, ds, ds, nf1])  
+    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf, ds))
+  decode = tf.reshape(hidden, [enc_shape[0], ds, ds, nf])  
   print("Unflattening to", decode.get_shape().as_list())
-  
-  pred = tf.concat(3, [decode, encode_nodes_current[encode_depth]])
-  nf = encode_nodes_future[encode_depth].get_shape().as_list()[-1]
-  cfs = getDecodeFilterSize2(0, encode_depth, rng, cfg, slippage=slippage)
-  W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-										stddev=0.1,
-										seed=fseed))
-  b = tf.Variable(tf.zeros([nf]))
-  pred = tf.nn.conv2d(pred,
-						  W,
-						  strides=[1, 1, 1, 1],
-						  padding='SAME')
-  pred = tf.nn.bias_add(pred, b)
-  
-  norm = (ds**2) * BATCH_SIZE * nf
-  loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth]) / norm
-  
-  for i in range(1, encode_depth + 1):
-    nf0 = nf1
-    ds = encode_nodes_future[encode_depth - i].get_shape().as_list()[1]
+  for i in range(1, decode_depth + 1):
+    nf0 = nf
+    ds = getDecodeSize(i, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
+    cfg0['decode'][i] = {'size': ds}
+    if i == decode_depth:
+       assert ds == IMAGE_SIZE, (ds, IMAGE_SIZE)
     decode = tf.image.resize_images(decode, ds, ds)
     print('Decode resize %d to shape' % i, decode.get_shape().as_list())
-    cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['decode'][i] = {'filter_size': cfs}
-    nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['decode'][i]['num_filters'] = nf1
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf1],
+    add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
+    if add_bypass != None:
+      bypass_layer = encode_nodes[add_bypass]
+      bypass_shape = bypass_layer.get_shape().as_list()
+      if bypass_shape[1] != ds:
+        bypass_layer = tf.image.resize_images(bypass_layer, ds, ds)
+      decode = tf.concat(3, [decode, bypass_layer])
+      print('Decode bypass from %d at %d for shape' % (add_bypass, i), decode.get_shape().as_list())
+      nf0 = nf0 + bypass_shape[-1]
+      cfg0['decode'][i]['bypass'] = add_bypass
+    cfs = getDecodeFilterSize(i, decode_depth, rng, cfg, slippage=slippage)
+    cfg0['decode'][i]['filter_size'] = cfs
+    nf = getDecodeNumFilters(i, decode_depth, rng, cfg, slippage=slippage)
+    cfg0['decode'][i]['num_filters'] = nf
+    if i == decode_depth:
+      assert nf == NUM_CHANNELS, (nf, NUM_CHANNELS)
+    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
                                         stddev=0.1,
                                         seed=fseed))
-    b = tf.Variable(tf.zeros([nf1]))
+    b = tf.Variable(tf.zeros([nf]))
     decode = tf.nn.conv2d(decode,
                           W,
                           strides=[1, 1, 1, 1],
                           padding='SAME')
     decode = tf.nn.bias_add(decode, b)
-    
-    pred = tf.concat(3, [decode, encode_nodes_current[encode_depth - i]])
-    
-    cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage=slippage)
-    nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-                                        stddev=0.1,
-                                        seed=fseed))
-    b = tf.Variable(tf.zeros([nf]))
-    pred = tf.nn.conv2d(pred,
-                        W,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    pred = tf.nn.bias_add(pred, b)
+    print('Decode conv %d with size %d num channels %d numfilters %d for shape' % (i, cfs, nf0, nf), decode.get_shape().as_list())
 
-    if i < encode_depth:  #add relu to all but last ... need this?
+    if i < decode_depth:  #add relu to all but last ... need this?
       decode = tf.nn.relu(decode)
-      pred = tf.nn.relu(pred)
-    
-    norm = (ds**2) * BATCH_SIZE * nf
-    loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i]) / norm
- 
-  return loss, cfg0
+
+  return decode, cfg0
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
@@ -417,10 +380,11 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
 
   train_prediction, cfg = model(observations_node, actions_node, time_node, 
                                 rng=rng, cfg=cfg, 
-                                slippage=slippage, slippage_error=slippage_error))
+                                slippage=slippage, slippage_error=slippage_error)
 
-  norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
-  loss = tf.nn.l2_loss(train_prediction - future_normals_node) / norm
+  norm = 10 * (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
+  loss = tf.nn.l2_loss(train_prediction - future_node) / norm
+  print("BIRL", norm)
 
   innodedict = {'current': observations_node,
                 'future': future_node,
@@ -430,4 +394,8 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
   outnodedict = {'train_prediction': train_prediction,
                  'loss': loss}
                 
-  return outnodedict, innodedict, cfg  
+  return outnodedict, innodedict, cfg
+  
+
+
+

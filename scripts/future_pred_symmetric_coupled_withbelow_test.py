@@ -3,7 +3,7 @@ import copy
 import numpy as np
 
 import curiosity.utils.base as base
-import curiosity.models.future_pred_symmetric_coupled_withbelow as modelsource
+import curiosity.models.future_pred_symmetric_coupled_with_below as modelsource
 import curiosity.datasources.images_futures_and_actions as datasource
 
 dbname = 'threeworld_future_pred'

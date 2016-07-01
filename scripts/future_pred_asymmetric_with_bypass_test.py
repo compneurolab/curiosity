@@ -7,7 +7,7 @@ import curiosity.models.future_pred_asymmetric_with_bypass as modelsource
 import curiosity.datasources.images_futures_and_actions as datasource
 
 dbname = 'threeworld_future_pred'
-colname = 'test_asymmetric_withbypass'
+colname = 'test_asymmetric_with_bypass'
 experiment_id = 'test0'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
@@ -19,7 +19,7 @@ num_train_steps = 20480000
 batch_size = 128
 slippage = 0
 cfgfile = '/home/yamins/curiosity/curiosity/configs/normals_config_winner0.cfg'
-savedir = '/data/futurepredopt'
+savedir = '/mnt/data/futurepredopt'
 erase_earlier = 3
 decaystep=1024000
 
@@ -37,4 +37,5 @@ base.run(dbname,
          savedir=savedir,
          erase_earlier=erase_earlier,
          base_learningrate=1.0,
+         loss_threshold=10000,
          decaystep=decaystep)

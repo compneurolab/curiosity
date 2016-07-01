@@ -28,18 +28,18 @@ def getNextBatch(batch_num, batch_size, host, port, datapath):
                   'batch_size': batch_size,
                   'path': datapath,
                   'keys': [('randompermpairs', 'images0'), 
-                  	       ('randompermpairs', 'images1'),
-                  	       ('randompermpairs', 'actions'),
-                  	       ('randompermpairs', 'timediff')]})
+                           ('randompermpairs', 'images1'),
+                           ('randompermpairs', 'actions'),
+                           ('randompermpairs', 'timediff')]})
   images = norml(recv_array(sock))
   futures = norml(recv_array(sock))
   actions = recv_array(sock)
   timediff = recv_array(sock)
 
-  batch = {'current': images,        #images
+  batch = {'current': images,
            'future': futures,
            'actions': actions,
-           'timediff': timediff
+           'timediff': timediff[:, np.newaxis]
           }
 
   return batch
