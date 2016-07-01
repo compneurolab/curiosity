@@ -3,12 +3,12 @@ import copy
 import numpy as np
 
 import curiosity.utils.base as base
-import curiosity.models.future_pred_symmetric_coupled_with_below as modelsource
-import curiosity.datasources.images_futures_and_actions as datasource
+import curiosity.models.normal_encoder_asymmetric_with_bypass as modelsource
+import curiosity.datasources.images_and_normals as datasource
 
-dbname = 'threeworld_future_pred'
-colname = 'test_symmetric_coupled_withbelow'
-experiment_id = 'test0'
+dbname = 'threeworld_normals'
+colname = 'test'
+experiment_id = 'test0_longdr1'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23044,
@@ -18,8 +18,8 @@ data_func_kwargs = copy.deepcopy(model_func_kwargs)
 num_train_steps = 20480000
 batch_size = 128
 slippage = 0
-cfgfile = '/home/yamins/curiosity/curiosity/configs/future_pred_test0.cfg'
-savedir = '/mnt/data/futurepredopt'
+cfgfile = '/home/yamins/curiosity/curiosity/configs/normals_config_winner0.cfg'
+savedir = '/mnt/data/normalsopt'
 erase_earlier = 3
 decaystep=1024000
 
@@ -36,6 +36,5 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=0.01,
-         loss_threshold=10000,
+         base_learningrate=0.05,
          decaystep=decaystep)

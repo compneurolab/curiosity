@@ -165,13 +165,13 @@ def getDecodeDepth(rng, cfg, slippage=0):
   return d
 
 def getDecodeNumFilters(i, decode_depth, rng, cfg, slippage=0):
-	val = None
-	if 'decode' in cfg and (i in cfg['decode']):
-	  if 'num_filters' in cfg['decode'][i]:
-		val = cfg['decode'][i]['num_filters']
-	if val is not None and rng.uniform() > slippage:
-	  return val
-	return 32
+  val = None
+  if 'decode' in cfg and (i in cfg['decode']):
+    if 'num_filters' in cfg['decode'][i]:
+      val = cfg['decode'][i]['num_filters']
+  if val is not None and rng.uniform() > slippage:
+    return val
+  return 32
 
 def getDecodeFilterSize(i, decode_depth, rng, cfg, slippage=0):
   val = None
@@ -349,7 +349,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
 						  padding='SAME')
   pred = tf.nn.bias_add(pred, b)
   
-  norm = (ds**2) * enc_shape[0] * nf
+  norm = (ds**2) * enc_shape[0] * nf * 1000
   loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth]) / norm
   
   for i in range(1, encode_depth + 1):
@@ -374,6 +374,8 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
     pred = tf.concat(3, [decode, encode_nodes_current[encode_depth - i]])
     
     cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage=slippage)
+    cfg0['decode'][i]['filter_size2'] = cfs
+  
     nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
     W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
                                         stddev=0.1,
@@ -389,8 +391,9 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
       decode = tf.nn.relu(decode)
       pred = tf.nn.relu(pred)
     
-    norm = (ds**2) * enc_shape[0] * nf
+    norm = (ds**2) * enc_shape[0] * nf * 1000
     loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i]) / norm
+  loss = loss 
  
   return loss, pred, cfg0
 
