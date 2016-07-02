@@ -1,3 +1,4 @@
+import os
 import copy
 
 import numpy as np
@@ -18,8 +19,11 @@ data_func_kwargs = copy.deepcopy(model_func_kwargs)
 num_train_steps = 20480000
 batch_size = 128
 slippage = 0
-cfgfile = '/home/yamins/curiosity/curiosity/configs/future_pred_test0.cfg'
-savedir = '/mnt/data/futurepreddiffopt'
+SKDATA_ROOT = os.environ['SKDATA_ROOT']
+CODE_ROOT = os.environ['CODE_ROOT']
+cfgfile = os.path.join(CODE_ROOT,
+                       'curiosity/curiosity/configs/future_pred_test0.cfg')
+savedir = os.path.join(SKDATA_ROOT, 'futurepreddiffopt')
 erase_earlier = 3
 decaystep=1024000
 
