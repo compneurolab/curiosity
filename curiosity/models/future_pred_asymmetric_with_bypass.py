@@ -354,6 +354,8 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
     if i < decode_depth:  #add relu to all but last ... need this?
       decode = tf.nn.relu(decode)
+    else:
+      decode = tf.minimum(tf.nn.relu(decode), 1)
 
   return decode, cfg0
 
@@ -382,10 +384,9 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
                                 rng=rng, cfg=cfg, 
                                 slippage=slippage, slippage_error=slippage_error)
 
-  norm = 10 * (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
+  norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
   loss = tf.nn.l2_loss(train_prediction - future_node) / norm
-  print("BIRL", norm)
-
+  
   innodedict = {'current': observations_node,
                 'future': future_node,
                 'actions': actions_node,

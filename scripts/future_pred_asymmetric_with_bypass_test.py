@@ -8,7 +8,7 @@ import curiosity.datasources.images_futures_and_actions as datasource
 
 dbname = 'threeworld_future_pred'
 colname = 'test_asymmetric_with_bypass'
-experiment_id = 'test0'
+experiment_id = 'test1'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23044,
