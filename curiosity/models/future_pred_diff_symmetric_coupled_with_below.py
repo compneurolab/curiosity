@@ -392,7 +392,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
     
     norm = (ds**2) * enc_shape[0] * nf 
     loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i] + encode_nodes_current[encode_depth - i]) / norm
-  loss = loss 
+  #loss = loss
  
   return loss, pred, cfg0
 
