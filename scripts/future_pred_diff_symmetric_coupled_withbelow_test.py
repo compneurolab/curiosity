@@ -40,6 +40,6 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=0.1,
+         base_learningrate=1.0,
          loss_threshold=100000,
          decaystep=decaystep)
