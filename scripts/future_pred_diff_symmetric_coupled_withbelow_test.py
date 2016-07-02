@@ -3,10 +3,10 @@ import copy
 import numpy as np
 
 import curiosity.utils.base as base
-import curiosity.models.future_pred_symmetric_coupled_with_below as modelsource
+import curiosity.models.future_pred_diff_symmetric_coupled_with_below as modelsource
 import curiosity.datasources.images_futures_and_actions as datasource
 
-dbname = 'threeworld_future_pred'
+dbname = 'threeworld_future_pred_diff'
 colname = 'test_symmetric_coupled_withbelow'
 experiment_id = 'test0'
 model_func = modelsource.get_model
@@ -19,7 +19,7 @@ num_train_steps = 20480000
 batch_size = 128
 slippage = 0
 cfgfile = '/home/yamins/curiosity/curiosity/configs/future_pred_test0.cfg'
-savedir = '/mnt/data/futurepredopt'
+savedir = '/mnt/data/futurepreddiffopt'
 erase_earlier = 3
 decaystep=1024000
 
@@ -36,6 +36,6 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=0.001,
-         loss_threshold=10000,
+         base_learningrate=1.0,
+         loss_threshold=100000,
          decaystep=decaystep)
