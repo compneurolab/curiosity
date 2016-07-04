@@ -347,7 +347,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
                       W,
                       strides=[1, 1, 1, 1],
                       padding='SAME')
-  pred = tf.minimum(tf.nn.relu(tf.nn.bias_add(pred, b)), 1)
+  pred = tf.nn.relu(tf.nn.bias_add(pred, b))
   
   norm = (ds**2) * enc_shape[0] * nf
   loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth]) / norm
@@ -369,7 +369,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
                           W,
                           strides=[1, 1, 1, 1],
                           padding='SAME')
-    decode = tf.nn.bias_add(decode, b)
+    decode = tf.nn.relu(tf.nn.bias_add(decode, b))
     
     pred = tf.concat(3, [decode, encode_nodes_current[encode_depth - i]])
     
@@ -387,13 +387,14 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
                         padding='SAME')
     pred = tf.nn.bias_add(pred, b)
 
-    if 1: #i < encode_depth:  #add relu to all but last ... need this?
-      decode = tf.nn.relu(decode)
+    if i == encode_depth:  #add relu to all but last ... need this?
       pred = tf.minimum(tf.nn.relu(pred), 1)
+    else:
+      pred = tf.nn.relu(pred)
     
     norm = (ds**2) * enc_shape[0] * nf
     loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i]) / norm
-  loss = loss 
+  #loss = loss 
  
   return loss, pred, cfg0
 

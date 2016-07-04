@@ -347,11 +347,13 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
                       W,
                       strides=[1, 1, 1, 1],
                       padding='SAME')
-  pred = tf.minimum(tf.maximum(tf.nn.bias_add(pred, b), -1), 1)
+  pred = tf.nn.bias_add(pred, b)
+  pred = tf.minimum(tf.maximum(pred, -2), 2)
   
-  losses = {}
+  #losses = {}
   norm = (ds**2) * enc_shape[0] * nf 
-  losses['loss_%d' % encode_depth] = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth] + encode_nodes_current[encode_depth]) / norm
+  #losses['loss_%d' % encode_depth] = 
+  loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth] + encode_nodes_current[encode_depth]) / norm
     
 
   for i in range(1, encode_depth + 1):
@@ -389,13 +391,17 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
                         padding='SAME')
     pred = tf.nn.bias_add(pred, b)
 
-    if 1: #i < encode_depth:  #add relu to all but last ... need this?
+    if i == encode_depth:  
       pred = tf.minimum(tf.maximum(pred, -1), 1)
+    else:
+      pass
+      pred = tf.minimum(tf.maximum(pred, -2), 2)
     
     norm = (ds**2) * enc_shape[0] * nf 
-    losses['loss_%d' % (encode_depth-i)] = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i] + encode_nodes_current[encode_depth - i]) / norm
+    #losses['loss_%d' % (encode_depth-i)] 
+    loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i] + encode_nodes_current[encode_depth - i]) / norm
  
-  return losses, pred, cfg0
+  return loss, pred, cfg0
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
@@ -418,7 +424,7 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
   time_node = tf.placeholder(tf.float32,
                              shape=(batch_size, 1))
 
-  losses, train_prediction, cfg = model(current_node, future_node, 
+  loss, train_prediction, cfg = model(current_node, future_node, 
                                       actions_node, time_node, 
                                       rng=rng, cfg=cfg, 
                                       slippage=slippage, 
@@ -429,12 +435,12 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapa
                 'actions': actions_node,
                 'timediff': time_node}
 
-  ks = losses.keys()
-  loss = losses[ks[0]]
-  for k in ks[1:]:
-    loss = loss + losses[k]
+  #ks = losses.keys()
+  #loss = losses[ks[0]]
+  #for k in ks[1:]:
+  #  loss = loss + losses[k]
   outnodedict = {'train_prediction': train_prediction,
                  'loss': loss}
-  outnodedict.update(losses)
+  #outnodedict.update(losses)
                 
   return outnodedict, innodedict, cfg  
