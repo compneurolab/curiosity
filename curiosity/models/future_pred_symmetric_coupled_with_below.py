@@ -388,7 +388,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
     pred = tf.nn.bias_add(pred, b)
 
     if i == encode_depth:  #add relu to all but last ... need this?
-      pred = tf.minimum(tf.nn.relu(pred), 1)
+      pred = tf.minimum(tf.nn.minimum(pred, -1), 1)
     else:
       pred = tf.nn.relu(pred)
     

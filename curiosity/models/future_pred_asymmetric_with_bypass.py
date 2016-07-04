@@ -355,7 +355,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
     if i < decode_depth: 
       decode = tf.nn.relu(decode)
     else:
-      decode = tf.minimum(tf.nn.relu(decode), 1)
+      decode = tf.minimum(tf.maximum(decode, -1), 1)
 
   return decode, cfg0
 
