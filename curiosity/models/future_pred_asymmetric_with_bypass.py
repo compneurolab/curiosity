@@ -352,7 +352,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
     decode = tf.nn.bias_add(decode, b)
     print('Decode conv %d with size %d num channels %d numfilters %d for shape' % (i, cfs, nf0, nf), decode.get_shape().as_list())
 
-    if i < decode_depth:  #add relu to all but last ... need this?
+    if i < decode_depth: 
       decode = tf.nn.relu(decode)
     else:
       decode = tf.minimum(tf.nn.relu(decode), 1)
