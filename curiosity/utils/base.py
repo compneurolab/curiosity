@@ -139,7 +139,10 @@ def run(dbname,
       for outnodename, outnodeval in outval_dict.items():
         spath = os.path.join(sdir, '%s.npy' % outnodename)
         np.save(spath, outnodeval)
-
+      bfile = os.path.join(sdir, 'batchfile.txt')
+      with open(bfile, 'w') as _f:
+        _f.write(str(step))
+      
       if additional_metrics is None:
         additional_metrics = {}
       metrics = {}
