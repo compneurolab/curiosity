@@ -362,7 +362,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,
               host, port, datapath, keyname,
-              loss_multiple=1, diff_gated=False, diff_diff=0.1):
+              loss_multiple=1, diff_gated=False, diff_diff=0.1, diff_power=None):
   global sock
   if sock is None:
     initialize(host, port, datapath, keyname)
@@ -388,6 +388,9 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error,
 
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
   diff = train_prediction - future_node
+  if diff_power:
+    diff = tf.pow(diff, 2)
+    diff = tf.pow(diff, diff_power/2.)
   if diff_gated:
     diff = diff * (tf.abs(observations_node - future_node) + diff_diff)
   loss = loss_multiple * tf.nn.l2_loss(diff) / norm
