@@ -18,7 +18,7 @@ IMAGE_SIZE = None
 NUM_CHANNELS = None
 ACTION_LENGTH = None
 
-def initialize(host, port, datapath, keyname):
+def initialize(host, port, datapath):
   global ctx, sock, IMAGE_SIZE, NUM_CHANNELS, ACTION_LENGTH
   sock = ctx.socket(zmq.REQ)
   print("connecting...")
@@ -27,8 +27,8 @@ def initialize(host, port, datapath, keyname):
   sock.send_json({'batch_size': 1,
                   'batch_num': 0,
                   'path': datapath,
-                  'keys': [(keyname, 'images0'), 
-                           (keyname, 'actions')]
+                  'keys': [('randompermpairs2', 'images0'), 
+                           ('randompermpairs2', 'actions')]
                  })
   images = recv_array(sock)
   actions = recv_array(sock)
@@ -360,12 +360,10 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
   return decode, cfg0
 
 
-def get_model(rng, batch_size, cfg, slippage, slippage_error,
-              host, port, datapath, keyname,
-              loss_multiple=1, diff_gated=False, diff_diff=0.1):
+def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
   global sock
   if sock is None:
-    initialize(host, port, datapath, keyname)
+    initialize(host, port, datapath)
 
   observations_node = tf.placeholder(
       tf.float32,
@@ -387,11 +385,8 @@ def get_model(rng, batch_size, cfg, slippage, slippage_error,
                                 slippage=slippage, slippage_error=slippage_error)
 
   norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
-  diff = train_prediction - future_node
-  if diff_gated:
-    diff = diff * (tf.abs(observations_node - future_node) + diff_diff)
-  loss = loss_multiple * tf.nn.l2_loss(diff) / norm
-
+  loss = tf.nn.l2_loss(train_prediction - future_node) / norm
+  
   innodedict = {'current': observations_node,
                 'future': future_node,
                 'actions': actions_node,

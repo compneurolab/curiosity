@@ -19,7 +19,7 @@ def initialize(host, port):
   print("...connected")
 
 
-def getNextBatch(batch_num, batch_size, host, port, datapath, keyname):
+def getNextBatch(batch_num, batch_size, host, port, datapath):
   global sock
   if sock is None:
     initialize(host, port)
@@ -27,10 +27,10 @@ def getNextBatch(batch_num, batch_size, host, port, datapath, keyname):
   sock.send_json({'batch_num': batch_num,
                   'batch_size': batch_size,
                   'path': datapath,
-                  'keys': [(keyname, 'images0'), 
-                           (keyname, 'images1'),
-                           (keyname, 'actions'),
-                           (keyname, 'timediff')]})
+                  'keys': [('randompermpairs2', 'images0'), 
+                           ('randompermpairs2', 'images1'),
+                           ('randompermpairs2', 'actions'),
+                           ('randompermpairs2', 'timediff')]})
   images = norml(recv_array(sock))
   futures = norml(recv_array(sock))
   actions = recv_array(sock)

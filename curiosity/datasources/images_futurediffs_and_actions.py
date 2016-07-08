@@ -19,6 +19,13 @@ def initialize(host, port):
   print("...connected")
 
 
+def normalize(x):
+  x = x - x.min()
+  x = x / x.max()
+  x = (255 * x).astype(np.uint8)
+  return x
+
+
 def getNextBatch(batch_num, batch_size, host, port, datapath, keyname):
   global sock
   if sock is None:
@@ -31,13 +38,17 @@ def getNextBatch(batch_num, batch_size, host, port, datapath, keyname):
                            (keyname, 'images1'),
                            (keyname, 'actions'),
                            (keyname, 'timediff')]})
-  images = norml(recv_array(sock))
-  futures = norml(recv_array(sock))
+  images = recv_array(sock)
+  futures = recv_array(sock)
+  futurediffs = normalize(images.astype('float') - futures.astype('float'))
+
+  images = norml(images)   
+  futurediffs = norml(futurediffs)
   actions = recv_array(sock)
   timediff = recv_array(sock)
 
   batch = {'current': images,
-           'future': futures,
+           'future': futurediffs,
            'actions': actions,
            'timediff': timediff[:, np.newaxis]
           }

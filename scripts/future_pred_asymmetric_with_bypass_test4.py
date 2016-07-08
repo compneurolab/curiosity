@@ -9,13 +9,18 @@ import curiosity.datasources.images_futures_and_actions as datasource
 
 dbname = 'threeworld_future_pred'
 colname = 'test_asymmetric_with_bypass'
-experiment_id = 'test2_lowlr'
+experiment_id = 'test0_gated_lm100'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23044,
-                     "datapath": "/data2/datasource6"}
+                     "datapath": "/data2/datasource6",
+                     "keyname": "randompermpairs3_medium",
+                     "diff_gated": True,
+                     "loss_multiple": 100}
 data_func = datasource.getNextBatch
 data_func_kwargs = copy.deepcopy(model_func_kwargs)
+data_func_kwargs.pop('diff_gated')
+data_func_kwargs.pop('loss_multiple')
 num_train_steps = 20480000
 batch_size = 128
 slippage = 0
@@ -40,6 +45,6 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=0.01,
+         base_learningrate=0.05,
          loss_threshold=10000,
          decaystep=decaystep)

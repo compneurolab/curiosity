@@ -4,12 +4,12 @@ import copy
 import numpy as np
 
 import curiosity.utils.base as base
-import curiosity.models.future_pred_asymmetric_with_bypass as modelsource
-import curiosity.datasources.images_futures_and_actions as datasource
+import curiosity.models.future_pred_asymmetric_with_bypass2 as modelsource
+import curiosity.datasources.images_futures_and_actions2 as datasource
 
 dbname = 'threeworld_future_pred'
 colname = 'test_asymmetric_with_bypass'
-experiment_id = 'test2_lowlr'
+experiment_id = 'test2_harder_lowlr'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23044,
