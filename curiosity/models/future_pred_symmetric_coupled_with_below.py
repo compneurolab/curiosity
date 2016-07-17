@@ -22,7 +22,7 @@ IMAGE_SIZE = None
 NUM_CHANNELS = None
 ACTION_LENGTH = None
 
-def initialize(host, port, datapath):
+def initialize(host, port, datapath, keyname):
   global ctx, sock, IMAGE_SIZE, NUM_CHANNELS, ACTION_LENGTH
   sock = ctx.socket(zmq.REQ)
   print("connecting...")
@@ -31,8 +31,8 @@ def initialize(host, port, datapath):
   sock.send_json({'batch_size': 1,
                   'batch_num': 0,
                   'path': datapath,
-                  'keys': [('randompermpairs', 'images0'), 
-                           ('randompermpairs', 'actions')]
+                  'keys': [(keyname, 'images0'), 
+                           (keyname, 'actions')]
                  })
   images = recv_array(sock)
   actions = recv_array(sock)
@@ -388,7 +388,7 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
     pred = tf.nn.bias_add(pred, b)
 
     if i == encode_depth:  #add relu to all but last ... need this?
-      pred = tf.minimum(tf.nn.minimum(pred, -1), 1)
+      pred = tf.minimum(tf.maximum(pred, -1), 1)
     else:
       pred = tf.nn.relu(pred)
     
@@ -399,10 +399,12 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
   return loss, pred, cfg0
 
 
-def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
+def get_model(rng, batch_size, cfg, slippage, slippage_error,
+              host, port, datapath, keyname,
+              loss_multiple=1, diff_gated=False, diff_diff=0.1, diff_power=None):
   global sock
   if sock is None:
-    initialize(host, port, datapath)
+    initialize(host, port, datapath, keyname)
 
   current_node = tf.placeholder(
       tf.float32,
