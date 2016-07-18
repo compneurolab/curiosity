@@ -9,7 +9,7 @@ import curiosity.datasources.images_futures_and_actions as datasource
 
 dbname = 'threeworld_future_pred'
 colname = 'test_symmetric_coupled_withbelow'
-experiment_id = 'test0_dataset2_lr1'
+experiment_id = 'test0_dataset2_lr01'
 model_func = modelsource.get_model
 model_func_kwargs = {"host": "18.93.3.135",
                      "port": 23045,
@@ -42,6 +42,6 @@ base.run(dbname,
          cfgfile=cfgfile,
          savedir=savedir,
          erase_earlier=erase_earlier,
-         base_learningrate=1.,
+         base_learningrate=0.1,
          loss_threshold=10000,
          decaystep=decaystep)
