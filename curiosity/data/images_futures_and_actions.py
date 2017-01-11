@@ -12,65 +12,65 @@ class FuturePredictionData(HDF5DataProvider):
 		 random_time=False,
 		 *args,
 		 **kwargs):
-    """
-    A specific reader for ThreeDWorld data stored as a HDF5 file.
-    The data will be parsed into an image and action at time t as input 
-    and an image and action at time t+1 as output.
+	"""
+	A specific reader for ThreeDWorld data stored as a HDF5 file.
+	The data will be parsed into an image and action at time t as input 
+	and an image and action at time t+1 as output.
 
-    Note: 
-	This data provider should be used with RandomShuffleQueue since the 
-	data in the HDF5 file is not expected to be shuffled ahead of time.
+	Note: 	
+	    This data provider should be used with RandomShuffleQueue since the 
+	    data in the HDF5 file is not expected to be shuffled ahead of time.
 
-    Args:
-	- data_path
-	    path to ThreeDWorld data
+	Args:
+	    - data_path
+	        path to ThreeDWorld data
 
-    Kwargs: 
-	- batch_size (int, default: 1)
-	    Number of images to return when `next` is called. By default set
-	    to 1 since it is expected to be used with queues where reading one
-	    image at a time is ok.
-	- crop_size (int or None, default: None)
-	    For center crop (crop_size x crop_size). If None, no cropping will occur.
-	- *args, **kwargs
-	    Extra arguments for HDF5DataProvider
-    """	    
+        Kwargs: 
+	    - batch_size (int, default: 1)
+	        Number of images to return when `next` is called. By default set
+	        to 1 since it is expected to be used with queues where reading one
+	        image at a time is ok.
+   	    - crop_size (int or None, default: None)
+	        For center crop (crop_size x crop_size). If None, no cropping will occur.
+	    - *args, **kwargs
+	        Extra arguments for HDF5DataProvider
+        """	    
     
-    images = 'images'
-    actions = 'actions'
-    future_images = 'future_images'
-    future_actions = 'future_actions'
-    super(FuturePredictionData, self).__init__(
-	data_path,
-	[images, actions],
-	batch_size=batch_size,
-	postprocess={images: self.postproc_img, actions: self.postproc_actions}
-	pad=False,
-	*args, **kwargs)
+        images = 'images'
+        actions = 'actions'
+        future_images = 'future_images'
+        future_actions = 'future_actions'
+        super(FuturePredictionData, self).__init__(
+	    data_path,
+	    [images, actions],
+	    batch_size=batch_size,
+	    postprocess={images: self.postproc_img, actions: self.postproc_actions},
+	    pad=False,
+	    *args, **kwargs)
 
-    if crop_size is None:
-	self.crop_size = 256
-    else
-	self.crop_size = crop_size
+        if crop_size is None:
+	    self.crop_size = 256
+        else:
+	    self.crop_size = crop_size
 
-    self.random_time = random_time
+        self.random_time = random_time
     
-    if int(min_time_difference) < 1:
-	self.min_time_difference = 1
-	print("The minimum time difference has to be at least 1, " \
-	    + "and thus was set to 1.") 
-    else:
-	self.min_time_difference = int(min_time_difference)
+        if int(min_time_difference) < 1:
+   	    self.min_time_difference = 1
+	    print("The minimum time difference has to be at least 1, " \
+	        + "and thus was set to 1.") 
+        else:
+	    self.min_time_difference = int(min_time_difference)
 
-    if int(max_time_difference) < self.min_time_difference:
-	self.max_time_difference = self.min_time_difference + 1
-	print("The maximum time difference has to be bigger than, " \
-	    + "the minimum time difference and thus was set to %d." \
-	    % self.max_time_difference)
-    else:
-	self.max_time_difference = int(max_time_difference)
+        if int(max_time_difference) < self.min_time_difference:
+	    self.max_time_difference = self.min_time_difference + 1
+	    print("The maximum time difference has to be bigger than, " \
+	        + "the minimum time difference and thus was set to %d." \
+	        % self.max_time_difference)
+        else:
+	    self.max_time_difference = int(max_time_difference)
 
-    self.random_time = random_time
+        self.random_time = random_time
 
     def postproc_img(self, ims, f):
 	# normalization and random cropping
@@ -182,7 +182,7 @@ class FuturePredictionData(HDF5DataProvider):
 		delta_t = np.random.randint(self.min_time_difference, max_time_difference)
 	    # create image sequence and pad if necessary
 	    image_sequence = np.concatenate(input_images[i:i+delta_t], axis=2)
-	    while image_sequence.shape[2] < image_sequence_length
+	    while image_sequence.shape[2] < image_sequence_length:
 		image_sequence = np.concatenate((image_sequence, \
 			np.zeros(input_images[0].shape)), axis=2)
 	    # create action sequence and pad if necessary 
