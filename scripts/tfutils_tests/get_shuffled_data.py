@@ -14,18 +14,41 @@ IMAGE_SIZE_CROP = 256
 
 def shuffle_net(inputs, train=False, **kwargs):
     m = model.ConvNet(**kwargs)
-	#TODO FILL HERE!
+
+    print(inputs['images'][0])
+
+    in_layer = inputs['images']
+    resh = tf.reshape(in_layer,
+                          [in_layer.get_shape().as_list()[0], -1],
+                          name='reshape')
+    in_shape = resh.get_shape().as_list()[-1]
+    biases = tf.get_variable(initializer=tf.constant_initializer(0),
+                                 shape=[in_shape],
+                                 dtype=tf.float32,
+                                 name='bias')
+    m.output = tf.nn.bias_add(resh, biases, name='id')
+    m.params = {'input': in_layer.name,
+                       'type': 'fc',
+                       'num_filters': out_shape,
+                       'init': 'xavier',
+                       'bias': 0,
+                       'stddev': 0.01,
+                       'activation': 'relu',
+                       'dropout': .5,
+                       'seed': 0}
     return m
 
 def simple_return(inputs, outputs, target):
     return outputs
 
+"""
 def online_agg(agg_res, res, step):
     if agg_res is None:
         agg_res = {k: [] for k in res}
     for k, v in res.items():
         agg_res[k].append(np.mean(v))
     return agg_res
+"""
 
 params = {
     'save_params': {
@@ -42,6 +65,7 @@ params = {
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000,
         # 'cache_dir': None,  # defaults to '~/.tfutils'
+
     },
 
     'load_params': {
@@ -99,6 +123,7 @@ params = {
         'momentum': .9
     },
 
+
     'validation_params': {
         'topn': {
             'data_params': {
@@ -114,12 +139,12 @@ params = {
             'queue_params': {
                 'queue_type': 'fifo', #TODO switch to random
                 'batch_size': BATCH_SIZE,
-                'n_threads': 4,
+                'n_threads': 1,
                 'seed': 0,
             },
             'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
-            'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
-            'online_agg_func': online_agg
+            #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
+            #'online_agg_func': online_agg
         },
     },
 
