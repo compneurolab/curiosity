@@ -13,6 +13,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 import zmq
+#hrm, check out paths
+from curiosity.models.model_building_blocks import ConvNetwithBypasses
 
 from curiosity.utils.io import recv_array
 
@@ -226,6 +228,111 @@ def getFilterSeed(rng, cfg):
     return cfg['filter_seed']
   else:  
     return rng.randint(10000)
+
+
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
+  '''Model definition, compatible with tfutils.
+
+  inputs should have 'current', 'future', 'action', 'time' keys.'''
+  current_node = inputs['current']
+  future_node = inputs['future']
+  actions_node = inputs['action']
+  time_node = inputs['time']
+
+  fseed = getFilterSeed(rng, cfg)
+
+  m = ConvNetwithBypasses(seed = fseed, **kwargs)
+
+  #encoding
+  encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
+  print('Encode depth: %d' % encode_depth)
+  cfs0 = None
+
+  encode_nodes_current = [current_node]
+  encode_nodes_future = [future_node]
+  for i in range(1, encode_depth + 1):
+    with tf.variable_scope('encode' + str(i)):
+
+      with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu'):
+
+        cfs = getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
+        cfs0 = cfs
+        nf = getEncodeConvNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
+        cs = getEncodeConvStride(i, encode_depth, rng, cfg, slippage=slippage)
+
+        new_encode_node_current = m.conv(nf, cfs, cs, in_layer = encode_nodes_current[i - 1])
+    with tf.variable_scope('encode' + str(i), reuse = True):
+      new_encode_node_future = m.conv(nf, cfs, cs, in_layer = encode_nodes_future[i - 1], init='trunc_norm', stddev=.01, bias=0, activation='relu')
+  #TODO add print function
+      do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
+      if do_pool:
+        pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
+        ps = getEncodePoolStride(i, encode_depth, rng, cfg, slippage=slippage)
+        pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
+        m.pool(pfs, ps, in_layer = new_encode_node_current)
+        m.pool(pfs, ps, in_layer = new_encode_node_future)
+
+      encode_nodes_current.append(new_encode_node_current)
+      encode_nodes_future.append(new_encode_node_future)
+
+#TODO: change variable scope when param update is introduced
+  encode_node = encode_nodes_current[-1]
+  enc_shape = encode_node.get_shape().as_list()
+  encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
+  print('Flatten to shape %s' % encode_flat.get_shape().as_list())
+#TODO: add functionality to extension to deal with this
+  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
+
+  nf0 = encode_flat.get_shape().as_list()[1]
+  hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
+  hidden = encode_flat
+  for i in range(1, hidden_depth + 1):
+    with tf.variable_scope('hidden' + str(i)):
+      nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
+      #TODO: this can be made nicer once we add more general concat
+      hidden = m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, in_layer = hidden, dropout = None)
+
+
+
+  #decode
+  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
+  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
+  if ds * ds * nf1 != nf0:
+    with tf.variable_scope('extra_hidden'):
+      hidden = m.fc(ds * ds * nf1, init = 'trunc_norm', activation  = None, bias = .01, dropout = None)
+    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
+  decode = m.reshape([ds, ds, nf1])
+  print("Unflattening to", decode.get_shape().as_list())
+
+
+
+  outputs = {}
+  for i in range(0, encode_depth + 1):
+    with tf.variable_scope('pred' + str(encode_depth - i)):
+      pred = m.add_bypass(encode_nodes_current[encode_depth - i])
+      nf = encode_nodes_future[encode_depth].get_shape().as_list()[-1]
+      cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage = slippage)
+      if i == encode_depth:
+        #TODO: add functionality so that this architecture is reflected in params        
+        pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
+        pred = tf.minimum(tf.maximum(pred, -1), 1)
+      else:
+        pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+      outputs['pred' + str(encode_depth - i)] = pred
+    if i != encode_depth:
+      with tf.variable_scope('decode' + str(i+1)):
+        ds = m.resize_images(ds, in_layer = decode)
+        print('Decode resize %d to shape' % (i + 1), decode.get_shape().as_list())
+        cfs = getDecodeFilterSize(i + 1, encode_depth, rng, cfg, slippage=slippage)
+        nf1 = getDecodeNumFilters(i + 1, encode_depth, rng, cfg, slippage=slippage)
+        decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+  
+  return outputs, m.params
+
+
+
+
+
 
 
 def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage=0, slippage_error=False):
