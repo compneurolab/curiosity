@@ -233,11 +233,12 @@ def getFilterSeed(rng, cfg):
 def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   '''Model definition, compatible with tfutils.
 
-  inputs should have 'current', 'future', 'action', 'time' keys.'''
+  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
   current_node = inputs['current']
   future_node = inputs['future']
   actions_node = inputs['action']
   time_node = inputs['time']
+
 
   fseed = getFilterSeed(rng, cfg)
 
@@ -251,6 +252,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   encode_nodes_current = [current_node]
   encode_nodes_future = [future_node]
   for i in range(1, encode_depth + 1):
+    #not sure this usage ConvNet class creates exactly the params that we want to have, specifically in the 'input' field, but should give us an accurate record of this network's configuration
     with tf.variable_scope('encode' + str(i)):
 
       with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu'):
@@ -269,8 +271,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
         ps = getEncodePoolStride(i, encode_depth, rng, cfg, slippage=slippage)
         pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
-        m.pool(pfs, ps, in_layer = new_encode_node_current)
-        m.pool(pfs, ps, in_layer = new_encode_node_future)
+        new_encode_node_current = m.pool(pfs, ps, in_layer = new_encode_node_current)
+        new_encode_node_future = m.pool(pfs, ps, in_layer = new_encode_node_future)
 
       encode_nodes_current.append(new_encode_node_current)
       encode_nodes_future.append(new_encode_node_future)
@@ -285,6 +287,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
+  print('Hidden depth: %d' % hidden_depth)
   hidden = encode_flat
   for i in range(1, hidden_depth + 1):
     with tf.variable_scope('hidden' + str(i)):
@@ -310,7 +313,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   for i in range(0, encode_depth + 1):
     with tf.variable_scope('pred' + str(encode_depth - i)):
       pred = m.add_bypass(encode_nodes_current[encode_depth - i])
-      nf = encode_nodes_future[encode_depth].get_shape().as_list()[-1]
+      nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
       cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage = slippage)
       if i == encode_depth:
         #TODO: add functionality so that this architecture is reflected in params        
@@ -321,12 +324,16 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       outputs['pred' + str(encode_depth - i)] = pred
     if i != encode_depth:
       with tf.variable_scope('decode' + str(i+1)):
-        ds = m.resize_images(ds, in_layer = decode)
+        ds = encode_nodes_future[encode_depth - i - 1].get_shape().as_list()[1]
+        decode = m.resize_images(ds, in_layer = decode)
         print('Decode resize %d to shape' % (i + 1), decode.get_shape().as_list())
         cfs = getDecodeFilterSize(i + 1, encode_depth, rng, cfg, slippage=slippage)
         nf1 = getDecodeNumFilters(i + 1, encode_depth, rng, cfg, slippage=slippage)
         decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
-  
+
+  encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
+  outputs.update(encode_nodes_future_dict)
+
   return outputs, m.params
 
 

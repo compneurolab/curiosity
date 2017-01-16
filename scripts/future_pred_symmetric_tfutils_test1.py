@@ -4,6 +4,7 @@ import copy
 import numpy as np
 import tensorflow as tf
 import sys
+import json
 
 sys.path.append('curiosity')
 
@@ -22,14 +23,15 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 
 
 
-# cfg0 = postprocess_config(json.load(open(cfgfile)))
-cfg0 = {}
+cfg0 = postprocess_config(json.load(open(cfgfile)))
+# print cfg0
+# cfg0 = {}
 seed = 0
 rng = np.random.RandomState(seed=seed)
 
 
 batch_size = 64
-IMAGE_SIZE = 512
+IMAGE_SIZE = 360
 NUM_CHANNELS = 3
 ACTION_LENGTH = 10
 current_node = tf.placeholder(
@@ -50,4 +52,15 @@ time_node = tf.placeholder(tf.float32,
 inputs = {'current' : current_node, 'future' : future_node, 'action' : actions_node, 'time' : time_node}
 
 
-outputs, params = modelsource.model_tfutils(inputs, rng, cfg_initial = cfg0, train = True, slippage = 0)
+outputs, params = modelsource.model_tfutils(inputs, rng, cfg = cfg0, train = True, slippage = .5)
+
+all_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+
+for var in all_vars:
+	print var.name
+
+real_encode_depth = len([k for k in params.keys() if 'enc' in k])
+
+for i in range(real_encode_depth + 1):
+	print(outputs['pred' + str(i)])
+	print(outputs['future' + str(i)])
