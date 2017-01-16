@@ -69,7 +69,7 @@ params = {
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
-            'crop_size': IMAGE_SIZE_CROP,
+            'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
 	    'random_time': False,
             'min_time_difference': 10,
 	    'batch_size': 256
@@ -102,7 +102,7 @@ params = {
                 'func': FuturePredictionData,
                 'data_path': DATA_PATH,  # path to image database
                 'random_time': False,
-                'crop_size': IMAGE_SIZE_CROP,  # size after cropping an image
+                'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
 		'min_time_difference': 10,
 		'batch_size': 256,
             },

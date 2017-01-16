@@ -1,6 +1,7 @@
 from tfutils.data import HDF5DataProvider
 import numpy as np
 import json
+from PIL import Image
 
 class FuturePredictionData(HDF5DataProvider):
     batch_num = 0
@@ -27,12 +28,11 @@ class FuturePredictionData(HDF5DataProvider):
 	        path to ThreeDWorld data
 
         Kwargs: 
-	    - batch_size (int, default: 1)
+	    - batch_size (int, default: 256)
 	        Number of images to return when `next` is called. By default set
-	        to 1 since it is expected to be used with queues where reading one
-	        image at a time is ok.
-   	    - crop_size (int or None, default: None)
-	        For center crop (crop_size x crop_size). If None, no cropping will occur.
+	        to 256 since it is expected to be used to load image sequences
+   	    - crop_size ([int, int] or None, default: None)
+	        For bicubic resizing crop_size = [height, width]. If None, no cropping will occur.
 	    - *args, **kwargs
 	        Extra arguments for HDF5DataProvider
         """	    
@@ -49,10 +49,7 @@ class FuturePredictionData(HDF5DataProvider):
 	    pad=False,
 	    *args, **kwargs)
 
-        if crop_size is None:
-	    self.crop_size = 256
-        else:
-	    self.crop_size = crop_size
+	self.crop_size = crop_size
 
         self.random_time = random_time
 
@@ -76,15 +73,14 @@ class FuturePredictionData(HDF5DataProvider):
         self.random_time = random_time
 
     def postproc_img(self, ims, f):
-	# normalization and random cropping
-	norm = ims.astype(np.float32) / 255
-	return norm
-	#TODO implement bicubic warping and cropping
-	#off = np.random.randint(0, 256 - self.crop_size, size=2)
-	#images_batch = norm[:,
-        #                    off[0]: off[0] + self.crop_size,
-        #                    off[1]: off[1] + self.crop_size]
-	#return images_batch
+	# bicubic warping followed by normalization
+	if self.crop_size is not None:
+	    for image in ims:
+		image = np.array( \
+		    Image.fromarray(image).resize( \
+			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
+	images_batch = ims.astype(np.float32) / 255
+	return images_batch		
 
     def postproc_actions(self, actions, f):
 	# parse actions into vector 
