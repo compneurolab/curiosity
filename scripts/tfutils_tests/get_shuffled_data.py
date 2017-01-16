@@ -75,10 +75,11 @@ params = {
 	    'batch_size': 256
         },
         'queue_params': {
-            'queue_type': 'fifo', #TODO switch to random
+            'queue_type': 'random',
             'batch_size': BATCH_SIZE,
             'n_threads': 1,
             'seed': 0,
+	    'capacity': BATCH_SIZE * 100
         },
         'num_steps': 1 #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
     },
@@ -107,10 +108,11 @@ params = {
 		'batch_size': 256,
             },
             'queue_params': {
-                'queue_type': 'fifo', #TODO switch to random
+                'queue_type': 'random',
                 'batch_size': BATCH_SIZE,
                 'n_threads': 1,
                 'seed': 0,
+		'capacity': BATCH_SIZE * 100,
             },
 	    'targets': {
                 'func': simple_return,

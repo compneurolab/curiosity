@@ -75,11 +75,13 @@ class FuturePredictionData(HDF5DataProvider):
     def postproc_img(self, ims, f):
 	# bicubic warping followed by normalization
 	if self.crop_size is not None:
-	    for image in ims:
-		image = np.array( \
-		    Image.fromarray(image).resize( \
+	    images_batch = np.zeros((ims.shape[0], self.crop_size[0], \
+					self.crop_size[1], ims.shape[3]))
+	    for i in range(len(ims)):
+		images_batch[i] = np.array( \
+		    Image.fromarray(ims[i]).resize( \
 			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
-	images_batch = ims.astype(np.float32) / 255
+	images_batch = images_batch.astype(np.float32) / 255
 	return images_batch		
 
     def postproc_actions(self, actions, f):
