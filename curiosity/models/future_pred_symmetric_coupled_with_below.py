@@ -233,7 +233,7 @@ def getFilterSeed(rng, cfg):
 def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   '''Model definition, compatible with tfutils.
 
-  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
+  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
   current_node = inputs['current']
   future_node = inputs['future']
   actions_node = inputs['action']
@@ -332,7 +332,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 
   encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
-  outputs.update(encode_nodes_future_dict)
+  outputs['pred'] = outputs
+  outputs['future'] = encode_nodes_future_dict
 
   return outputs, m.params
 
@@ -511,6 +512,9 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
   #loss = loss 
  
   return loss, pred, cfg0
+
+def loss_per_case_fn(inputs, outputs, kwargs):
+  pass
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,

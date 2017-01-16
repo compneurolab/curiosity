@@ -62,5 +62,5 @@ for var in all_vars:
 real_encode_depth = len([k for k in params.keys() if 'enc' in k])
 
 for i in range(real_encode_depth + 1):
-	print(outputs['pred' + str(i)])
-	print(outputs['future' + str(i)])
+	print(outputs['pred']['pred' + str(i)])
+	print(outputs['future']['future' + str(i)])
