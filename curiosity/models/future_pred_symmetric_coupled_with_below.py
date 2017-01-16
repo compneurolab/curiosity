@@ -513,8 +513,21 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
  
   return loss, pred, cfg0
 
-def loss_per_case_fn(inputs, outputs, kwargs):
-  pass
+def loss_per_case_fn(inputs, outputs, **kwargs):
+  encode_depth = len(outputs['pred']) - 1
+  batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
+  #this just to avoid declaring another placeholder
+  tv = outputs['future']['future' + str(0)]
+  pred = outputs['pred']['pred' + str(0)]
+  my_shape = tv.get_shape().as_list()
+  norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+  loss = tf.nn.l2_loss(pred - tv) / norm
+  for i in range(1, encode_depth + 1):
+    tv = outputs['future']['future' + str(i)]
+    pred = outputs['pred']['pred' + str(i)]
+    my_shape = tv.get_shape().as_list()
+    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+    loss = loss + tf.nn.l2_loss(pred - tv) / norm
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,
