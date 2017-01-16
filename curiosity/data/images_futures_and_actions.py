@@ -3,6 +3,7 @@ import numpy as np
 import json
 
 class FuturePredictionData(HDF5DataProvider):
+    batch_num = 0
     def __init__(self,
 		 data_path,
 		 batch_size=256,
@@ -54,7 +55,9 @@ class FuturePredictionData(HDF5DataProvider):
 	    self.crop_size = crop_size
 
         self.random_time = random_time
-    
+
+   	self.batch_size = batch_size
+ 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
 	    print("The minimum time difference has to be at least 1, " \
@@ -147,11 +150,14 @@ class FuturePredictionData(HDF5DataProvider):
     def next(self):
 	batch = super(FuturePredictionData, self).next()
 	# create present-future image/action pairs
-	img, act, fut_img, fut_act = self.create_image_pairs(batch['images'], batch['actions'])
+	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch['images'], batch['actions'])
+	
 	feed_dict = {'images': np.squeeze(img),
 		     'actions': np.squeeze(act),
 		     'future_images': np.squeeze(fut_img),
-		     'future_actions': np.squeeze(fut_act)}
+		     'future_actions': np.squeeze(fut_act)[:,0].astype(np.int32),
+		     'ids': np.squeeze(ids),
+		     'future_ids': np.squeeze(fut_ids)}
 	return feed_dict
 
     def create_image_pairs(self, input_images, input_actions):
@@ -160,13 +166,15 @@ class FuturePredictionData(HDF5DataProvider):
 		- fixed time differences or 
 		- variable time differences 
 	    between the image pairs as specified by the user
-	"""	
+	"""
 	images = []
 	actions = []
 	future_images = []
 	future_actions = []
+	ids = []
+	future_ids = []
 	if len(input_images) < 1 or len(input_actions) < 1:
-	    return [images, actions, future_images, future_actions]
+	    return [images, actions, future_images, future_actions, ids, future_ids]
 	
 	# specify the length of the action sequence based on the maximally possible delta_t
 	delta_t = self.min_time_difference
@@ -198,8 +206,13 @@ class FuturePredictionData(HDF5DataProvider):
 		action_sequence = np.concatenate(action_sequence, \
 			np.zeros(len(input_actions[0])), axis=0)
 	    # append present-future image/action pair
-	    images.append(image_sequence)
-	    actions.append(action_sequence)
+	    #images.append(image_sequence)
+	    #actions.append(action_sequence)
+	    images.append(input_images[i])
+	    actions.append(input_actions[i])
 	    future_images.append(input_images[i+delta_t])
 	    future_actions.append(input_actions[i+delta_t])
-	return [images, actions, future_images, future_actions]
+	    ids.append(i+self.batch_num*self.batch_size)
+	    future_ids.append(i+delta_t+self.batch_num*self.batch_size)
+	self.batch_num += 1
+	return [images, actions, future_images, future_actions, ids, future_ids]
