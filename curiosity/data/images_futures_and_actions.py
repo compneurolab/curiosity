@@ -5,7 +5,7 @@ import json
 class FuturePredictionData(HDF5DataProvider):
     def __init__(self,
 		 data_path,
-		 batch_size=1,
+		 batch_size=256,
 		 crop_size=None,
 		 min_time_difference=1, # including, also specifies fixed time
 		 max_time_difference=2, # excluding
@@ -75,11 +75,13 @@ class FuturePredictionData(HDF5DataProvider):
     def postproc_img(self, ims, f):
 	# normalization and random cropping
 	norm = ims.astype(np.float32) / 255
-	off = np.random.randint(0, 256 - self.crop_size, size=2)
-	images_batch = norm[:,
-                            off[0]: off[0] + self.crop_size,
-                            off[1]: off[1] + self.crop_size]
-	return images_batch
+	return norm
+	#TODO implement bicubic warping and cropping
+	#off = np.random.randint(0, 256 - self.crop_size, size=2)
+	#images_batch = norm[:,
+        #                    off[0]: off[0] + self.crop_size,
+        #                    off[1]: off[1] + self.crop_size]
+	#return images_batch
 
     def postproc_actions(self, actions, f):
 	# parse actions into vector 
@@ -145,11 +147,11 @@ class FuturePredictionData(HDF5DataProvider):
     def next(self):
 	batch = super(FuturePredictionData, self).next()
 	# create present-future image/action pairs
-	img, act, fut_img, fut_act = self.create_image_pairs(batch[images], batch[actions])
-	feed_dict = {images: np.squeeze(img),
-		     actions: np.squeeze(act),
-		     future_images: np.squeeze(fut_img),
-		     future_actions: np.squeeze(fut_act)}
+	img, act, fut_img, fut_act = self.create_image_pairs(batch['images'], batch['actions'])
+	feed_dict = {'images': np.squeeze(img),
+		     'actions': np.squeeze(act),
+		     'future_images': np.squeeze(fut_img),
+		     'future_actions': np.squeeze(fut_act)}
 	return feed_dict
 
     def create_image_pairs(self, input_images, input_actions):
@@ -165,12 +167,14 @@ class FuturePredictionData(HDF5DataProvider):
 	future_actions = []
 	if len(input_images) < 1 or len(input_actions) < 1:
 	    return [images, actions, future_images, future_actions]
+	
 	# specify the length of the action sequence based on the maximally possible delta_t
 	delta_t = self.min_time_difference
 	if self.random_time:
 	    delta_t = self.max_time_difference
 	action_sequence_length = delta_t * len(input_actions[0])
 	image_sequence_length = delta_t * input_images[0].shape[2] 
+	
 	# create present-future image/action pairs
 	for i in range(len(input_images)):	    
 	    # select time delta
@@ -180,6 +184,9 @@ class FuturePredictionData(HDF5DataProvider):
 			or max_time_difference < 1:
 		    continue
 		delta_t = np.random.randint(self.min_time_difference, max_time_difference)
+	    else:
+		if i + delta_t >= len(input_images):
+		    break
 	    # create image sequence and pad if necessary
 	    image_sequence = np.concatenate(input_images[i:i+delta_t], axis=2)
 	    while image_sequence.shape[2] < image_sequence_length:
