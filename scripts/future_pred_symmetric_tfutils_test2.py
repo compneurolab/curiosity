@@ -42,7 +42,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test1',
+        'exp_id': 'test3',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000
@@ -50,7 +50,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.model_tfutils_fpd_compatible,
-		'rng' : rng,
+		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0
 	},
@@ -60,18 +60,19 @@ params = {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
-	    'random_time': False,
+    	    'random_time': False,
             'min_time_difference': 1,
-	    'batch_size': 256
+    	    'batch_size': 256
         },
         'queue_params': {
             'queue_type': 'random',
             'batch_size': BATCH_SIZE,
             'n_threads': 1,
             'seed': 0,
-	    'capacity': BATCH_SIZE * 100
+    	    'capacity': BATCH_SIZE * 100
         },
-        'num_steps': 1 #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'num_steps': 10, #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'thres_loss' : 10000.
     },
 
 
@@ -90,31 +91,31 @@ params = {
     },
 
     'validation_params': {
-        'valid0': {
-            'data_params': {
-                'func': FuturePredictionData,
-                'data_path': DATA_PATH,  # path to image database
-                'random_time': False,
-                'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-		'min_time_difference': 10,
-		'batch_size': 256,
-            },
-            'queue_params': {
-                'queue_type': 'random',
-                'batch_size': BATCH_SIZE,
-                'n_threads': 1,
-                'seed': 0,
-		'capacity': BATCH_SIZE * 100,
-            },
-	    'targets': {
-                'func': modelsource.loss_per_case_fn,
-                'target': None,
-            },
-	    'agg_func': utils.mean_dict,
-            'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
-            #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
-            #'online_agg_func': online_agg
-        }
+  #       'valid0': {
+  #           'data_params': {
+  #               'func': FuturePredictionData,
+  #               'data_path': DATA_PATH,  # path to image database
+  #               'random_time': False,
+  #               'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
+		# 'min_time_difference': 10,
+		# 'batch_size': 256,
+  #           },
+  #           'queue_params': {
+  #               'queue_type': 'random',
+  #               'batch_size': BATCH_SIZE,
+  #               'n_threads': 1,
+  #               'seed': 0,
+		# 'capacity': BATCH_SIZE * 100,
+  #           },
+	 #    'targets': {
+  #               'func': modelsource.loss_per_case_fn,
+  #               'target': None,
+  #           },
+	 #    'agg_func': utils.mean_dict,
+  #           'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
+  #           #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
+  #           #'online_agg_func': online_agg
+        # }
     }
 
 

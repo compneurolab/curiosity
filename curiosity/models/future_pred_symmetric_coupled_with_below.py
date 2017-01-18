@@ -253,6 +253,9 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 #I think this should be taken away from cfg
   # fseed = getFilterSeed(rng, cfg)
 
+  if rng is None:
+    rng = np.random.RandomState(seed=kwargs['seed'])
+
   m = ConvNetwithBypasses(**kwargs)
 
   #encoding
@@ -530,7 +533,6 @@ def loss_per_case_fn(logits, labels, **kwargs):
   #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
   outputs = logits
   inputs = labels
-  print(inputs)
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
   #this just to avoid declaring another placeholder
