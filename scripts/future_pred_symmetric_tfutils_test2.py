@@ -19,8 +19,8 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 
 
 
-CODE_BASE = os.environ['CODE_BASE']
-cfgfile = os.path.join(CODE_BASE, 
+CODE_ROOT = os.environ['CODE_ROOT']
+cfgfile = os.path.join(CODE_ROOT, 
                        'curiosity/curiosity/configs/future_test_config_b.cfg')
 cfg = postprocess_config(json.load(open(cfgfile)))
 
@@ -49,7 +49,7 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.model_tfutils,
+		'func' : modelsource.model_tfutils_fpd_compatible,
 		'rng' : rng,
 		'cfg' : cfg,
 		'slippage' : 0
