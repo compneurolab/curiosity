@@ -152,7 +152,7 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
 	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch['images'], batch['actions'])
 	
 	feed_dict = {'images': np.squeeze(img),
-		     'actions': np.squeeze(act),
+		     'actions': np.squeeze(act).astype(np.float32),
 		     'future_images': np.squeeze(fut_img),
 		     'future_actions': np.squeeze(fut_act)[:,0].astype(np.int32),
 		     'ids': np.squeeze(ids),

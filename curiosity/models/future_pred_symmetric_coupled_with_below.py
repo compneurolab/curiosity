@@ -230,19 +230,33 @@ def getFilterSeed(rng, cfg):
     return rng.randint(10000)
 
 
+def model_tfutils_fpd_compatible(inputs, **kwargs):
+  batch_size = inputs['images'].get_shape().as_list()[0]
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'future' : inputs['future_images'], 'time' : tf.ones([batch_size, 1])}
+  return model_tfutils(new_inputs, **kwargs)
+
+
 def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
   current_node = inputs['current']
   future_node = inputs['future']
-  actions_node = inputs['action']
+  actions_node = inputs['actions']
   time_node = inputs['time']
+  print('data types')
+  for k, node in inputs.iteritems():
+    print(k)
+    print(node.dtype)
+    print(node.get_shape().as_list())
 
+#I think this should be taken away from cfg
+  # fseed = getFilterSeed(rng, cfg)
 
-  fseed = getFilterSeed(rng, cfg)
+  if rng is None:
+    rng = np.random.RandomState(seed=kwargs['seed'])
 
-  m = ConvNetwithBypasses(seed = fseed, **kwargs)
+  m = ConvNetwithBypasses(**kwargs)
 
   #encoding
   encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
@@ -283,7 +297,10 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
   print('Flatten to shape %s' % encode_flat.get_shape().as_list())
 #TODO: add functionality to extension to deal with this
-  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
+  if time_node is not None:
+    encode_flat = tf.concat(1, [encode_flat, actions_node, time_node])
+  else:
+    encode_flat = tf.concat(1, [encode_flat, actions_node])
 
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
@@ -309,7 +326,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
 
 
-  outputs = {}
+  preds = {}
   for i in range(0, encode_depth + 1):
     with tf.variable_scope('pred' + str(encode_depth - i)):
       pred = m.add_bypass(encode_nodes_current[encode_depth - i])
@@ -321,7 +338,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         pred = tf.minimum(tf.maximum(pred, -1), 1)
       else:
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
-      outputs['pred' + str(encode_depth - i)] = pred
+      preds['pred' + str(encode_depth - i)] = pred
     if i != encode_depth:
       with tf.variable_scope('decode' + str(i+1)):
         ds = encode_nodes_future[encode_depth - i - 1].get_shape().as_list()[1]
@@ -332,8 +349,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 
   encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
-  outputs['pred'] = outputs
-  outputs['future'] = encode_nodes_future_dict
+  outputs = {'pred' : preds, 'future' : encode_nodes_future_dict}
 
   return outputs, m.params
 
@@ -513,7 +529,13 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
  
   return loss, pred, cfg0
 
-def loss_per_case_fn(inputs, outputs, **kwargs):
+def loss_per_case_fn(labels, logits, **kwargs):
+  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
+  outputs = logits
+  inputs = labels
+  print('printing in and out')
+  print(inputs)
+  print(outputs)
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
   #this just to avoid declaring another placeholder
@@ -528,6 +550,12 @@ def loss_per_case_fn(inputs, outputs, **kwargs):
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
+
+def loss_agg_for_validation(labels, logits, **kwargs):
+  #kind of a hack, just getting a validation score like our loss for this test
+  return {'minibatch_loss' : tf.reduce_mean(loss_per_case_fn(labels, logits, **kwargs))}
+
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,
