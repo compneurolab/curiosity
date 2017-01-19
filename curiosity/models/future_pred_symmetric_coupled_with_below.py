@@ -529,10 +529,13 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
  
   return loss, pred, cfg0
 
-def loss_per_case_fn(logits, labels, **kwargs):
+def loss_per_case_fn(labels, logits, **kwargs):
   #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
   outputs = logits
   inputs = labels
+  print('printing in and out')
+  print(inputs)
+  print(outputs)
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
   #this just to avoid declaring another placeholder
@@ -548,6 +551,11 @@ def loss_per_case_fn(logits, labels, **kwargs):
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
+
+def loss_agg_for_validation(labels, logits, **kwargs):
+  #kind of a hack, just getting a validation score like our loss for this test
+  return {'minibatch_loss' : tf.reduce_mean(loss_per_case_fn(labels, logits, **kwargs))}
+
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,
