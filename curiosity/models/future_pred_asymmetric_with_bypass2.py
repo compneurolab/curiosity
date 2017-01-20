@@ -362,7 +362,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
   batch_size = inputs['images'].get_shape().as_list()[0]
-  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'future' : inputs['future_images'], 'time' : tf.ones([batch_size, 1])}
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'time' : tf.ones([batch_size, 1])}
   return model_tfutils(new_inputs, **kwargs)
 
 
@@ -371,7 +371,6 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
   current_node = inputs['current']
-  future_node = inputs['future']
   actions_node = inputs['actions']
   time_node = inputs['time']
 
