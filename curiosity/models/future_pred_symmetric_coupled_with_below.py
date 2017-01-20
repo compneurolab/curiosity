@@ -244,11 +244,6 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
   future_node = inputs['future']
   actions_node = inputs['actions']
   time_node = inputs['time']
-  print('data types')
-  for k, node in inputs.iteritems():
-    print(k)
-    print(node.dtype)
-    print(node.get_shape().as_list())
 
 #I think this should be taken away from cfg
   # fseed = getFilterSeed(rng, cfg)
@@ -310,7 +305,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
       nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
       #TODO: this can be made nicer once we add more general concat
       hidden = m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, in_layer = hidden, dropout = None)
-
+      nf0 = nf
 
 
   #decode
