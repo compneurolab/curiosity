@@ -1,9 +1,9 @@
-from tfutils.data import HDF5DataProvider
+from tfutils.data import HDF5DataProvider, TFRecordsDataProvider, LMDBDataProvider
 import numpy as np
 import json
 from PIL import Image
 
-class FuturePredictionData(HDF5DataProvider):
+class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
     batch_num = 0
     def __init__(self,
 		 data_path,
@@ -47,6 +47,7 @@ class FuturePredictionData(HDF5DataProvider):
 	    batch_size=batch_size,
 	    postprocess={images: self.postproc_img, actions: self.postproc_actions},
 	    pad=False,
+	    decodelist=[images],
 	    *args, **kwargs)
 
 	self.crop_size = crop_size

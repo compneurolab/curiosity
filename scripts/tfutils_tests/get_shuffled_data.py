@@ -6,9 +6,11 @@ from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/old_dataset.hdf5'
+#DATA_PATH = '/media/data2/one_world_dataset/old_dataset.hdf5'
+#DATA_PATH = '/media/data2/one_world_dataset/data2f.tfrecords'
+DATA_PATH = '/media/data2/one_world_dataset/data_tf.lmdb'
 BATCH_SIZE = 256
-N = 2048000
+N = 1024 #2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 
@@ -55,7 +57,7 @@ params = {
         'port': 27017,
         'dbname': 'randomshuffle-test',
         'collname': 'randomshuffle',
-        'exp_id': 'test1',
+        'exp_id': 'test5',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000,
@@ -71,17 +73,17 @@ params = {
             'data_path': DATA_PATH,
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
 	    'random_time': False,
-            'min_time_difference': 10,
+            'min_time_difference': 1,
 	    'batch_size': 256
         },
         'queue_params': {
-            'queue_type': 'random',
+            'queue_type': 'fifo',
             'batch_size': BATCH_SIZE,
             'n_threads': 1,
             'seed': 0,
 	    'capacity': BATCH_SIZE * 100
         },
-        'num_steps': 1 #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'num_steps': 5 #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
     },
 
     'loss_params': {
@@ -104,11 +106,11 @@ params = {
                 'data_path': DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-		'min_time_difference': 10,
+		'min_time_difference': 1,
 		'batch_size': 256,
             },
             'queue_params': {
-                'queue_type': 'random',
+                'queue_type': 'fifo',
                 'batch_size': BATCH_SIZE,
                 'n_threads': 1,
                 'seed': 0,
