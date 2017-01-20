@@ -291,16 +291,15 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       encode_nodes_current.append(new_encode_node_current)
       encode_nodes_future.append(new_encode_node_future)
 
-#TODO: change variable scope when param update is introduced
-  encode_node = encode_nodes_current[-1]
-  enc_shape = encode_node.get_shape().as_list()
-  encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
-  print('Flatten to shape %s' % encode_flat.get_shape().as_list())
-#TODO: add functionality to extension to deal with this
-  if time_node is not None:
-    encode_flat = tf.concat(1, [encode_flat, actions_node, time_node])
-  else:
-    encode_flat = tf.concat(1, [encode_flat, actions_node])
+  with tf.variable_scope('addactiontime'):
+    encode_node = encode_nodes_current[-1]
+    enc_shape = encode_node.get_shape().as_list()
+    encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
+    print('Flatten to shape %s' % encode_flat.get_shape().as_list())
+    if time_node is not None:
+      encode_flat = m.add_bypass([actions_node, time_node])
+    else:
+      encode_flat = m.add_bypass(actions_node)
 
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
@@ -333,9 +332,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
       cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage = slippage)
       if i == encode_depth:
-        #TODO: add functionality so that this architecture is reflected in params        
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
-        pred = tf.minimum(tf.maximum(pred, -1), 1)
+        pred = m.minmax(min_arg = 1, max_arg = -1)
       else:
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
       preds['pred' + str(encode_depth - i)] = pred

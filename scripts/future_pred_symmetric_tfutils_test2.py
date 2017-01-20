@@ -27,7 +27,7 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 
 DATA_PATH = '/media/data2/one_world_dataset/old_dataset.hdf5'
-BATCH_SIZE = 256
+BATCH_SIZE = 32
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -42,7 +42,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test5_wval',
+        'exp_id': 'test9_wval',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000
@@ -71,7 +71,7 @@ params = {
             'seed': 0,
     	    'capacity': BATCH_SIZE * 100
         },
-        'num_steps': 10, #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'num_steps': 2000, #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
         'thres_loss' : 1000000.
     },
 

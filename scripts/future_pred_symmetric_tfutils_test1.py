@@ -6,13 +6,14 @@ import tensorflow as tf
 import sys
 import json
 
+
 sys.path.append('curiosity')
 
 # import curiosity.utils.base as base
 from curiosity.models import future_pred_symmetric_coupled_with_below
 import curiosity.models.future_pred_symmetric_coupled_with_below as modelsource
 # import curiosity.datasources.images_futures_and_actions as datasource
-CODE_ROOT = os.environ['CODE_BASE']
+CODE_ROOT = os.environ['CODE_ROOT']
 cfgfile = os.path.join(CODE_ROOT, 
                        'curiosity/curiosity/configs/future_test_config_b.cfg')
 
@@ -49,7 +50,7 @@ actions_node = tf.placeholder(tf.float32,
 time_node = tf.placeholder(tf.float32,
                          shape=(batch_size, 1))
 
-inputs = {'current' : current_node, 'future' : future_node, 'action' : actions_node, 'time' : time_node}
+inputs = {'current' : current_node, 'future' : future_node, 'actions' : actions_node, 'time' : time_node}
 
 
 outputs, params = modelsource.model_tfutils(inputs, rng, cfg = cfg0, train = True, slippage = .5)
