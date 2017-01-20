@@ -236,7 +236,7 @@ def model_tfutils_fpd_compatible(inputs, **kwargs):
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
@@ -335,7 +335,11 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
         pred = m.minmax(min_arg = 1, max_arg = -1)
       else:
-        pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+        if diff_mode:
+          pred = m.conv(nf, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
+          pred = m.minmax(min_arg = 2, max_arg = -2)
+        else:
+          pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
       preds['pred' + str(encode_depth - i)] = pred
     if i != encode_depth:
       with tf.variable_scope('decode' + str(i+1)):
@@ -346,8 +350,19 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         nf1 = getDecodeNumFilters(i + 1, encode_depth, rng, cfg, slippage=slippage)
         decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 
-  encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
-  outputs = {'pred' : preds, 'future' : encode_nodes_future_dict}
+  enc_string = None
+  enc_dict = None
+  if diff_mode:
+    diffs = [encoded_future - encoded_current for (encoded_current, encoded_future) in zip(encode_nodes_current, encode_nodes_future)]
+    encode_nodes_diff_dict = dict(('diff' + str(i), diff) for (i, diff) in enumerate(diffs))
+    enc_string = 'diff'
+    enc_dict = encode_nodes_diff_dict
+  else:
+    encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
+    enc_string = 'future'
+    enc_dict = encode_nodes_future_dict
+  outputs = {'pred' : preds, enc_string: enc_dict}
+
 
   return outputs, m.params
 
@@ -527,13 +542,34 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
  
   return loss, pred, cfg0
 
+def diff_loss_per_case_fn(labels, logits, **kwargs):
+  '''This allows us to do the diff one while reusing the above code.
+
+  Maybe merge with below.'''
+  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
+  outputs = logits
+  inputs = labels
+  encode_depth = len(outputs['pred']) - 1
+  batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
+  #this just to avoid declaring another placeholder
+  tv = outputs['diff']['diff' + str(0)]
+  pred = outputs['pred']['pred' + str(0)]
+  my_shape = tv.get_shape().as_list()
+  norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+  loss = tf.nn.l2_loss(pred - tv) / norm
+  for i in range(1, encode_depth + 1):
+    tv = outputs['diff']['diff' + str(i)]
+    pred = outputs['pred']['pred' + str(i)]
+    my_shape = tv.get_shape().as_list()
+    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+    loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
+
+
 def loss_per_case_fn(labels, logits, **kwargs):
   #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
   outputs = logits
   inputs = labels
-  print('printing in and out')
-  print(inputs)
-  print(outputs)
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
   #this just to avoid declaring another placeholder
