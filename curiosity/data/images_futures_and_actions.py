@@ -55,6 +55,8 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
         self.random_time = random_time
 
    	self.batch_size = batch_size
+
+	self.orig_shape = None
  
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -79,6 +81,8 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
 	    images_batch = np.zeros((ims.shape[0], self.crop_size[0], \
 					self.crop_size[1], ims.shape[3]))
 	    for i in range(len(ims)):
+		if i == 0:
+		    self.orig_shape = ims[i].shape
 		images_batch[i] = np.array( \
 		    Image.fromarray(ims[i]).resize( \
 			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
@@ -130,7 +134,16 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
 		    else:
 			object_actions.append(0)
 		    if 'action_pos' in objact:
-			object_actions.extend(objact['action_pos'])
+			action_pos = objact['action_pos']
+			if self.crop_size is not None:
+			    if self.orig_shape is None:
+			        raise IndexError('postproc_img() \
+					must be called before postproc_actions()')
+			    action_pos[0] = int(action_pos[0] / \
+				float(self.orig_shape[0]) * self.crop_size[0])
+			    action_pos[1] = int(action_pos[1] / \
+				float(self.orig_shape[1]) * self.crop_size[1])
+			object_actions.extend(action_pos)
 		    else:
 			object_actions.extend(np.zeros(2))
 		""" 
