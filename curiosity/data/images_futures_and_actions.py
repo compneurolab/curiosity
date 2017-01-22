@@ -89,6 +89,12 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
 	images_batch = images_batch.astype(np.float32) / 255
 	return images_batch		
 
+    def postproc_parsed_actions(self, actions, f):
+	parsed_actions = []
+	for action in actions:
+	    parsed_actions.append(np.fromstring(action, dtype=np.float64))
+	return np.array(parsed_actions)
+
     def postproc_actions(self, actions, f):
 	# parse actions into vector 
 	parsed_actions = []

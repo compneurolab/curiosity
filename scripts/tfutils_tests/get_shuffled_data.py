@@ -6,7 +6,7 @@ from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/old_dataset.hdf5'
+DATA_PATH = '/media/data/one_world_dataset/dataset.hdf5'
 #DATA_PATH = '/media/data2/one_world_dataset/data2f.tfrecords'
 #DATA_PATH = '/media/data2/one_world_dataset/data_tf.lmdb'
 BATCH_SIZE = 256
