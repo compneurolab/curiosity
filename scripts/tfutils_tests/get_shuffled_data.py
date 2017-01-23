@@ -6,9 +6,9 @@ from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
 
 
-DATA_PATH = '/media/data/one_world_dataset/dataset.hdf5'
+#DATA_PATH = '/media/data/one_world_dataset/dataset.hdf5'
 #DATA_PATH = '/media/data2/one_world_dataset/data2f.tfrecords'
-#DATA_PATH = '/media/data2/one_world_dataset/data_tf.lmdb'
+DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
 BATCH_SIZE = 256
 N = 1024 #2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
@@ -71,7 +71,7 @@ params = {
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
-            'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
+            #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
 	    'random_time': False,
             'min_time_difference': 1,
 	    'batch_size': 256
@@ -105,7 +105,7 @@ params = {
                 'func': FuturePredictionData,
                 'data_path': DATA_PATH,  # path to image database
                 'random_time': False,
-                'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
+                #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
 		'min_time_difference': 1,
 		'batch_size': 256,
             },

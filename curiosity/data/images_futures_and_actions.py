@@ -3,7 +3,7 @@ import numpy as np
 import json
 from PIL import Image
 
-class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomment decodelist in line 50
+class FuturePredictionData(LMDBDataProvider): #LMDBDataProvider): # also uncomment decodelist in line 50
     batch_num = 0
     def __init__(self,
 		 data_path,
@@ -37,17 +37,15 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
 	        Extra arguments for HDF5DataProvider
         """	    
     
-        images = 'images'
-        actions = 'actions'
-        future_images = 'future_images'
-        future_actions = 'future_actions'
+        self.images = 'images'
+        self.actions = 'parsed_actions' #'actions'
         super(FuturePredictionData, self).__init__(
 	    data_path,
-	    [images, actions],
+	    [self.images, self.actions],
 	    batch_size=batch_size,
-	    postprocess={images: self.postproc_img, actions: self.postproc_actions},
+	    postprocess={self.images: self.postproc_img, self.actions: self.postproc_parsed_actions}, #self.postproc_actions},
 	    pad=False,
-	    #decodelist=[images],
+	    decodelist=[self.images],
 	    *args, **kwargs)
 
 	self.crop_size = crop_size
@@ -86,7 +84,9 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
 		images_batch[i] = np.array( \
 		    Image.fromarray(ims[i]).resize( \
 			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
-	images_batch = images_batch.astype(np.float32) / 255
+	    images_batch = images_batch.astype(np.float32) / 255
+	else:
+	    images_batch = ims.astype(np.float32) / 255
 	return images_batch		
 
     def postproc_parsed_actions(self, actions, f):
@@ -168,7 +168,7 @@ class FuturePredictionData(HDF5DataProvider): #LMDBDataProvider): # also uncomme
     def next(self):
 	batch = super(FuturePredictionData, self).next()
 	# create present-future image/action pairs
-	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch['images'], batch['actions'])
+	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch[self.images], batch[self.actions])
 	
 	feed_dict = {'images': np.squeeze(img),
 		     'actions': np.squeeze(act).astype(np.float32),
