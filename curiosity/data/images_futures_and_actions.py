@@ -3,7 +3,7 @@ import numpy as np
 import json
 from PIL import Image
 
-class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
+class FuturePredictionData(LMDBDataProvider): #LMDBDataProvider): # also uncomment decodelist in line 50
     batch_num = 0
     def __init__(self,
 		 data_path,
@@ -37,17 +37,15 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
 	        Extra arguments for HDF5DataProvider
         """	    
     
-        images = 'images'
-        actions = 'actions'
-        future_images = 'future_images'
-        future_actions = 'future_actions'
+        self.images = 'images'
+        self.actions = 'parsed_actions' #'actions'
         super(FuturePredictionData, self).__init__(
 	    data_path,
-	    [images, actions],
+	    [self.images, self.actions],
 	    batch_size=batch_size,
-	    postprocess={images: self.postproc_img, actions: self.postproc_actions},
+	    postprocess={self.images: self.postproc_img, self.actions: self.postproc_parsed_actions}, #self.postproc_actions},
 	    pad=False,
-	    decodelist=[images],
+	    decodelist=[self.images],
 	    *args, **kwargs)
 
 	self.crop_size = crop_size
@@ -55,6 +53,8 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
         self.random_time = random_time
 
    	self.batch_size = batch_size
+
+	self.orig_shape = None
  
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -74,16 +74,25 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
         self.random_time = random_time
 
     def postproc_img(self, ims, f):
-	# bicubic warping followed by normalization
+	# bicubic warping to resize image
 	if self.crop_size is not None:
 	    images_batch = np.zeros((ims.shape[0], self.crop_size[0], \
 					self.crop_size[1], ims.shape[3]))
 	    for i in range(len(ims)):
+		if i == 0:
+		    self.orig_shape = ims[i].shape
 		images_batch[i] = np.array( \
 		    Image.fromarray(ims[i]).resize( \
 			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
-	images_batch = images_batch.astype(np.float32) / 255
-	return images_batch		
+	    return images_batch
+	else:
+	    return ims
+
+    def postproc_parsed_actions(self, actions, f):
+	parsed_actions = []
+	for action in actions:
+	    parsed_actions.append(np.fromstring(action, dtype=np.float64))
+	return np.array(parsed_actions)
 
     def postproc_actions(self, actions, f):
 	# parse actions into vector 
@@ -130,7 +139,16 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
 		    else:
 			object_actions.append(0)
 		    if 'action_pos' in objact:
-			object_actions.extend(objact['action_pos'])
+			action_pos = objact['action_pos']
+			if self.crop_size is not None:
+			    if self.orig_shape is None:
+			        raise IndexError('postproc_img() \
+					must be called before postproc_actions()')
+			    action_pos[0] = int(action_pos[0] / \
+				float(self.orig_shape[0]) * self.crop_size[0])
+			    action_pos[1] = int(action_pos[1] / \
+				float(self.orig_shape[1]) * self.crop_size[1])
+			object_actions.extend(action_pos)
 		    else:
 			object_actions.extend(np.zeros(2))
 		""" 
@@ -149,7 +167,7 @@ class FuturePredictionData(LMDBDataProvider): #HDF5DataProvider):
     def next(self):
 	batch = super(FuturePredictionData, self).next()
 	# create present-future image/action pairs
-	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch['images'], batch['actions'])
+	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch[self.images], batch[self.actions])
 	
 	feed_dict = {'images': np.squeeze(img),
 		     'actions': np.squeeze(act).astype(np.float32),
