@@ -74,7 +74,7 @@ class FuturePredictionData(LMDBDataProvider): #LMDBDataProvider): # also uncomme
         self.random_time = random_time
 
     def postproc_img(self, ims, f):
-	# bicubic warping followed by normalization
+	# bicubic warping to resize image
 	if self.crop_size is not None:
 	    images_batch = np.zeros((ims.shape[0], self.crop_size[0], \
 					self.crop_size[1], ims.shape[3]))
@@ -84,10 +84,9 @@ class FuturePredictionData(LMDBDataProvider): #LMDBDataProvider): # also uncomme
 		images_batch[i] = np.array( \
 		    Image.fromarray(ims[i]).resize( \
 			(self.crop_size[0], self.crop_size[1]), Image.BICUBIC))
-	    images_batch = images_batch.astype(np.float32) / 255
+	    return images_batch
 	else:
-	    images_batch = ims.astype(np.float32) / 255
-	return images_batch		
+	    return ims
 
     def postproc_parsed_actions(self, actions, f):
 	parsed_actions = []
