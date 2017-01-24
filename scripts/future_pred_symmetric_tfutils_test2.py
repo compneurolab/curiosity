@@ -26,8 +26,9 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/old_dataset.hdf5'
-BATCH_SIZE = 32
+DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
+VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset8.lmdb'
+BATCH_SIZE = 128
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -42,7 +43,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test11_wval',
+        'exp_id': 'test12_sepval',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000
@@ -62,7 +63,7 @@ params = {
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
     	    'random_time': False,
             'min_time_difference': 1,
-    	    'batch_size': 256
+    	    'batch_size': 128
         },
         'queue_params': {
             'queue_type': 'random',
@@ -72,7 +73,7 @@ params = {
     	    'capacity': BATCH_SIZE * 100
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
-        'thres_loss' : 1000000.
+        'thres_loss' : float('inf')
     },
 
 
@@ -94,11 +95,11 @@ params = {
         'valid0': {
             'data_params': {
                 'func': FuturePredictionData,
-                'data_path': DATA_PATH,  # path to image database
+                'data_path': VALIDATION_DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
             		'min_time_difference': 1,
-            		'batch_size': 256,
+            		'batch_size': 128,
             },
             'queue_params': {
                 'queue_type': 'random',
