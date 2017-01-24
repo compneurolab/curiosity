@@ -42,7 +42,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test9_wval',
+        'exp_id': 'test11_wval',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000
@@ -71,7 +71,7 @@ params = {
             'seed': 0,
     	    'capacity': BATCH_SIZE * 100
         },
-        'num_steps': 2000, #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
         'thres_loss' : 1000000.
     },
 
