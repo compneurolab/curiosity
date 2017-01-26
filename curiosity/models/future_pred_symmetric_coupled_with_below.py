@@ -230,19 +230,35 @@ def getFilterSeed(rng, cfg):
     return rng.randint(10000)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
+def model_tfutils_fpd_compatible(inputs, **kwargs):
+  batch_size = inputs['images'].get_shape().as_list()[0]
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'future' : inputs['future_images'], 'time' : tf.ones([batch_size, 1])}
+  return model_tfutils(new_inputs, **kwargs)
+
+
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
   current_node = inputs['current']
   future_node = inputs['future']
-  actions_node = inputs['action']
+  actions_node = inputs['actions']
   time_node = inputs['time']
 
+  current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
+  future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
+  actions_node = tf.cast(actions_node, tf.float32)
 
-  fseed = getFilterSeed(rng, cfg)
 
-  m = ConvNetwithBypasses(seed = fseed, **kwargs)
+  print('Diff mode: ' + str(diff_mode))
+
+#I think this should be taken away from cfg
+  # fseed = getFilterSeed(rng, cfg)
+
+  if rng is None:
+    rng = np.random.RandomState(seed=kwargs['seed'])
+
+  m = ConvNetwithBypasses(**kwargs)
 
   #encoding
   encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
@@ -263,27 +279,37 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         cs = getEncodeConvStride(i, encode_depth, rng, cfg, slippage=slippage)
 
         new_encode_node_current = m.conv(nf, cfs, cs, in_layer = encode_nodes_current[i - 1])
+        print('Current encode node shape: ' + str(new_encode_node_current.get_shape().as_list()))
     with tf.variable_scope('encode' + str(i), reuse = True):
       new_encode_node_future = m.conv(nf, cfs, cs, in_layer = encode_nodes_future[i - 1], init='trunc_norm', stddev=.01, bias=0, activation='relu')
   #TODO add print function
+      print('Future encode node shape: ' + str(new_encode_node_current.get_shape().as_list()))
       do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
       if do_pool:
         pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
         ps = getEncodePoolStride(i, encode_depth, rng, cfg, slippage=slippage)
         pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
-        new_encode_node_current = m.pool(pfs, ps, in_layer = new_encode_node_current)
-        new_encode_node_future = m.pool(pfs, ps, in_layer = new_encode_node_future)
-
+        print('Pool size %d, stride %d' % (pfs, ps))
+        print('Type: ' + pool_type)
+        #just correcting potential discrepancy in descriptor
+        if pool_type == 'max':
+          pool_type = 'maxpool'
+        new_encode_node_current = m.pool(pfs, ps, in_layer = new_encode_node_current, pfunc = pool_type)
+        new_encode_node_future = m.pool(pfs, ps, in_layer = new_encode_node_future, pfunc = pool_type)
+        print('Current encode node shape: ' + str(new_encode_node_current.get_shape().as_list()))
+        print('Future encode node shape: ' + str(new_encode_node_future.get_shape().as_list()))        
       encode_nodes_current.append(new_encode_node_current)
       encode_nodes_future.append(new_encode_node_future)
 
-#TODO: change variable scope when param update is introduced
-  encode_node = encode_nodes_current[-1]
-  enc_shape = encode_node.get_shape().as_list()
-  encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
-  print('Flatten to shape %s' % encode_flat.get_shape().as_list())
-#TODO: add functionality to extension to deal with this
-  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
+  with tf.variable_scope('addactiontime'):
+    encode_node = encode_nodes_current[-1]
+    enc_shape = encode_node.get_shape().as_list()
+    encode_flat = m.reshape([np.prod(enc_shape[1:])], in_layer = encode_node)
+    print('Flatten to shape %s' % encode_flat.get_shape().as_list())
+    if time_node is not None:
+      encode_flat = m.add_bypass([actions_node, time_node])
+    else:
+      encode_flat = m.add_bypass(actions_node)
 
   nf0 = encode_flat.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
@@ -294,7 +320,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
       #TODO: this can be made nicer once we add more general concat
       hidden = m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, in_layer = hidden, dropout = None)
-
+      print('Hidden shape %s' % hidden.get_shape().as_list())
+      nf0 = nf
 
 
   #decode
@@ -309,19 +336,24 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
 
 
-  outputs = {}
+  preds = {}
   for i in range(0, encode_depth + 1):
     with tf.variable_scope('pred' + str(encode_depth - i)):
       pred = m.add_bypass(encode_nodes_current[encode_depth - i])
+      print('Shape after bypass %s' % pred.get_shape().as_list())
       nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
       cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage = slippage)
+      print('Pred conv filter size %d' % cfs)
       if i == encode_depth:
-        #TODO: add functionality so that this architecture is reflected in params        
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
-        pred = tf.minimum(tf.maximum(pred, -1), 1)
+        pred = m.minmax(min_arg = 1, max_arg = -1)
       else:
-        pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
-      outputs['pred' + str(encode_depth - i)] = pred
+        if diff_mode:
+          pred = m.conv(nf, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
+          pred = m.minmax(min_arg = 2, max_arg = -2)
+        else:
+          pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+      preds['pred' + str(encode_depth - i)] = pred
     if i != encode_depth:
       with tf.variable_scope('decode' + str(i+1)):
         ds = encode_nodes_future[encode_depth - i - 1].get_shape().as_list()[1]
@@ -330,10 +362,21 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
         cfs = getDecodeFilterSize(i + 1, encode_depth, rng, cfg, slippage=slippage)
         nf1 = getDecodeNumFilters(i + 1, encode_depth, rng, cfg, slippage=slippage)
         decode = m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+        print('Decode conv to shape %s' % decode.get_shape().as_list())
 
-  encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
-  outputs['pred'] = outputs
-  outputs['future'] = encode_nodes_future_dict
+  enc_string = None
+  enc_dict = None
+  if diff_mode:
+    diffs = [encoded_future - encoded_current for (encoded_current, encoded_future) in zip(encode_nodes_current, encode_nodes_future)]
+    encode_nodes_diff_dict = dict(('diff' + str(i), diff) for (i, diff) in enumerate(diffs))
+    enc_string = 'diff'
+    enc_dict = encode_nodes_diff_dict
+  else:
+    encode_nodes_future_dict = dict(('future' + str(i), encoded_future) for (i, encoded_future) in enumerate(encode_nodes_future))
+    enc_string = 'future'
+    enc_dict = encode_nodes_future_dict
+  outputs = {'pred' : preds, enc_string: enc_dict}
+
 
   return outputs, m.params
 
@@ -513,7 +556,34 @@ def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage
  
   return loss, pred, cfg0
 
-def loss_per_case_fn(inputs, outputs, **kwargs):
+def diff_loss_per_case_fn(labels, logits, **kwargs):
+  '''This allows us to do the diff one while reusing the above code.
+
+  Maybe merge with below.'''
+  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
+  outputs = logits
+  inputs = labels
+  encode_depth = len(outputs['pred']) - 1
+  batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
+  #this just to avoid declaring another placeholder
+  tv = outputs['diff']['diff' + str(0)]
+  pred = outputs['pred']['pred' + str(0)]
+  my_shape = tv.get_shape().as_list()
+  norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+  loss = tf.nn.l2_loss(pred - tv) / norm
+  for i in range(1, encode_depth + 1):
+    tv = outputs['diff']['diff' + str(i)]
+    pred = outputs['pred']['pred' + str(i)]
+    my_shape = tv.get_shape().as_list()
+    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+    loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
+
+
+def loss_per_case_fn(labels, logits, **kwargs):
+  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
+  outputs = logits
+  inputs = labels
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
   #this just to avoid declaring another placeholder
@@ -528,6 +598,12 @@ def loss_per_case_fn(inputs, outputs, **kwargs):
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
+
+def loss_agg_for_validation(labels, logits, **kwargs):
+  #kind of a hack, just getting a validation score like our loss for this test
+  return {'minibatch_loss' : tf.reduce_mean(loss_per_case_fn(labels, logits, **kwargs))}
+
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error,

@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 import zmq
 
-from curiosity.utils.io import recv_array
+from curiosity.models.model_building_blocks import ConvNetwithBypasses
 
 ctx = zmq.Context()
 sock = None
@@ -358,6 +358,116 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
       decode = tf.minimum(tf.maximum(decode, -1), 1)
 
   return decode, cfg0
+
+
+def model_tfutils_fpd_compatible(inputs, **kwargs):
+  batch_size = inputs['images'].get_shape().as_list()[0]
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'time' : tf.ones([batch_size, 1])}
+  return model_tfutils(new_inputs, **kwargs)
+
+
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
+  '''Model definition, compatible with tfutils.
+
+  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
+  current_node = inputs['current']
+  actions_node = inputs['actions']
+  time_node = inputs['time']
+
+  image_size = current_node.get_shape().as_list()[1]
+  num_channels = current_node.get_shape().as_list()[3]
+
+#I think this should be taken away from cfg
+  # fseed = getFilterSeed(rng, cfg)
+
+  if rng is None:
+    rng = np.random.RandomState(seed=kwargs['seed'])
+
+  m = ConvNetwithBypasses(**kwargs)
+  m.output = current_node
+  encode_nodes = [current_node]
+  #encoding
+  encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
+  print('Encode depth: %d' % encode_depth)
+  cfs0 = None
+
+  for i in range(1, encode_depth + 1):
+    #not sure this usage ConvNet class creates exactly the params that we want to have, specifically in the 'input' field, but should give us an accurate record of this network's configuration
+    with tf.variable_scope('encode' + str(i)):
+
+      with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu'):
+
+        cfs = getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
+        cfs0 = cfs
+        nf = getEncodeConvNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
+        cs = getEncodeConvStride(i, encode_depth, rng, cfg, slippage=slippage)
+
+        m.conv(nf, cfs, cs)
+  #TODO add print function
+      do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
+      if do_pool:
+        pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
+        ps = getEncodePoolStride(i, encode_depth, rng, cfg, slippage=slippage)
+        pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
+        m.pool(pfs, ps)
+      encode_nodes.append(m.output)
+
+  with tf.variable_scope('addactiontime'):
+    enc_shape = m.output.get_shape().as_list()
+    m.reshape([np.prod(enc_shape[1:])])
+    print('Flatten to shape %s' % m.output.get_shape().as_list())
+    if time_node is not None:
+      m.add_bypass([actions_node, time_node])
+    else:
+      m.add_bypass(actions_node)
+
+  nf0 = m.output.get_shape().as_list()[1]
+  hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
+  print('Hidden depth: %d' % hidden_depth)
+  for i in range(1, hidden_depth + 1):
+    with tf.variable_scope('hidden' + str(i)):
+      nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
+      m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+      nf0 = nf
+
+  #decode
+  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
+  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
+  if ds * ds * nf1 != nf0:
+    with tf.variable_scope('extra_hidden'):
+      m.fc(ds * ds * nf1, init = 'trunc_norm', activation  = None, bias = .01, dropout = None)
+    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
+  m.reshape([ds, ds, nf1])
+  print("Unflattening to", decode.get_shape().as_list())
+
+  decode_depth = getDecodeDepth(rng, cfg, slippage=slippage)
+  for i in range(1, decode_depth + 1):
+    with tf.variable_scope('decode' + str(i+1)):
+      ds = getDecodeSize(i, decode_depth, enc_shape[1], image_size, rng, cfg, slippage=slippage)
+      if i == decode_depth:
+        assert ds == image_size, (ds, image_size)
+      m.resize_images(ds)
+      print('Decode resize %d to shape' % i, decode.get_shape().as_list())
+      add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
+      if add_bypass != None:
+        bypass_layer = encode_nodes[add_bypass]
+        bypass_shape = bypass_layer.get_shape().as_list()
+        # if bypass_shape[1] != ds:
+        #   bypass_layer = tf.image.resize_images(bypass_layer, ds, ds)
+        m.add_bypass(bypass_layer)
+        print('Decode bypass from %d at %d for shape' % (add_bypass, i), m.output.get_shape().as_list())
+
+      cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
+      nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
+      if i == decode_depth:
+        assert nf1 == num_channels, (nf1, num_channels)
+        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
+        m.minmax(min_arg = 1, max_arg = -1)
+      else:
+        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+
+  return m.output, m.params
+
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
