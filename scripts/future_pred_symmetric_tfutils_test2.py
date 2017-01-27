@@ -98,8 +98,8 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-            		'min_time_difference': 1,
-            		'batch_size': 128,
+            	'min_time_difference': 1,
+            	'batch_size': 128,
             },
             'queue_params': {
                 'queue_type': 'random',

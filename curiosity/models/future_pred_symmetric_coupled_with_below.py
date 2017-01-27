@@ -586,7 +586,7 @@ def loss_per_case_fn(labels, logits, **kwargs):
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
   batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
-  #this just to avoid declaring another placeholder
+  #this just to avoid declaring another tensor
   tv = outputs['future']['future' + str(0)]
   pred = outputs['pred']['pred' + str(0)]
   my_shape = tv.get_shape().as_list()
