@@ -58,6 +58,18 @@ def get_extraction_target(inputs, outputs, to_extract, **loss_params):
     return targets
 
 
+def get_loss_by_layer(inputs, outputs, **loss_params):
+    retval = {}
+    encode_depth = len(outputs['pred']) - 1
+    for i in range(0, encode_depth + 1):
+        tv = outputs['future']['future' + str(i)]
+        pred = outputs['pred']['pred' + str(i)]
+        my_shape = tv.get_shape().as_list()
+        norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+        retval['loss' + str(i)] = tf.nn.l2_loss(pred - tv) / norm
+    return retval
+
+
 def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss_params):
     '''
     Gives you input tensors and output tensors.
@@ -68,12 +80,21 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
     predictions = outputs['pred']['pred0'][:num_to_save]
     actions = inputs['actions'][:num_to_save]
     currents = inputs['images'][:num_to_save]
-    futures_through = outputs['future']['future0'][:num_to_save]
     futures = tf.cast(futures, tf.uint8)
     predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
-    futures_through = tf.cast(tf.multiply(futures_through, 255), tf.uint8)
-    return {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions, 'futures_through' : futures_through}
+    retval = {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions}
+    retval.update(get_loss_by_layer(inputs, outputs, **loss_params))
+    return retval
+
+def mean_losses_forget_rest(step_results):
+    retval = {}
+    keys = step_results[0].keys()
+    for k in keys:
+        if 'loss' in k:
+            plucked = [d[k] for d in step_results]
+            retval[k] = np.mean(plucked)
+    return retval
 
 
 params = {
@@ -95,9 +116,9 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'symmetric_viz',
-		'exp_id': 'save_im_5',
+		'exp_id': 'im_and_loss_5',
         'save_intermediate_freq': 1,
-        'save_to_gfs': ['predicted', 'current', 'future', 'action']
+        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images']
 	},
     'validation_params': {
         'valid0': {
@@ -118,11 +139,12 @@ params = {
             },
 	    'targets': {
                 'func': get_current_predicted_future_action,
-                'targets' : []
+                'targets' : [],
+                'num_to_save' : 10
             },
-        'agg_func' : lambda x : {},
+        'agg_func' : mean_losses_forget_rest,
 	    # 'agg_func': utils.mean_dict,
-        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
             #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
             #'online_agg_func': online_agg
         }
