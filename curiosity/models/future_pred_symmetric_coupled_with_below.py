@@ -236,7 +236,7 @@ def model_tfutils_fpd_compatible(inputs, **kwargs):
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, min_max_end = True, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
@@ -346,7 +346,11 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
       print('Pred conv filter size %d' % cfs)
       if i == encode_depth:
         pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
-        pred = m.minmax(min_arg = 1, max_arg = -1)
+        if min_max_end:
+          print('adding min and max to end')
+          pred = m.minmax(min_arg = 1, max_arg = -1)
+        else:
+          print('no min and max at end')
       else:
         if diff_mode:
           pred = m.conv(nf, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
