@@ -13,7 +13,7 @@ from PIL import Image
 dbname = 'future_pred_test'
 collname = 'future_pred_symmetric'
 port = 27017
-exp_id = 'test18_nominmax'
+exp_id = 'test19_time10'
 save_loc = '/home/nhaber/really_temp'
 save_fn = os.path.join(save_loc, exp_id + '.p')
 example_step = 1

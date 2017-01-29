@@ -52,16 +52,22 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, diff_m
     predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
     retval = {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions}
+    if diff_mode:
+        diffs = outputs['diff']['diff0'][:num_to_save]
+        diffs = tf.cast(tf.multiply(diffs, 255), tf.uint8)
+        retval['diff'] = diffs
     retval.update(get_loss_by_layer(inputs, outputs, diff_mode = diff_mode, **loss_params))
     return retval
 
-def mean_losses_forget_rest(step_results):
+def mean_losses_keep_rest(step_results):
     retval = {}
     keys = step_results[0].keys()
     for k in keys:
+        plucked = [d[k] for d in step_results]
         if 'loss' in k:
-            plucked = [d[k] for d in step_results]
             retval[k] = np.mean(plucked)
+        else:
+            retval[k] = plucked
     return retval
 
 
@@ -89,11 +95,12 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_diff_symmetric',
-        'exp_id': 'test1_doesitwork',
-        'save_valid_freq': 1000,
+        'exp_id': 'test3_time4',
+        'save_valid_freq': 500,
         'save_filters_freq': 30000,
-        'cache_filters_freq': 3000,
-        'save_initial_filters' : False
+        'cache_filters_freq': 500,
+        'save_initial_filters' : False,
+        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images', 'diff']
 	},
 
 	'model_params' : {
@@ -101,7 +108,7 @@ params = {
 		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0,
-        'min_max_end' : False
+        'min_max_end' : False,
         'diff_mode' : True
 	},
 
@@ -111,7 +118,7 @@ params = {
             'data_path': DATA_PATH,
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
     	    'random_time': False,
-            'min_time_difference': 1,
+            'min_time_difference': 4,
     	    'batch_size': 128
         },
         'queue_params': {
@@ -147,7 +154,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': 1,
+                'min_time_difference': 4,
                 'batch_size': 128,
             },
             'queue_params': {
@@ -163,9 +170,9 @@ params = {
                 'num_to_save' : 10,
                 'diff_mode' : True
             },
-        'agg_func' : mean_losses_forget_rest,
+        'agg_func' : mean_losses_keep_rest,
         # 'agg_func': utils.mean_dict,
-        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
             #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
             #'online_agg_func': online_agg
         }

@@ -86,7 +86,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test18_nominmax',
+        'exp_id': 'test20_time4',
         'save_valid_freq': 500,
         'save_filters_freq': 30000,
         'cache_filters_freq': 500,
@@ -108,7 +108,7 @@ params = {
             'data_path': DATA_PATH,
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
     	    'random_time': False,
-            'min_time_difference': 1,
+            'min_time_difference': 10,
     	    'batch_size': 128
         },
         'queue_params': {
@@ -144,7 +144,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': 1,
+                'min_time_difference': 10,
                 'batch_size': 128,
             },
             'queue_params': {
@@ -161,7 +161,7 @@ params = {
             },
         'agg_func' : mean_losses_keep_rest,
         # 'agg_func': utils.mean_dict,
-        'num_steps': 2 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
             #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
             #'online_agg_func': online_agg
         }

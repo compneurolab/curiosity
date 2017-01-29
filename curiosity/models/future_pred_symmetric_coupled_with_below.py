@@ -248,6 +248,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
   current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
   future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
   actions_node = tf.cast(actions_node, tf.float32)
+  print('Actions shape')
+  print(actions_node.get_shape().as_list())
 
 
   print('Diff mode: ' + str(diff_mode))
