@@ -1,5 +1,5 @@
 '''
-A simple test of tfutils, just to make training run. Currently, validation's a bit silly.
+Basic future prediction script where we use a diff loss.
 '''
 
 import numpy as np
@@ -38,7 +38,7 @@ rng = np.random.RandomState(seed=seed)
 
 
 
-def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss_params):
+def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, diff_mode = False, **loss_params):
     '''
     Gives you input tensors and output tensors.
 
@@ -52,7 +52,11 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
     predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
     retval = {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions}
-    retval.update(get_loss_by_layer(inputs, outputs, **loss_params))
+    if diff_mode:
+        diffs = outputs['diff']['diff0'][:num_to_save]
+        diffs = tf.cast(tf.multiply(diffs, 255), tf.uint8)
+        retval['diff'] = diffs
+    retval.update(get_loss_by_layer(inputs, outputs, diff_mode = diff_mode, **loss_params))
     return retval
 
 def mean_losses_keep_rest(step_results):
@@ -67,11 +71,16 @@ def mean_losses_keep_rest(step_results):
     return retval
 
 
-def get_loss_by_layer(inputs, outputs, **loss_params):
+def get_loss_by_layer(inputs, outputs, diff_mode = False, **loss_params):
+    tv_string = None
+    if diff_mode:
+        tv_string = 'diff'
+    else:
+        tv_string = 'future'
     retval = {}
     encode_depth = len(outputs['pred']) - 1
     for i in range(0, encode_depth + 1):
-        tv = outputs['future']['future' + str(i)]
+        tv = outputs[tv_string][tv_string + str(i)]
         pred = outputs['pred']['pred' + str(i)]
         my_shape = tv.get_shape().as_list()
         norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
@@ -85,13 +94,13 @@ params = {
 	    'host': 'localhost',
         'port': 27017,
         'dbname': 'future_pred_test',
-        'collname': 'future_pred_symmetric',
-        'exp_id': 'test20_time4',
+        'collname': 'future_pred_diff_symmetric',
+        'exp_id': 'test3_time4',
         'save_valid_freq': 500,
         'save_filters_freq': 30000,
         'cache_filters_freq': 500,
         'save_initial_filters' : False,
-        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images']
+        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images', 'diff']
 	},
 
 	'model_params' : {
@@ -99,7 +108,8 @@ params = {
 		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0,
-        'min_max_end' : False
+        'min_max_end' : False,
+        'diff_mode' : True
 	},
 
 	'train_params': {
@@ -108,7 +118,7 @@ params = {
             'data_path': DATA_PATH,
             'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
     	    'random_time': False,
-            'min_time_difference': 10,
+            'min_time_difference': 4,
     	    'batch_size': 128
         },
         'queue_params': {
@@ -126,7 +136,7 @@ params = {
     'loss_params': {
         'targets': [],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.loss_per_case_fn,
+        'loss_per_case_func': modelsource.diff_loss_per_case_fn,
     },
 
     'learning_rate_params': {
@@ -144,7 +154,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 'random_time': False,
                 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': 10,
+                'min_time_difference': 4,
                 'batch_size': 128,
             },
             'queue_params': {
@@ -157,7 +167,8 @@ params = {
         'targets': {
                 'func': get_current_predicted_future_action,
                 'targets' : [],
-                'num_to_save' : 10
+                'num_to_save' : 10,
+                'diff_mode' : True
             },
         'agg_func' : mean_losses_keep_rest,
         # 'agg_func': utils.mean_dict,

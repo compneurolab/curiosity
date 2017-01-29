@@ -261,7 +261,7 @@ class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
 	img, act, fut_img, fut_act, ids, fut_ids = self.create_image_pairs(batch[self.images], batch[self.actions])
 	
 	feed_dict = {'images': np.squeeze(img),
-		     'actions': np.squeeze(act).astype(np.float32),
+		     'actions': np.squeeze(act),
 		     'future_images': np.squeeze(fut_img),
 		     'future_actions': np.squeeze(fut_act)[:,0].astype(np.int32),
 		     'ids': np.squeeze(ids),
@@ -303,19 +303,6 @@ class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
 	    else:
 		if i + delta_t >= len(input_images):
 		    break
-	    # create image sequence and pad if necessary
-	    image_sequence = np.concatenate(input_images[i:i+delta_t], axis=2)
-	    while image_sequence.shape[2] < image_sequence_length:
-		image_sequence = np.concatenate((image_sequence, \
-			np.zeros(input_images[0].shape)), axis=2)
-	    # create action sequence and pad if necessary 
-	    action_sequence = np.concatenate(input_actions[i:i+delta_t], axis=0)
-	    while len(action_sequence) < action_sequence_length:
-		action_sequence = np.concatenate(action_sequence, \
-			np.zeros(len(input_actions[0])), axis=0)
-	    # append present-future image/action pair
-	    #images.append(image_sequence)
-	    #actions.append(action_sequence)
 	    images.append(input_images[i])
 	    actions.append(input_actions[i])
 	    future_images.append(input_images[i+delta_t])
