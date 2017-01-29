@@ -1,9 +1,100 @@
-from tfutils.data import HDF5DataProvider, TFRecordsDataProvider, LMDBDataProvider
+from tfutils.data import HDF5DataProvider, TFRecordsDataProvider#, LMDBDataProvider
 import numpy as np
 import json
 from PIL import Image
+import tensorflow as tf
 
-class FuturePredictionData(LMDBDataProvider): #LMDBDataProvider): # also uncomment decodelist in line 50
+class FuturePredictionData(TFRecordsDataProvider):
+    batch_num = 0
+    def __init__(self,
+                 data_path,
+                 batch_size=256,
+                 crop_size=None,
+                 min_time_difference=1, # including, also specifies fixed time 
+                 n_threads=4,
+                 *args,
+                 **kwargs):
+
+        self.orig_shape = None
+
+        if int(min_time_difference) < 1:
+   	    self.min_time_difference = 1
+	    print("The minimum time difference has to be at least 1, " \
+	        + "and thus was set to 1.") 
+        else:
+	    self.min_time_difference = int(min_time_difference)
+
+        self.batch_size = batch_size
+        if self.batch_size <= self.min_time_difference:
+            raise IndexError('batch_size has to be bigger than min_time_difference!')
+
+        self.images = 'images'
+        self.actions = 'parsed_actions' #'actions'
+        super(FuturePredictionData, self).__init__(
+            data_path,
+            {self.images: tf.string, self.actions: tf.string},
+            batch_size=batch_size,
+            postprocess={self.images: self.postproc_img, self.actions: self.postproc_parsed_actions}, #self.postproc_actions},
+            imagelist=[self.images],
+            n_threads=n_threads,
+            *args, **kwargs)
+
+        self.crop_size = crop_size
+        if self.crop_size is not None:
+            raise NotImplementedError('Do not use crop_size as it is not implemented!')
+
+    def postproc_img(self, images, dtype, shape):
+        #TODO Implement cropping via warping
+        return [images, dtype, shape]
+
+    def postproc_parsed_actions(self, actions, dtype, shape):
+        actions = tf.decode_raw(actions, tf.float64)
+        actions = tf.cast(actions, tf.float32)
+        dtype = tf.float32
+        shape = [25]
+        return [actions, dtype, shape]
+
+    def init_threads(self):
+        self.input_ops, self.dtypes, self.shapes = \
+                super(FuturePredictionData, self).init_threads()
+ 
+        for i in range(len(self.input_ops)):
+            self.input_ops[i], self.dtypes, self.shapes = self.create_image_pairs( \
+                self.input_ops[i], self.dtypes, self.shapes)
+
+        return [self.input_ops, self.dtypes, self.shapes]
+
+    def create_image_pairs(self, data, dtypes, shapes):
+        size = [self.batch_size - self.min_time_difference, -1, -1, -1]
+        begin = [self.min_time_difference, 0, 0, 0]
+        data['future_images'] = tf.slice(data[self.images], begin, size)
+
+        begin = [0,0,0,0]
+        data[self.images] = tf.slice(data[self.images], begin, size)
+
+        size = [self.batch_size - self.min_time_difference, -1]
+        begin = [self.min_time_difference, 0]
+        data['future_actions'] = tf.slice(data[self.actions], begin, size)
+
+        begin = [0,0]
+        data[self.actions] = tf.slice(data[self.actions], begin, size)
+        #TODO CREATE ACTION SEQUENCE BY FLATTENING VECTOR?
+
+        dtypes['future_images'] = dtypes[self.images]
+        shapes['future_images'] = shapes[self.images]                   
+
+        dtypes['future_actions'] = dtypes[self.actions]
+        shapes['future_actions'] = shapes[self.actions]
+
+        #TODO REMOVE THIS BLOCK IF USING FUTURE ACTIONS AS THIS IS ONLY FOR DEBUGGING
+        data['future_actions'] = tf.cast(data['future_actions'], tf.int32)[:,0]
+	dtypes['future_actions'] = tf.int32
+        shapes['future_actions'] = []
+
+        return [data, dtypes, shapes]
+
+
+class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
     batch_num = 0
     def __init__(self,
 		 data_path,

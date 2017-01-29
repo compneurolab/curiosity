@@ -4,20 +4,23 @@ import sys
 import tensorflow as tf
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
-
+from tfutils.data import TFRecordsDataProvider
 
 #DATA_PATH = '/media/data/one_world_dataset/dataset.hdf5'
-#DATA_PATH = '/media/data2/one_world_dataset/data2f.tfrecords'
-DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
+DATA_PATH = '/media/data2/one_world_dataset/dataset.tfrecords'
+DATA_PATH = '/home/mrowca/data/dataset_images_parsed_actions8.tfrecords'
+#DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
 #DATA_PATH = '/media/data2/one_world_dataset/data_format_tests/data_tf.lmdb'
 BATCH_SIZE = 256
-N = 1024 #2048000
+N = 128000 #2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 
 def shuffle_net(inputs, train=False, **kwargs):
+    print(inputs['images'])
     inp = tf.cast(inputs['images'], tf.float32)
     inp = tf.divide(inp, 255)
+    act = inputs['parsed_actions'] # THIS IS NEW
     #inp = inputs['images']
     print("\033[91myaaaaay\033[0m")
     print(inp)     
@@ -40,7 +43,7 @@ def shuffle_net(inputs, train=False, **kwargs):
 
 def simple_return(inputs, outputs, target):
     tf.Print(inputs['images'], [inputs['images']], message="This is a: ")
-    return {'inputs': inputs['ids'], 'outputs': inputs['future_ids']}
+    return {'inputs': inputs['images'], }#'outputs': inputs['future_ids']}
 
 def dummy_loss(**kwargs):
     return 1.0
@@ -60,7 +63,7 @@ params = {
         'port': 27017,
         'dbname': 'randomshuffle-test',
         'collname': 'randomshuffle',
-        'exp_id': 'test7',
+        'exp_id': 'test10',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000,
@@ -75,18 +78,22 @@ params = {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
             #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
-	    'random_time': False,
+	    #'random_time': False,
             'min_time_difference': 1,
-	    'batch_size': 256
+	    'batch_size': 256,
+            #'tfsource': DATA_PATH,
+            'n_threads': 4,
+            #'sourcedict': {'images': tf.string, 'parsed_actions': tf.string},
+            #'imagelist': ['images'],
         },
         'queue_params': {
             'queue_type': 'fifo',
             'batch_size': BATCH_SIZE,
-            'n_threads': 1,
+            #'n_threads': 4,
             'seed': 0,
 	    'capacity': BATCH_SIZE * 100
         },
-        'num_steps': 10 #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
+        'num_steps': 10, #90 * NUM_BATCHES_PER_EPOCH  # number of steps to train
     },
 
     'loss_params': {
@@ -107,15 +114,20 @@ params = {
             'data_params': {
                 'func': FuturePredictionData,
                 'data_path': DATA_PATH,  # path to image database
-                'random_time': False,
+                #'random_time': False,
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
 		'min_time_difference': 1,
 		'batch_size': 256,
+                'n_threads': 4,
+                #'batch_size': 256,
+                #'tfsource': DATA_PATH,
+                #'sourcedict': {'images': tf.string, 'parsed_actions': tf.string},
+                #'imagelist': ['images'],
             },
             'queue_params': {
                 'queue_type': 'fifo',
                 'batch_size': BATCH_SIZE,
-                'n_threads': 1,
+                #'n_threads': 4,
                 'seed': 0,
 		'capacity': BATCH_SIZE * 100,
             },
@@ -124,8 +136,8 @@ params = {
                 'target': 'future_actions',
             },
 	    'agg_func': utils.mean_dict,
-            'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
-            #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
+            'num_steps': 1, # N_VAL // BATCH_SIZE + 1,
+	    #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
             #'online_agg_func': online_agg
         },
     },
