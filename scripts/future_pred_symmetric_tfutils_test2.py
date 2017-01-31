@@ -21,13 +21,13 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 
 CODE_ROOT = os.environ['CODE_ROOT']
 cfgfile = os.path.join(CODE_ROOT, 
-                       'curiosity/curiosity/configs/future_test_config_b.cfg')
+                       'curiosity/curiosity/configs/config_c_more_hidden.cfg')
 cfg = postprocess_config(json.load(open(cfgfile)))
 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
-VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset8.lmdb'
+DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
+VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions8.tfrecords'
 BATCH_SIZE = 128
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
@@ -46,12 +46,12 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
     '''
     futures = inputs['future_images'][:num_to_save]
     predictions = outputs['pred']['pred0'][:num_to_save]
-    actions = inputs['actions'][:num_to_save]
+    actions = inputs['parsed_actions'][:num_to_save]
     currents = inputs['images'][:num_to_save]
     futures = tf.cast(futures, tf.uint8)
     predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
-    retval = {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions}
+    retval = {'pred' : predictions, 'fut' : futures, 'cur': currents, 'act' : actions}
     retval.update(get_loss_by_layer(inputs, outputs, **loss_params))
     return retval
 
@@ -86,12 +86,12 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'future_pred_symmetric',
-        'exp_id': 'test20_time4',
-        'save_valid_freq': 500,
-        'save_filters_freq': 30000,
-        'cache_filters_freq': 500,
+        'exp_id': '22_cgf_hid',
+        'save_valid_freq': 2000,
+        'save_filters_freq': 50000,
+        'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images']
+        'save_to_gfs': ['act', 'pred', 'fut', 'cur']
 	},
 
 	'model_params' : {
@@ -99,22 +99,23 @@ params = {
 		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0,
-        'min_max_end' : False
+        'min_max_end' : False,
+        'diff_mode' : False
 	},
 
 	'train_params': {
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
-            'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
-    	    'random_time': False,
-            'min_time_difference': 10,
-    	    'batch_size': 128
+            # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
+            'min_time_difference': 4,
+    	    'batch_size': 128,
+            'n_threads': 4,
+
         },
         'queue_params': {
             'queue_type': 'random',
             'batch_size': BATCH_SIZE,
-            'n_threads': 1,
             'seed': 0,
     	    'capacity': BATCH_SIZE * 100
         },
@@ -142,22 +143,21 @@ params = {
             'data_params': {
                 'func': FuturePredictionData,
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
-                'random_time': False,
-                'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': 10,
+                # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
+                'min_time_difference': 4,
                 'batch_size': 128,
+                'n_threads': 4,
             },
             'queue_params': {
                 'queue_type': 'random',
                 'batch_size': BATCH_SIZE,
-                'n_threads': 1,
                 'seed': 0,
               'capacity': BATCH_SIZE * 100,
             },
         'targets': {
                 'func': get_current_predicted_future_action,
                 'targets' : [],
-                'num_to_save' : 10
+                'num_to_save' : 5
             },
         'agg_func' : mean_losses_keep_rest,
         # 'agg_func': utils.mean_dict,

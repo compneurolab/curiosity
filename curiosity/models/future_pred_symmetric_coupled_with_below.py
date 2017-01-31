@@ -232,11 +232,11 @@ def getFilterSeed(rng, cfg):
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
   batch_size = inputs['images'].get_shape().as_list()[0]
-  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'future' : inputs['future_images'], 'time' : tf.ones([batch_size, 1])}
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['parsed_actions'], 'future' : inputs['future_images'], 'time' : tf.ones([batch_size, 1])}
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, min_max_end = True, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, min_max_end = True, min_max_intermediate = True, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
@@ -356,7 +356,11 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
       else:
         if diff_mode:
           pred = m.conv(nf, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
-          pred = m.minmax(min_arg = 2, max_arg = -2)
+          if min_max_intermediate:
+            pred = m.minmax(min_arg = 2, max_arg = -2)
+            print('Adding min and max at intermediate')
+          else:
+            print('No intermediate min and max')
         else:
           pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
       preds['pred' + str(encode_depth - i)] = pred

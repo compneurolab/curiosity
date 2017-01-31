@@ -26,8 +26,8 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/dataset.lmdb'
-VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset8.lmdb'
+DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
+VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions8.tfrecords'
 BATCH_SIZE = 128
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
@@ -46,12 +46,12 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, diff_m
     '''
     futures = inputs['future_images'][:num_to_save]
     predictions = outputs['pred']['pred0'][:num_to_save]
-    actions = inputs['actions'][:num_to_save]
+    actions = inputs['parsed_actions'][:num_to_save]
     currents = inputs['images'][:num_to_save]
     futures = tf.cast(futures, tf.uint8)
     predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
-    retval = {'prediction' : predictions, 'future_images' : futures, 'current_images': currents, 'actions' : actions}
+    retval = {'pred' : predictions, 'fut' : futures, 'cur': currents, 'act' : actions}
     if diff_mode:
         diffs = outputs['diff']['diff0'][:num_to_save]
         diffs = tf.cast(tf.multiply(diffs, 255), tf.uint8)
@@ -94,13 +94,13 @@ params = {
 	    'host': 'localhost',
         'port': 27017,
         'dbname': 'future_pred_test',
-        'collname': 'future_pred_diff_symmetric',
-        'exp_id': 'test3_time4',
+        'collname': 'diff_symmetric',
+        'exp_id': '7_nominmax',
         'save_valid_freq': 500,
         'save_filters_freq': 30000,
         'cache_filters_freq': 500,
         'save_initial_filters' : False,
-        'save_to_gfs': ['actions', 'prediction', 'future_images', 'current_images', 'diff']
+        'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'diff']
 	},
 
 	'model_params' : {
@@ -109,24 +109,25 @@ params = {
 		'cfg' : cfg,
 		'slippage' : 0,
         'min_max_end' : False,
-        'diff_mode' : True
+        'diff_mode' : True,
+        'min_max_intermediate' : False
 	},
 
 	'train_params': {
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
-            'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
-    	    'random_time': False,
+            # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
             'min_time_difference': 4,
-    	    'batch_size': 128
+    	    'batch_size': 128,
+            'n_threads' : 4
         },
         'queue_params': {
             'queue_type': 'random',
             'batch_size': BATCH_SIZE,
-            'n_threads': 1,
             'seed': 0,
-    	    'capacity': BATCH_SIZE * 100
+    	    'capacity': BATCH_SIZE * 100,
+            # 'n_threads' : 4
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
         'thres_loss' : float('inf')
@@ -152,17 +153,18 @@ params = {
             'data_params': {
                 'func': FuturePredictionData,
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
-                'random_time': False,
-                'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
+                # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
                 'min_time_difference': 4,
                 'batch_size': 128,
+                'n_threads' : 4,
             },
             'queue_params': {
                 'queue_type': 'random',
                 'batch_size': BATCH_SIZE,
-                'n_threads': 1,
                 'seed': 0,
               'capacity': BATCH_SIZE * 100,
+                # 'n_threads' : 4
+
             },
         'targets': {
                 'func': get_current_predicted_future_action,
