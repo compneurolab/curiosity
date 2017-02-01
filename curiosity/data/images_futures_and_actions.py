@@ -3,6 +3,7 @@ import numpy as np
 import json
 from PIL import Image
 import tensorflow as tf
+import copy
 
 class FuturePredictionData(TFRecordsDataProvider):
     batch_num = 0
@@ -10,12 +11,15 @@ class FuturePredictionData(TFRecordsDataProvider):
                  data_path,
                  batch_size=256,
                  crop_size=None,
-                 min_time_difference=1, # including, also specifies fixed time 
+                 min_time_difference=1, # including, also specifies fixed time
+                 output_format={'images': 'pairs', 'actions': 'sequence'},
                  n_threads=4,
                  *args,
                  **kwargs):
 
         self.orig_shape = None
+
+        self.output_format = output_format
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -59,8 +63,43 @@ class FuturePredictionData(TFRecordsDataProvider):
                 super(FuturePredictionData, self).init_threads()
  
         for i in range(len(self.input_ops)):
-            self.input_ops[i], self.dtypes, self.shapes = self.create_image_pairs( \
-                self.input_ops[i], self.dtypes, self.shapes)
+            if (self.output_format['images'] == 'pairs'):
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.create_image_pairs(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+            
+            elif (self.output_format['images'] == 'sequence'):
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.create_image_sequence(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+                if (i == 0):
+                    self.dtypes['future_images'] = self.dtypes[self.images]
+                    self.shapes['future_images'] = \
+                            copy.deepcopy(self.shapes[self.images])
+                    # update shapes to match the concatenated action vector
+                    self.shapes[self.images][2] *= self.min_time_difference
+                   
+            else:
+                raise KeyError('Unknown image output format')
+
+            if (self.output_format['actions'] == 'pairs'):
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.create_action_pairs(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+
+            elif (self.output_format['actions'] == 'sequence'):
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.create_action_sequence(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+                if (i == 0):
+                    self.dtypes['future_actions'] = self.dtypes[self.actions]
+                    self.shapes['future_actions'] = \
+                            copy.deepcopy(self.shapes[self.actions])
+                    # update shapes to match the concatenated action vector
+                    self.shapes[self.actions][0] *= self.min_time_difference
+
+            else:
+                raise KeyError('Unknown action output format')
 
         return [self.input_ops, self.dtypes, self.shapes]
 
@@ -72,27 +111,51 @@ class FuturePredictionData(TFRecordsDataProvider):
         begin = [0,0,0,0]
         data[self.images] = tf.slice(data[self.images], begin, size)
 
+        dtypes['future_images'] = dtypes[self.images]
+        shapes['future_images'] = shapes[self.images]                   
+
+        return [data, dtypes, shapes]
+
+    def create_action_pairs(self, data, dtypes, shapes):
         size = [self.batch_size - self.min_time_difference, -1]
         begin = [self.min_time_difference, 0]
         data['future_actions'] = tf.slice(data[self.actions], begin, size)
 
         begin = [0,0]
         data[self.actions] = tf.slice(data[self.actions], begin, size)
-        #TODO CREATE ACTION SEQUENCE BY FLATTENING VECTOR?
-
-        dtypes['future_images'] = dtypes[self.images]
-        shapes['future_images'] = shapes[self.images]                   
 
         dtypes['future_actions'] = dtypes[self.actions]
         shapes['future_actions'] = shapes[self.actions]
 
-        #TODO REMOVE THIS BLOCK IF USING FUTURE ACTIONS AS THIS IS ONLY FOR DEBUGGING
-        data['future_actions'] = tf.cast(data['future_actions'], tf.int32)[:,0]
-	dtypes['future_actions'] = tf.int32
-        shapes['future_actions'] = []
+        return [data, dtypes, shapes]
+       
+    def create_image_sequence(self, data, dtypes, shapes):
+        size = [self.batch_size - self.min_time_difference, -1, -1, -1]
+        begin = [self.min_time_difference, 0, 0, 0]
+        data['future_images'] = tf.slice(data[self.images], begin, size)
+
+        shifts = []
+        for i in range(self.min_time_difference):
+            begin = [i,0,0,0]
+            shifts.append(tf.slice(data[self.images], begin, size))
+
+        data[self.images] = tf.concat(3, shifts)
 
         return [data, dtypes, shapes]
 
+    def create_action_sequence(self, data, dtypes, shapes):
+        size = [self.batch_size - self.min_time_difference, -1]
+        begin = [self.min_time_difference, 0]
+        data['future_actions'] = tf.slice(data[self.actions], begin, size)        
+
+        shifts = []
+        for i in range(self.min_time_difference):
+            begin = [i,0]
+            shifts.append(tf.slice(data[self.actions], begin, size))
+
+        data[self.actions] = tf.concat(1, shifts)
+       
+        return [data, dtypes, shapes]
 
 class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
     batch_num = 0
