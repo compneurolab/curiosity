@@ -18,29 +18,6 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 
 from curiosity.utils.io import recv_array
 
-ctx = zmq.Context()
-sock = None
-IMAGE_SIZE = None
-NUM_CHANNELS = None
-ACTION_LENGTH = None
-
-def initialize(host, port, datapath, keyname):
-  global ctx, sock, IMAGE_SIZE, NUM_CHANNELS, ACTION_LENGTH
-  sock = ctx.socket(zmq.REQ)
-  print("connecting...")
-  sock.connect("tcp://%s:%d" % (host, port))
-  print("...connected")
-  sock.send_json({'batch_size': 1,
-                  'batch_num': 0,
-                  'path': datapath,
-                  'keys': [(keyname, 'images0'), 
-                           (keyname, 'actions')]
-                 })
-  images = recv_array(sock)
-  actions = recv_array(sock)
-  IMAGE_SIZE = images.shape[1]
-  NUM_CHANNELS = images.shape[-1]
-  ACTION_LENGTH = actions.shape[1]
 
 
 def getEncodeDepth(rng, cfg, slippage=0):
@@ -236,10 +213,12 @@ def model_tfutils_fpd_compatible(inputs, **kwargs):
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, min_max_end = True, min_max_intermediate = True, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode = False, num_classes = 1, **kwargs):
   '''Model definition, compatible with tfutils.
 
-  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
+  inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.
+  num_classes = 1 is equivalent to the original l2 loss model.
+  '''
   current_node = inputs['current']
   future_node = inputs['future']
   actions_node = inputs['actions']
@@ -283,7 +262,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
         new_encode_node_current = m.conv(nf, cfs, cs, in_layer = encode_nodes_current[i - 1])
         print('Current encode node shape: ' + str(new_encode_node_current.get_shape().as_list()))
     with tf.variable_scope('encode' + str(i), reuse = True):
-      new_encode_node_future = m.conv(nf, cfs, cs, in_layer = encode_nodes_future[i - 1], init='trunc_norm', stddev=.01, bias=0, activation='relu')
+      new_encode_node_future = m.conv(nf, cfs, cs, in_layer = encode_nodes_future[i - 1], \
+        init='trunc_norm', stddev=.01, bias=0, activation='relu')
   #TODO add print function
       print('Future encode node shape: ' + str(new_encode_node_current.get_shape().as_list()))
       do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
@@ -347,20 +327,16 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
       cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage = slippage)
       print('Pred conv filter size %d' % cfs)
       if i == encode_depth:
-        pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
-        if min_max_end:
-          print('adding min and max to end')
-          pred = m.minmax(min_arg = 1, max_arg = -1)
-        else:
-          print('no min and max at end')
+        pred = m.conv(nf * num_classes, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
+        #making this another dimension, while I *think* conv_2d would not handle this
+        if num_classes > 1:
+          my_shape = pred.get_shape().as_list()
+          my_shape[3] = nf
+          my_shape.append(num_classes)
+          pred = m.reshape(my_shape[1:])
       else:
         if diff_mode:
-          pred = m.conv(nf, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
-          if min_max_intermediate:
-            pred = m.minmax(min_arg = 2, max_arg = -2)
-            print('Adding min and max at intermediate')
-          else:
-            print('No intermediate min and max')
+          pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
         else:
           pred = m.conv(nf, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
       preds['pred' + str(encode_depth - i)] = pred
@@ -395,176 +371,6 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, diff_mode =
 
 
 
-
-def model(current_node, future_node, actions_node, time_node, rng, cfg, slippage=0, slippage_error=False):
-  """The Model definition."""
-  cfg0 = {} 
-
-  fseed = getFilterSeed(rng, cfg)
-  
-  #encoding
-  nf0 = NUM_CHANNELS
-  imsize = IMAGE_SIZE
-  encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
-  cfg0['encode_depth'] = encode_depth
-  print('Encode depth: %d' % encode_depth)
-  encode_nodes_current = []
-  encode_nodes_current.append(current_node)
-  encode_nodes_future = []
-  encode_nodes_future.append(future_node)
-  cfs0 = None
-  cfg0['encode'] = {}
-  for i in range(1, encode_depth + 1):
-    cfg0['encode'][i] = {}
-    cfs = getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
-    cfg0['encode'][i]['conv'] = {'filter_size': cfs}
-    cfs0 = cfs
-    nf = getEncodeConvNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['encode'][i]['conv']['num_filters'] = nf
-    cs = getEncodeConvStride(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['encode'][i]['conv']['stride'] = cs
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf],
-                                        stddev=0.01,
-                                        seed=fseed))
-    new_encode_node_current = tf.nn.conv2d(encode_nodes_current[i-1], W,
-                               strides = [1, cs, cs, 1],
-                               padding='SAME')
-    new_encode_node_current = tf.nn.relu(new_encode_node_current)
-    new_encode_node_future = tf.nn.conv2d(encode_nodes_future[i-1], W,
-                               strides = [1, cs, cs, 1],
-                               padding='SAME')
-    new_encode_node_future = tf.nn.relu(new_encode_node_future)
-    b = tf.Variable(tf.zeros([nf]))
-    new_encode_node_current = tf.nn.bias_add(new_encode_node_current, b)
-    new_encode_node_future = tf.nn.bias_add(new_encode_node_future, b)
-    imsize = imsize // cs
-    print('Encode conv %d with size %d stride %d num channels %d numfilters %d for shape' % (i, cfs, cs, nf0, nf), new_encode_node_current.get_shape().as_list())    
-    do_pool = getEncodeDoPool(i, encode_depth, rng, cfg, slippage=slippage)
-    if do_pool:
-      pfs = getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
-      cfg0['encode'][i]['pool'] = {'filter_size': pfs}
-      ps = getEncodePoolStride(i, encode_depth, rng, cfg, slippage=slippage)
-      cfg0['encode'][i]['pool']['stride'] = ps
-      pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
-      cfg0['encode'][i]['pool']['type'] = pool_type
-      if pool_type == 'max':
-        pfunc = tf.nn.max_pool
-      elif pool_type == 'avg':
-        pfunc = tf.nn.avg_pool
-      new_encode_node_current = pfunc(new_encode_node_current,
-                          ksize = [1, pfs, pfs, 1],
-                          strides = [1, ps, ps, 1],
-                          padding='SAME')
-      new_encode_node_future = pfunc(new_encode_node_future,
-                          ksize = [1, pfs, pfs, 1],
-                          strides = [1, ps, ps, 1],
-                          padding='SAME')                        
-      print('Encode %s pool %d with size %d stride %d for shape' % (pool_type, i, pfs, ps),
-                    new_encode_node_current.get_shape().as_list())
-      imsize = imsize // ps
-    nf0 = nf
-
-    encode_nodes_current.append(new_encode_node_current)   
-    encode_nodes_future.append(new_encode_node_future)
-
-  encode_node = encode_nodes_current[-1]
-  enc_shape = encode_node.get_shape().as_list()
-  encode_flat = tf.reshape(encode_node, [enc_shape[0], np.prod(enc_shape[1:])])
-  print('Flatten to shape %s' % encode_flat.get_shape().as_list())
-
-  encode_flat = tf.concat(1, [encode_flat, actions_node, time_node]) 
-  #hidden
-  nf0 = encode_flat.get_shape().as_list()[1]
-  hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
-  cfg0['hidden_depth'] = hidden_depth
-  hidden = encode_flat
-  cfg0['hidden'] = {}
-  for i in range(1, hidden_depth + 1):
-    nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
-    cfg0['hidden'][i] = {'num_features': nf}
-    W = tf.Variable(tf.truncated_normal([nf0, nf],
-                                        stddev = 0.01,
-                                        seed=fseed))    
-    b = tf.Variable(tf.constant(0.01, shape=[nf]))
-    hidden = tf.nn.relu(tf.matmul(hidden, W) + b)
-    print('hidden layer %d %s' % (i, str(hidden.get_shape().as_list())))
-    nf0 = nf
-
-  #decode
-  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
-  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
-  cfg0['decode'] = {0: {'num_filters': nf1}}
-  if ds * ds * nf1 != nf0:
-    W = tf.Variable(tf.truncated_normal([nf0, ds * ds * nf1],
-                                        stddev = 0.01,
-                                        seed=fseed))
-    b = tf.Variable(tf.constant(0.01, shape=[ds * ds * nf1]))
-    hidden = tf.matmul(hidden, W) + b
-    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
-  decode = tf.reshape(hidden, [enc_shape[0], ds, ds, nf1])  
-  print("Unflattening to", decode.get_shape().as_list())
-  
-  pred = tf.concat(3, [decode, encode_nodes_current[encode_depth]])
-  nf = encode_nodes_future[encode_depth].get_shape().as_list()[-1]
-  cfs = getDecodeFilterSize2(0, encode_depth, rng, cfg, slippage=slippage)
-  W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-                                      stddev=0.1,
-                                      seed=fseed))
-  b = tf.Variable(tf.zeros([nf]))
-  pred = tf.nn.conv2d(pred,
-                      W,
-                      strides=[1, 1, 1, 1],
-                      padding='SAME')
-  pred = tf.nn.relu(tf.nn.bias_add(pred, b))
-  
-  norm = (ds**2) * enc_shape[0] * nf
-  loss = tf.nn.l2_loss(pred - encode_nodes_future[encode_depth]) / norm
-  
-  for i in range(1, encode_depth + 1):
-    nf0 = nf1
-    ds = encode_nodes_future[encode_depth - i].get_shape().as_list()[1]
-    decode = tf.image.resize_images(decode, ds, ds)
-    print('Decode resize %d to shape' % i, decode.get_shape().as_list())
-    cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['decode'][i] = {'filter_size': cfs}
-    nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['decode'][i]['num_filters'] = nf1
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf0, nf1],
-                                        stddev=0.1,
-                                        seed=fseed))
-    b = tf.Variable(tf.zeros([nf1]))
-    decode = tf.nn.conv2d(decode,
-                          W,
-                          strides=[1, 1, 1, 1],
-                          padding='SAME')
-    decode = tf.nn.relu(tf.nn.bias_add(decode, b))
-    
-    pred = tf.concat(3, [decode, encode_nodes_current[encode_depth - i]])
-    
-    cfs = getDecodeFilterSize2(i, encode_depth, rng, cfg, slippage=slippage)
-    cfg0['decode'][i]['filter_size2'] = cfs
-  
-    nf = encode_nodes_future[encode_depth - i].get_shape().as_list()[-1]
-    W = tf.Variable(tf.truncated_normal([cfs, cfs, nf + nf1, nf],
-                                        stddev=0.1,
-                                        seed=fseed))
-    b = tf.Variable(tf.zeros([nf]))
-    pred = tf.nn.conv2d(pred,
-                        W,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    pred = tf.nn.bias_add(pred, b)
-
-    if i == encode_depth:  #add relu to all but last ... need this?
-      pred = tf.minimum(tf.maximum(pred, -1), 1)
-    else:
-      pred = tf.nn.relu(pred)
-    
-    norm = (ds**2) * enc_shape[0] * nf
-    loss = loss + tf.nn.l2_loss(pred - encode_nodes_future[encode_depth - i]) / norm
-  #loss = loss 
- 
-  return loss, pred, cfg0
 
 def diff_loss_per_case_fn(labels, logits, **kwargs):
   '''This allows us to do the diff one while reusing the above code.
@@ -610,46 +416,30 @@ def loss_per_case_fn(labels, logits, **kwargs):
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
+def discretized_loss_fn(labels, logits, num_classes, **kwargs):
+  outputs = logits
+  inputs = labels
+  print(inputs)
+  print(outputs)
+  encode_depth = len(outputs['pred']) - 1
+  tv = outputs['diff']['diff0']
+  tv = tf.cast((num_classes - 1) * tv, tf.uint8)
+  tv = tf.one_hot(tv, depth = num_classes)
+  pred = outputs['pred']['pred0']
+  #Not sure whether we should normalize this at all, but I think it's pretty ok as is
+  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
+  for i in range(1, encode_depth + 1):
+    tv = outputs['diff']['diff' + str(i)]
+    pred = outputs['pred']['pred' + str(i)]
+    my_shape = tv.get_shape().as_list()
+    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+    loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
+
+
 def loss_agg_for_validation(labels, logits, **kwargs):
   #kind of a hack, just getting a validation score like our loss for this test
   return {'minibatch_loss' : tf.reduce_mean(loss_per_case_fn(labels, logits, **kwargs))}
 
 
 
-def get_model(rng, batch_size, cfg, slippage, slippage_error,
-              host, port, datapath, keyname,
-              loss_multiple=1, diff_gated=False, diff_diff=0.1, diff_power=None):
-  global sock
-  if sock is None:
-    initialize(host, port, datapath, keyname)
-
-  current_node = tf.placeholder(
-      tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
-  future_node = tf.placeholder(
-        tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
-  actions_node = tf.placeholder(tf.float32,
-                                shape=(batch_size,
-                                       ACTION_LENGTH))
-  
-  time_node = tf.placeholder(tf.float32,
-                             shape=(batch_size, 1))
-
-  loss, train_prediction, cfg = model(current_node, future_node, 
-                                      actions_node, time_node, 
-                                      rng=rng, cfg=cfg, 
-                                      slippage=slippage, 
-                                      slippage_error=slippage_error)
-
-  innodedict = {'current': current_node,
-                'future': future_node,
-                'actions': actions_node,
-                'timediff': time_node}
-
-  outnodedict = {'train_prediction': train_prediction,
-                 'loss': loss}
-                
-  return outnodedict, innodedict, cfg  

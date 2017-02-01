@@ -12,7 +12,7 @@ from PIL import Image
 dbname = 'future_pred_test'
 collname = 'future_pred_symmetric'
 port = 27017
-exp_id = '21_t4'
+exp_id = '22_cgf_hid'
 save_loc = '/home/nhaber/really_temp'
 save_fn = os.path.join(save_loc, exp_id + '.p')
 target_name = 'valid0'
