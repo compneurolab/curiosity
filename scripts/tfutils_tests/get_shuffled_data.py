@@ -86,6 +86,7 @@ params = {
             #'tfsource': DATA_PATH,
             'n_threads': 4,
             'output_format': {'images': 'pairs', 'actions': 'sequence'},
+            'use_object_ids': True,
             #'sourcedict': {'images': tf.string, 'parsed_actions': tf.string},
             #'imagelist': ['images'],
         },
@@ -120,7 +121,8 @@ params = {
                 #'random_time': False,
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
 		'min_time_difference': 5,
-                'output_format': {'images': 'pairs', 'actions': 'sequence'},
+                'output_format': {'images': 'pairs', 'actions': 'sequence'},  
+                'use_object_ids': True,
 		'batch_size': 256,
                 'n_threads': 4,
                 #'batch_size': 256,

@@ -13,6 +13,7 @@ class FuturePredictionData(TFRecordsDataProvider):
                  crop_size=None,
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
+                 use_object_ids=True,
                  n_threads=4,
                  *args,
                  **kwargs):
@@ -20,6 +21,7 @@ class FuturePredictionData(TFRecordsDataProvider):
         self.orig_shape = None
 
         self.output_format = output_format
+        self.use_object_ids = use_object_ids
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -56,6 +58,16 @@ class FuturePredictionData(TFRecordsDataProvider):
         actions = tf.cast(actions, tf.float32)
         dtype = tf.float32
         shape = [25]
+
+        if not self.use_object_ids:
+            # object ids are at columns 13 and 22, thus remove those columns
+            actions = tf.concat(1, [
+                tf.slice(actions, [0,  0], [-1, 13]),
+                tf.slice(actions, [0, 14], [-1, 8]),
+                tf.slice(actions, [0, 23], [-1, -1]),
+            ])
+            # now shape is 23 instead 25 since object ids were removed
+            shape = [23]
         return [actions, dtype, shape]
 
     def init_threads(self):
