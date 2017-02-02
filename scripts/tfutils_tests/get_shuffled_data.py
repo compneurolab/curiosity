@@ -46,7 +46,9 @@ def simple_return(inputs, outputs, target):
     return {'inputs': inputs['images'], }#'outputs': inputs['future_ids']}
 
 def dummy_loss(**kwargs):
-    return 1.0
+    kwargs['labels'] = tf.cast(kwargs['labels'], tf.int32)[:,0]
+    return tf.nn.sparse_softmax_cross_entropy_with_logits(**kwargs)
+    
 
 """
 def online_agg(agg_res, res, step):
@@ -63,7 +65,7 @@ params = {
         'port': 27017,
         'dbname': 'randomshuffle-test',
         'collname': 'randomshuffle',
-        'exp_id': 'test10',
+        'exp_id': 'test12',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000,
@@ -79,17 +81,18 @@ params = {
             'data_path': DATA_PATH,
             #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
 	    #'random_time': False,
-            'min_time_difference': 1,
+            'min_time_difference': 5,
 	    'batch_size': 256,
             #'tfsource': DATA_PATH,
             'n_threads': 4,
+            'output_format': {'images': 'pairs', 'actions': 'sequence'},
+            'use_object_ids': True,
             #'sourcedict': {'images': tf.string, 'parsed_actions': tf.string},
             #'imagelist': ['images'],
         },
         'queue_params': {
             'queue_type': 'fifo',
             'batch_size': BATCH_SIZE,
-            #'n_threads': 4,
             'seed': 0,
 	    'capacity': BATCH_SIZE * 100
         },
@@ -97,9 +100,9 @@ params = {
     },
 
     'loss_params': {
-        'targets': 'future_actions',
+        'targets': 'parsed_actions',
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': tf.nn.sparse_softmax_cross_entropy_with_logits,
+        'loss_per_case_func': dummy_loss,
     },
 
     'learning_rate_params': {
@@ -116,7 +119,9 @@ params = {
                 'data_path': DATA_PATH,  # path to image database
                 #'random_time': False,
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-		'min_time_difference': 1,
+		'min_time_difference': 5,
+                'output_format': {'images': 'pairs', 'actions': 'sequence'},  
+                'use_object_ids': True,
 		'batch_size': 256,
                 'n_threads': 4,
                 #'batch_size': 256,
@@ -127,13 +132,12 @@ params = {
             'queue_params': {
                 'queue_type': 'fifo',
                 'batch_size': BATCH_SIZE,
-                #'n_threads': 4,
                 'seed': 0,
 		'capacity': BATCH_SIZE * 100,
             },
 	    'targets': {
                 'func': simple_return,
-                'target': 'future_actions',
+                'target': 'parsed_actions',
             },
 	    'agg_func': utils.mean_dict,
             'num_steps': 1, # N_VAL // BATCH_SIZE + 1,
