@@ -12,7 +12,7 @@ from PIL import Image
 dbname = 'acion_pred'
 collname = 'action_pred_symmetric'
 port = 27017
-exp_id = 'test1'
+exp_id = 'test2'
 save_loc = '/home/mrowca/val_data'
 save_fn = os.path.join(save_loc, exp_id + '.p')
 target_name = 'valid0'

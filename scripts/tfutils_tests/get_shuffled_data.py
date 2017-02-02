@@ -93,7 +93,6 @@ params = {
         'queue_params': {
             'queue_type': 'fifo',
             'batch_size': BATCH_SIZE,
-            #'n_threads': 4,
             'seed': 0,
 	    'capacity': BATCH_SIZE * 100
         },
@@ -133,7 +132,6 @@ params = {
             'queue_params': {
                 'queue_type': 'fifo',
                 'batch_size': BATCH_SIZE,
-                #'n_threads': 4,
                 'seed': 0,
 		'capacity': BATCH_SIZE * 100,
             },

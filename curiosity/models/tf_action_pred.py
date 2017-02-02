@@ -181,57 +181,12 @@ def flatten(net, node):
     return flat_node
 
 def l2_action_loss(labels, logits, **kwargs):
+    epsilon = 1e-3
     pred = logits['pred']
     shape = labels.get_shape().as_list()
     norm = shape[0] * shape[1]
-    loss = tf.nn.l2_loss(pred - labels) / norm
+    #batch normalize action features
+    batch_mean, batch_var = tf.nn.moments(labels,[0])
+    norm_labels = (labels - batch_mean) / tf.sqrt(batch_var + epsilon)
+    loss = tf.nn.l2_loss(pred - norm_labels) / norm
     return loss
-
-################ NICK ####################
-
-def diff_loss_per_case_fn(labels, logits, **kwargs):
-  '''This allows us to do the diff one while reusing the above code.
-
-  Maybe merge with below.'''
-  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
-  outputs = logits
-  inputs = labels
-  encode_depth = len(outputs['pred']) - 1
-  batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
-  #this just to avoid declaring another placeholder
-  tv = outputs['diff']['diff' + str(0)]
-  pred = outputs['pred']['pred' + str(0)]
-  my_shape = tv.get_shape().as_list()
-  norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
-  loss = tf.nn.l2_loss(pred - tv) / norm
-  for i in range(1, encode_depth + 1):
-    tv = outputs['diff']['diff' + str(i)]
-    pred = outputs['pred']['pred' + str(i)]
-    my_shape = tv.get_shape().as_list()
-    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
-    loss = loss + tf.nn.l2_loss(pred - tv) / norm
-  return loss
-
-def loss_per_case_fn(labels, logits, **kwargs):
-  #Changed names of inputs to make compatible with tfutils, but this isn't so natural...
-  outputs = logits
-  inputs = labels
-  encode_depth = len(outputs['pred']) - 1
-  batch_size = outputs['pred']['pred0'].get_shape().as_list()[0]
-  #this just to avoid declaring another tensor
-  tv = outputs['future']['future' + str(0)]
-  pred = outputs['pred']['pred' + str(0)]
-  my_shape = tv.get_shape().as_list()
-  norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
-  loss = tf.nn.l2_loss(pred - tv) / norm
-  for i in range(1, encode_depth + 1):
-    tv = outputs['future']['future' + str(i)]
-    pred = outputs['pred']['pred' + str(i)]
-    my_shape = tv.get_shape().as_list()
-    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
-    loss = loss + tf.nn.l2_loss(pred - tv) / norm
-  return loss
-
-def loss_agg_for_validation(labels, logits, **kwargs):
-  #kind of a hack, just getting a validation score like our loss for this test
-  return {'minibatch_loss' : tf.reduce_mean(loss_per_case_fn(labels, logits, **kwargs))}

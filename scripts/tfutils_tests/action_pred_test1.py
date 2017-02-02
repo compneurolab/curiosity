@@ -16,7 +16,7 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
                                       postprocess_config)
 
 cfgfile = os.path.join('/home/mrowca/workspace/', 
-                       'curiosity/curiosity/configs/config_c_mode_hidden.cfg')
+                       'curiosity/curiosity/configs/action_config1.cfg')
 cfg = postprocess_config(json.load(open(cfgfile)))
 
 DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
@@ -72,7 +72,7 @@ params = {
         'port': 27017,
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
-        'exp_id': 'test1',
+        'exp_id': 'test2',
         'save_valid_freq': 2000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
@@ -121,7 +121,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.0001,
+        'learning_rate': 0.01,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True

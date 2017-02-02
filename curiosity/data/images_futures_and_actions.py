@@ -63,11 +63,12 @@ class FuturePredictionData(TFRecordsDataProvider):
             # object ids are at columns 13 and 22, thus remove those columns
             actions = tf.concat(1, [
                 tf.slice(actions, [0,  0], [-1, 13]),
-                tf.slice(actions, [0, 14], [-1, 8]),
-                tf.slice(actions, [0, 23], [-1, -1]),
+                tf.slice(actions, [0, 14], [-1,  2]),
+#                tf.slice(actions, [0, 14], [-1, 8]),
+#                tf.slice(actions, [0, 23], [-1, -1]),
             ])
             # now shape is 23 instead 25 since object ids were removed
-            shape = [23]
+            shape = [15] #23
         return [actions, dtype, shape]
 
     def init_threads(self):
