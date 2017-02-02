@@ -49,7 +49,7 @@ def get_current_predicted_future_action(inputs, outputs, num_classes, num_to_sav
     actions = inputs['parsed_actions'][:num_to_save]
     currents = inputs['images'][:num_to_save]
     futures = tf.cast(futures, tf.uint8)
-    predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
+    # predictions = tf.cast(tf.multiply(predictions, 255), tf.uint8)
     currents = tf.cast(currents, tf.uint8)
     retval = {'pred' : predictions, 'fut' : futures, 'cur': currents, 'act' : actions}
     if diff_mode:
