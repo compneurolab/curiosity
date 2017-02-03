@@ -442,7 +442,7 @@ def something_or_nothing_loss_fn(labels, logits, sigmoid_hiddens = False, **kwar
   encode_depth = len(outputs['pred']) - 1
   #we set num_classes = 1 for this, keeping parameters down...this is probably not that important
   tv = outputs['diff']['diff0']
-  tv = tf.cast(tf.ceil(tv), 'uint8')
+  tv = tf.cast(tf.ceil(tf.abs(tv)), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
   pred = outputs['pred']['pred0']
   my_shape = pred.get_shape().as_list()
