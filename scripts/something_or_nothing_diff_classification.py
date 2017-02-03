@@ -1,5 +1,7 @@
 '''
-A script for running a discretized version of diff loss, assuming a symmetric architecture with bypasses.
+Something-or-nothing discretized diff, i.e., an cross entropy logit loss computed for a diff estimate where it must decide whether diff is 0 or 1.
+
+Symmetric loss function, only discretizes the pixel-level one.
 '''
 
 import numpy as np
@@ -79,10 +81,18 @@ def get_loss_by_layer(inputs, outputs, num_classes, diff_mode = False, **loss_pa
         tv_string = 'future'
     retval = {}
     encode_depth = len(outputs['pred']) - 1
+
     tv = outputs['diff']['diff0']
-    tv = tf.cast((num_classes - 1) * tv, tf.uint8)
-    tv = tf.one_hot(tv, depth = num_classes)
+    tv = tf.cast(tf.ceil(tv), 'uint8')
+    tv = tf.one_hot(tv, depth = 2)
     pred = outputs['pred']['pred0']
+    my_shape = pred.get_shape().as_list()
+    my_shape.append(1)
+    pred = tf.reshape(pred, my_shape)
+    pred = tf.concat(4, [tf.zeros(my_shape), pred])
+    print('before loss shapes')
+    print(pred.get_shape().as_list())
+    print(tv.get_shape().as_list())
     retval['loss0'] = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
     for i in range(1, encode_depth + 1):
         tv = outputs[tv_string][tv_string + str(i)]
@@ -100,10 +110,10 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'discretized',
-        'exp_id': 'test1',
-        'save_valid_freq': 500,
+        'exp_id': 'sn_loss',
+        'save_valid_freq': 3000,
         'save_filters_freq': 30000,
-        'cache_filters_freq': 500,
+        'cache_filters_freq': 3000,
         'save_initial_filters' : False,
         'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'diff']
 	},
@@ -114,7 +124,7 @@ params = {
 		'cfg' : cfg,
 		'slippage' : 0,
         'diff_mode' : True,
-        'num_classes' : 10
+        'num_classes' : 1
 	},
 
 	'train_params': {
@@ -141,9 +151,9 @@ params = {
     'loss_params': {
         'targets': [],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.discretized_loss_fn,
+        'loss_per_case_func': modelsource.something_or_nothing_loss_fn,
 		'loss_func_kwargs' : {
-			'num_classes' : 10
+			'num_classes' : 1
 		}
     },
 
@@ -178,7 +188,7 @@ params = {
                 'targets' : [],
                 'num_to_save' : 2,
                 'diff_mode' : True,
-                'num_classes' : 10
+                'num_classes' : 1
             },
         'agg_func' : mean_losses_keep_rest,
         # 'agg_func': utils.mean_dict,

@@ -419,8 +419,6 @@ def loss_per_case_fn(labels, logits, **kwargs):
 def discretized_loss_fn(labels, logits, num_classes, **kwargs):
   outputs = logits
   inputs = labels
-  print(inputs)
-  print(outputs)
   encode_depth = len(outputs['pred']) - 1
   tv = outputs['diff']['diff0']
   tv = tf.cast((num_classes - 1) * tv, tf.uint8)
@@ -436,6 +434,30 @@ def discretized_loss_fn(labels, logits, num_classes, **kwargs):
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
+def something_or_nothing_loss_fn(labels, logits, **kwargs):
+  outputs = logits
+  inputs = labels
+  encode_depth = len(outputs['pred']) - 1
+  #we set num_classes = 1 for this, keeping parameters down...this is probably not that important
+  tv = outputs['diff']['diff0']
+  tv = tf.cast(tf.ceil(tv), 'uint8')
+  tv = tf.one_hot(tv, depth = 2)
+  pred = outputs['pred']['pred0']
+  my_shape = pred.get_shape().as_list()
+  my_shape.append(1)
+  pred = tf.reshape(pred, my_shape)
+  pred = tf.concat(4, [tf.zeros(my_shape), pred])
+  print('before loss shapes')
+  print(pred.get_shape().as_list())
+  print(tv.get_shape().as_list())
+  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
+  for i in range(1, encode_depth + 1):
+    tv = outputs['diff']['diff' + str(i)]
+    pred = outputs['pred']['pred' + str(i)]
+    my_shape = tv.get_shape().as_list()
+    norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
+    loss = loss + tf.nn.l2_loss(pred - tv) / norm
+  return loss
 
 def loss_agg_for_validation(labels, logits, **kwargs):
   #kind of a hack, just getting a validation score like our loss for this test
