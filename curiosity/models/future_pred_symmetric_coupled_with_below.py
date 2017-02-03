@@ -421,7 +421,8 @@ def discretized_loss_fn(labels, logits, num_classes, sigmoid_hiddens = False, **
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
   tv = outputs['diff']['diff0']
-  tv = tf.cast((num_classes - 1) * tv, tf.uint8)
+  #get the range to be [0, num_classes-1], then floor it
+  tv = tf.cast((num_classes - 1) * (tv + 1) / 2, tf.uint8)
   tv = tf.one_hot(tv, depth = num_classes)
   pred = outputs['pred']['pred0']
   #Not sure whether we should normalize this at all, but I think it's pretty ok as is
