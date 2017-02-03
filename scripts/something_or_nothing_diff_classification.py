@@ -110,7 +110,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'discretized',
-        'exp_id': 'sn_loss',
+        'exp_id': 'sn_fixed',
         'save_valid_freq': 3000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 3000,

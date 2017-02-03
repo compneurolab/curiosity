@@ -468,6 +468,18 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
   return m.output, m.params
 
+def something_or_nothing_loss_fn(output, image, future_image, **kwargs):
+  diff = future_image - image
+  tv = tf.cast(tf.ceil(diff / 255.), 'uint8')
+  tv = tf.one_hot(tv, depth = 2)
+  pred = output
+  my_shape = pred.get_shape().as_list()
+  my_shape.append(1)
+  pred = tf.reshape(pred, my_shape)
+  pred = tf.concat(4, [tf.zeros(my_shape), pred])
+  return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
+
+
 
 
 def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
