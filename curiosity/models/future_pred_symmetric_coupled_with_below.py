@@ -416,7 +416,7 @@ def loss_per_case_fn(labels, logits, **kwargs):
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
-def discretized_loss_fn(labels, logits, num_classes, **kwargs):
+def discretized_loss_fn(labels, logits, num_classes, sigmoid_hiddens = False, **kwargs):
   outputs = logits
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
@@ -429,12 +429,14 @@ def discretized_loss_fn(labels, logits, num_classes, **kwargs):
   for i in range(1, encode_depth + 1):
     tv = outputs['diff']['diff' + str(i)]
     pred = outputs['pred']['pred' + str(i)]
+    if sigmoid_hiddens:
+      pred = 2 * tf.nn.sigmoid(pred) - 1
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
-def something_or_nothing_loss_fn(labels, logits, **kwargs):
+def something_or_nothing_loss_fn(labels, logits, sigmoid_hiddens = False, **kwargs):
   outputs = logits
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
@@ -454,6 +456,8 @@ def something_or_nothing_loss_fn(labels, logits, **kwargs):
   for i in range(1, encode_depth + 1):
     tv = outputs['diff']['diff' + str(i)]
     pred = outputs['pred']['pred' + str(i)]
+    if sigmoid_hiddens:
+      pred = 2 * tf.nn.sigmoid(pred) - 1
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm

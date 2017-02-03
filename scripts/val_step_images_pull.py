@@ -12,10 +12,11 @@ from PIL import Image
 dbname = 'future_pred_test'
 collname = 'discretized'
 port = 27017
-exp_id = 'test1'
+exp_id = 'sn_loss'
 save_loc = '/home/nhaber/really_temp'
 save_fn = os.path.join(save_loc, exp_id + '.p')
 target_name = 'valid0'
+one_channel_softmax = True
 
 conn = pm.MongoClient(port = 27017)
 coll = conn[dbname][collname + '.files']
@@ -55,6 +56,10 @@ def convert_to_viz_sharp(np_arr):
 	a_m = np.argmax(np_arr, axis = -1)
 	return (a_m * 255. / float(num_classes)).astype('uint8')
 
+
+def sigmoid_it(np_arr):
+	sigm = 1. / (1. + np.exp( - np_arr))
+	return (255 * sigm).astype('uint8')
 
 
 
@@ -96,6 +101,8 @@ for val_num, val_data in saved_data.iteritems():
 			else:
 				assert len(arr.shape) == 3
 				fn = os.path.join(instance_dir, tgt_desc + '_' + str(instance_num) + '.jpeg')
+				if one_channel_softmax and 'pred' in tgt_desc:
+					arr = sigmoid_it(arr)
 				im = Image.fromarray(arr)
 				im.save(fn)
 
