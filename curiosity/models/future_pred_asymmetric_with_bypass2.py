@@ -15,7 +15,7 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 ctx = zmq.Context()
 sock = None
 IMAGE_SIZE = None
-NUM_CHANNELS = None
+NUM_CHANNELS = 3
 ACTION_LENGTH = None
 
 def initialize(host, port, datapath):
@@ -362,7 +362,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
   batch_size = inputs['images'].get_shape().as_list()[0]
-  new_inputs = {'current' : inputs['images'], 'actions' : inputs['actions'], 'time' : tf.ones([batch_size, 1])}
+  new_inputs = {'current' : inputs['images'], 'actions' : inputs['parsed_actions'], 'time' : tf.ones([batch_size, 1])}
   return model_tfutils(new_inputs, **kwargs)
 
 
@@ -373,6 +373,14 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
   current_node = inputs['current']
   actions_node = inputs['actions']
   time_node = inputs['time']
+
+
+
+  current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
+  actions_node = tf.cast(actions_node, tf.float32)
+  print('Actions shape')
+  print(actions_node.get_shape().as_list())
+
 
   image_size = current_node.get_shape().as_list()[1]
   num_channels = current_node.get_shape().as_list()[3]
@@ -431,14 +439,14 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       nf0 = nf
 
   #decode
-  ds = encode_nodes_future[encode_depth].get_shape().as_list()[1]
+  ds = encode_nodes[encode_depth].get_shape().as_list()[1]
   nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
   if ds * ds * nf1 != nf0:
     with tf.variable_scope('extra_hidden'):
       m.fc(ds * ds * nf1, init = 'trunc_norm', activation  = None, bias = .01, dropout = None)
     print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
   m.reshape([ds, ds, nf1])
-  print("Unflattening to", decode.get_shape().as_list())
+  print("Unflattening to", m.output.get_shape().as_list())
 
   decode_depth = getDecodeDepth(rng, cfg, slippage=slippage)
   for i in range(1, decode_depth + 1):
@@ -447,7 +455,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       if i == decode_depth:
         assert ds == image_size, (ds, image_size)
       m.resize_images(ds)
-      print('Decode resize %d to shape' % i, decode.get_shape().as_list())
+      print('Decode resize %d to shape' % i, m.output.get_shape().as_list())
       add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
       if add_bypass != None:
         bypass_layer = encode_nodes[add_bypass]
@@ -459,17 +467,27 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
 
       cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
       nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
+      #hack, some sort of cfg processing problem?
+      if nf1 is None:
+        nf1 = cfg['decode'][i]['num_filters']
       if i == decode_depth:
         assert nf1 == num_channels, (nf1, num_channels)
         m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
-        m.minmax(min_arg = 1, max_arg = -1)
+        # m.minmax(min_arg = 1, max_arg = -1)
       else:
         m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 
-  return m.output, m.params
+  return {'pred' : m.output}, m.params
 
-def something_or_nothing_loss_fn(output, image, future_image, **kwargs):
-  diff = future_image - image
+def something_or_nothing_loss_fn(outputs, image, future_image, **kwargs):
+  print('inside loss')
+  print(outputs)
+  print(image)
+  print(future_image)
+  output = outputs['pred']
+  future_image = tf.cast(future_image, 'float32')
+  image = tf.cast(image, 'float32')
+  diff = tf.abs(future_image - image)
   tv = tf.cast(tf.ceil(diff / 255.), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
   pred = output
