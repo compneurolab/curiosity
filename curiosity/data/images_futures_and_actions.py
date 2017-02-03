@@ -14,6 +14,7 @@ class FuturePredictionData(TFRecordsDataProvider):
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
                  use_object_ids=True,
+                 is_remove_teleport=True,
                  n_threads=4,
                  *args,
                  **kwargs):
@@ -22,6 +23,7 @@ class FuturePredictionData(TFRecordsDataProvider):
 
         self.output_format = output_format
         self.use_object_ids = use_object_ids
+        self.is_remove_teleport = is_remove_teleport
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -62,20 +64,29 @@ class FuturePredictionData(TFRecordsDataProvider):
         if not self.use_object_ids:
             # object ids are at columns 13 and 22, thus remove those columns
             actions = tf.concat(1, [
-                tf.slice(actions, [0,  0], [-1, 13]),
-                tf.slice(actions, [0, 14], [-1,  2]),
+                 tf.slice(actions, [0,  1], [-1, 8]),
+                 tf.slice(actions, [0, 11], [-1, 1]),
+                 tf.slice(actions, [0, 14], [-1, 2]),
+
+#                tf.slice(actions, [0,  0], [-1, 13]),
 #                tf.slice(actions, [0, 14], [-1, 8]),
 #                tf.slice(actions, [0, 23], [-1, -1]),
             ])
             # now shape is 23 instead 25 since object ids were removed
-            shape = [15] #23
+            shape = [11] #23
         return [actions, dtype, shape]
 
     def init_threads(self):
         self.input_ops, self.dtypes, self.shapes = \
                 super(FuturePredictionData, self).init_threads()
- 
+
         for i in range(len(self.input_ops)):
+            if(self.is_remove_teleport):
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.remove_teleport(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+                self.batch_size -= 1 #TODO Remove
+
             if (self.output_format['images'] == 'pairs'):
                 self.input_ops[i], self.dtypes, self.shapes = \
                     self.create_image_pairs(self.input_ops[i], \
@@ -113,8 +124,28 @@ class FuturePredictionData(TFRecordsDataProvider):
 
             else:
                 raise KeyError('Unknown action output format')
+            
+            #TODO Expand self.batch_size to be of dimension input_ops
+            # and modify is_remove_teleport
+            if(self.is_remove_teleport):
+                self.batch_size += 1
+
+        if(self.is_remove_teleport):
+            self.batch_size -= 1 #TODO Remove
+
 
         return [self.input_ops, self.dtypes, self.shapes]
+
+    def remove_teleport(self, data, dtypes, shapes):
+        size = [self.batch_size - 1, -1, -1, -1]
+        begin = [1, 0, 0, 0]
+        data[self.images] = tf.slice(data[self.images], begin, size)
+
+        size = [self.batch_size - 1, -1]
+        begin = [1, 0]
+        data[self.actions] = tf.slice(data[self.actions], begin, size)
+
+        return [data, dtypes, shapes]
 
     def create_image_pairs(self, data, dtypes, shapes):
         size = [self.batch_size - self.min_time_difference, -1, -1, -1]

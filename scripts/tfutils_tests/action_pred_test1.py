@@ -16,18 +16,19 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
                                       postprocess_config)
 
 cfgfile = os.path.join('/home/mrowca/workspace/', 
-                       'curiosity/curiosity/configs/action_config1.cfg')
+                       'curiosity/curiosity/configs/action_config2.cfg')
 cfg = postprocess_config(json.load(open(cfgfile)))
 
 DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
 VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions8.tfrecords'
 INPUT_BATCH_SIZE = 256
-OUTPUT_BATCH_SIZE = 256
+OUTPUT_BATCH_SIZE = 128
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 seed = 0
+exp_id = 'test12'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -48,9 +49,15 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
 
     actions = inputs['parsed_actions'][:num_to_save]
     predictions = outputs['pred'][:num_to_save]
+    norm_actions = outputs['norm_actions'][:num_to_save]
 
-    retval = {'pred' : predictions, 'fut' : futures, 'cur': currents, 'act' : actions}
+    shape = actions.get_shape().as_list()
+    norm = shape[0] * shape[1]
+    loss = tf.nn.l2_loss(predictions - norm_actions) / norm
 
+    retval = {'pred' : predictions, 'fut' : futures, \
+              'cur': currents, 'act' : actions, \
+              'norm': norm_actions, 'val_loss': loss}
     return retval
 
 
@@ -72,12 +79,28 @@ params = {
         'port': 27017,
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
-        'exp_id': 'test2',
+        'exp_id': exp_id,
         'save_valid_freq': 2000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['act', 'pred', 'fut', 'cur']
+        'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'val_loss']
+    },
+
+    'load_params': {
+        'host': 'localhost',
+        # 'port': 31001,
+        # 'dbname': 'alexnet-test'
+        # 'collname': 'alexnet',
+        # 'exp_id': 'trainval0',
+        'port': 27017,
+        'dbname': 'acion_pred',
+        'collname': 'action_pred_symmetric',
+        #'exp_id': 'trainval0',
+        'exp_id': exp_id,
+        #'exp_id': 'trainval2', # using screen?
+        'do_restore': True,
+        'load_query': None
     },
 
     'model_params' : {
@@ -121,10 +144,17 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.01,
+        'learning_rate': 1.0,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
+    },
+
+    'optimizer_params': {
+        'func': optimizer.ClipOptimizer,
+        'optimizer_class': tf.train.MomentumOptimizer,
+        'clip': True,
+        'momentum': .9
     },
 
     'validation_params': {
