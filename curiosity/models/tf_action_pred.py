@@ -170,7 +170,12 @@ def actionPredictionModelBase(inputs,
         else:
             pred = hidden
 
-    outputs = {'pred': pred}
+    #output batch normalized labels for storage and loss
+    epsilon = 1e-3
+    batch_mean, batch_var = tf.nn.moments(actions_node,[0])
+    norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
+
+    outputs = {'pred': pred, 'norm_actions': norm_actions}
     return outputs, net.params
 
 def flatten(net, node):
@@ -181,12 +186,11 @@ def flatten(net, node):
     return flat_node
 
 def l2_action_loss(labels, logits, **kwargs):
-    epsilon = 1e-3
     pred = logits['pred']
     shape = labels.get_shape().as_list()
     norm = shape[0] * shape[1]
-    #batch normalize action features
-    batch_mean, batch_var = tf.nn.moments(labels,[0])
-    norm_labels = (labels - batch_mean) / tf.sqrt(batch_var + epsilon)
-    loss = tf.nn.l2_loss(pred - norm_labels) / norm
+    #batch normalized action features
+    norm_labels = logits['norm_actions']
+    #store normalized labels
+    loss = tf.nn.l2_loss(pred - norm_labels) / norm    
     return loss
