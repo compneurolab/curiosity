@@ -32,6 +32,9 @@ N = 2048000
 NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 seed = 0
+T_in = 3
+T_out = 3
+SEQ_LEN = T_in + T_out
 
 def get_current_predicted_future_action(inputs, outputs, num_classes, num_to_save = 1, **loss_params):
     '''
@@ -90,6 +93,8 @@ params = {
 		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0,
+        'T_in' : T_in,
+        'T_out' : T_out
 	},
 
 	'train_params': {
@@ -97,7 +102,8 @@ params = {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
             # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
-            'min_time_difference': 4,
+            'output_format' : {'images' : 'sequence', 'actions' : 'sequence'},
+            'min_time_difference': SEQ_LEN,
     	    'batch_size': 256,
             'n_threads' : 4
         },
@@ -137,9 +143,10 @@ params = {
                 'func': FuturePredictionData,
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': 4,
+                'min_time_difference': SEQ_LEN,
                 'batch_size': 128,
                 'n_threads' : 4,
+                'output_format' : {'images' : 'sequence', 'actions' : 'sequence'}
             },
             'queue_params': {
                 'queue_type': 'random',

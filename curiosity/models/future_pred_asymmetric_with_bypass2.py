@@ -362,28 +362,35 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
   batch_size = inputs['images'].get_shape().as_list()[0]
-  new_inputs = {'current' : inputs['images'], 'actions' : inputs['parsed_actions'], 'time' : tf.ones([batch_size, 1])}
+  new_inputs = {'images' : inputs['images'], 'actions' : inputs['parsed_actions'], 'time' : tf.ones([batch_size, 1])}
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T_out = 1, num_channels = 3, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
-  current_node = inputs['current']
-  actions_node = inputs['actions']
+  image_sequence = tf.divide(tf.cast(inputs['images'], tf.float32), 255.)
+  actions_sequence = tf.cast(inputs['actions'], tf.float32)
+  
+  current_node = image_sequence[:, :, :, :num_channels * T_in]
+  future_node = image_sequence[:, :, :, num_channels * T_in]
+  assert num_channels * (T_in + T_out) == image_sequence.get_shape().as_list()[3]
+
+  # current_node = inputs['images'][]
+  # current_node = inputs['current']
+  # actions_node = inputs['actions']
   time_node = inputs['time']
 
 
 
-  current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
-  actions_node = tf.cast(actions_node, tf.float32)
-  print('Actions shape')
-  print(actions_node.get_shape().as_list())
+  # current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
+  # actions_node = tf.cast(actions_node, tf.float32)
+
 
 
   image_size = current_node.get_shape().as_list()[1]
-  num_channels = current_node.get_shape().as_list()[3]
+  # num_channels = current_node.get_shape().as_list()[3]
 
 #I think this should be taken away from cfg
   # fseed = getFilterSeed(rng, cfg)
@@ -471,13 +478,13 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, **kwargs):
       if nf1 is None:
         nf1 = cfg['decode'][i]['num_filters']
       if i == decode_depth:
-        assert nf1 == num_channels, (nf1, num_channels)
+        assert nf1 == T_out * num_channels
         m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
       else:
         m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 
-  return {'pred' : m.output}, m.params
+  return {'pred' : m.output, 'tv' : future_node}, m.params
 
 def something_or_nothing_loss_fn(outputs, image, future_image, **kwargs):
   print('inside loss')
@@ -485,7 +492,7 @@ def something_or_nothing_loss_fn(outputs, image, future_image, **kwargs):
   print(image)
   print(future_image)
   output = outputs['pred']
-  future_image = tf.cast(future_image, 'float32')
+  future_image = outputs['tv']
   image = tf.cast(image, 'float32')
   diff = tf.abs(future_image - image)
   tv = tf.cast(tf.ceil(diff / 255.), 'uint8')
