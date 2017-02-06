@@ -66,8 +66,8 @@ def mean_losses_keep_rest(step_results):
     return retval
 
 
-def get_loss_for_val(inputs, outputs, num_classes = 1, **loss_params):
-   	return {'loss' : modelsource.something_or_nothing_loss_fn(outputs, inputs['images'], inputs['future_images'])}
+def get_loss_for_val(inputs, outputs, num_channels = 3, **loss_params):
+   	return {'loss' : modelsource.something_or_nothing_loss_fn(outputs, inputs['images'], num_channels = num_channels)}
 
 
 
@@ -120,12 +120,12 @@ params = {
 
 
     'loss_params': {
-        'targets': ['images', 'future_images'],
+        'targets': ['images'],
         'agg_func': tf.reduce_mean,
         'loss_per_case_func': modelsource.something_or_nothing_loss_fn,
-		# 'loss_func_kwargs' : {
-		# 	'num_classes' : 1
-		# }
+		'loss_func_kwargs' : {
+			'num_channels' : 3
+		}
 		'loss_per_case_func_params' : {}
     },
 

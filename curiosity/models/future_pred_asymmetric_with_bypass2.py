@@ -370,12 +370,13 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
-  image_sequence = tf.divide(tf.cast(inputs['images'], tf.float32), 255.)
+  # image_sequence = tf.divide(tf.cast(inputs['images'], tf.float32), 255.)
   actions_sequence = tf.cast(inputs['actions'], tf.float32)
-  
-  current_node = image_sequence[:, :, :, :num_channels * T_in]
-  future_node = image_sequence[:, :, :, num_channels * T_in]
-  assert num_channels * (T_in + T_out) == image_sequence.get_shape().as_list()[3]
+
+  current_node = inputs['images'][:, :, :, :num_channels * T_in]
+  current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
+  future_node = inputs['images'][:, :, :, num_channels * T_in : ]
+  assert num_channels * (T_in + T_out) == inputs['images'].get_shape().as_list()[3]
 
   # current_node = inputs['images'][]
   # current_node = inputs['current']
@@ -446,7 +447,9 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
       nf0 = nf
 
   #decode
-  ds = encode_nodes[encode_depth].get_shape().as_list()[1]
+  # ds = encode_nodes[encode_depth].get_shape().as_list()[1]
+  ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
+
   nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
   if ds * ds * nf1 != nf0:
     with tf.variable_scope('extra_hidden'):
@@ -486,24 +489,32 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
 
   return {'pred' : m.output, 'tv' : future_node}, m.params
 
-def something_or_nothing_loss_fn(outputs, image, future_image, **kwargs):
+def compute_diffs_timestep_1(original_image, subsequent_images, num_channels = 3):
+  curr_image = original_image
+  diffs = []
+  for i in range(len(subsequent_images)):
+    next_image = subsequent_images[:, :, :, num_channels * i : num_channels * (i + 1)]
+    diffs.append(next_image - curr_image)
+    curr_image = next_image
+  return tf.concat(diffs, 3)
+
+def something_or_nothing_loss_fn(outputs, image, num_channels = 3, **kwargs):
   print('inside loss')
   print(outputs)
   print(image)
-  print(future_image)
-  output = outputs['pred']
-  future_image = outputs['tv']
-  image = tf.cast(image, 'float32')
-  diff = tf.abs(future_image - image)
-  tv = tf.cast(tf.ceil(diff / 255.), 'uint8')
+  pred = outputs['pred']
+  future_images = tf.cast(outputs['tv'], 'float32')
+  #Wrong! TODO: fix
+  T_in = pred.get_shape().as_list()[-1] / num_channels
+  original_image = tf.cast(image[:, :, :, (T_in - 1) * num_channels: T_in * num_channels], 'float32')
+  diffs = compute_diffs_timestep_1(original_image, future_images, num_channels = num_channels)
+  tv = tf.cast(tf.ceil(diffs / 255.), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
-  pred = output
   my_shape = pred.get_shape().as_list()
   my_shape.append(1)
   pred = tf.reshape(pred, my_shape)
   pred = tf.concat(4, [tf.zeros(my_shape), pred])
   return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
-
 
 
 
