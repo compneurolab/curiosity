@@ -416,12 +416,13 @@ def loss_per_case_fn(labels, logits, **kwargs):
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
-def discretized_loss_fn(labels, logits, num_classes, **kwargs):
+def discretized_loss_fn(labels, logits, num_classes, sigmoid_hiddens = False, **kwargs):
   outputs = logits
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
   tv = outputs['diff']['diff0']
-  tv = tf.cast((num_classes - 1) * tv, tf.uint8)
+  #get the range to be [0, num_classes-1], then floor it
+  tv = tf.cast((num_classes - 1) * (tv + 1) / 2, tf.uint8)
   tv = tf.one_hot(tv, depth = num_classes)
   pred = outputs['pred']['pred0']
   #Not sure whether we should normalize this at all, but I think it's pretty ok as is
@@ -429,18 +430,20 @@ def discretized_loss_fn(labels, logits, num_classes, **kwargs):
   for i in range(1, encode_depth + 1):
     tv = outputs['diff']['diff' + str(i)]
     pred = outputs['pred']['pred' + str(i)]
+    if sigmoid_hiddens:
+      pred = 2 * tf.nn.sigmoid(pred) - 1
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm
   return loss
 
-def something_or_nothing_loss_fn(labels, logits, **kwargs):
+def something_or_nothing_loss_fn(labels, logits, sigmoid_hiddens = False, **kwargs):
   outputs = logits
   inputs = labels
   encode_depth = len(outputs['pred']) - 1
   #we set num_classes = 1 for this, keeping parameters down...this is probably not that important
   tv = outputs['diff']['diff0']
-  tv = tf.cast(tf.ceil(tv), 'uint8')
+  tv = tf.cast(tf.ceil(tf.abs(tv)), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
   pred = outputs['pred']['pred0']
   my_shape = pred.get_shape().as_list()
@@ -454,6 +457,8 @@ def something_or_nothing_loss_fn(labels, logits, **kwargs):
   for i in range(1, encode_depth + 1):
     tv = outputs['diff']['diff' + str(i)]
     pred = outputs['pred']['pred' + str(i)]
+    if sigmoid_hiddens:
+      pred = 2 * tf.nn.sigmoid(pred) - 1
     my_shape = tv.get_shape().as_list()
     norm = (my_shape[1]**2) * my_shape[0] * my_shape[-1]
     loss = loss + tf.nn.l2_loss(pred - tv) / norm

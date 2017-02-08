@@ -1,3 +1,14 @@
+'''
+A modification of a basic asymmetric model that assumes that the hidden fc layers bring things forward one time step at a time.
+
+Images_1 ... Images..._T_in -> Encoded data(T_in) -> Concat with action at time T_in -hidden forward step)> Encoded data(T_in + 1) -(hidden forward step)> Encoded data(T_in + 2)...
+
+-> Then decode all of these
+
+
+'''
+
+
 """
 asymmetric model with bypass
 """
@@ -366,7 +377,7 @@ def model_tfutils_fpd_compatible(inputs, **kwargs):
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T_out = 1, num_channels = 3, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T_out = 1, num_channels = 3, action_size = 25, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
@@ -428,66 +439,81 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
         m.pool(pfs, ps)
       encode_nodes.append(m.output)
 
-  with tf.variable_scope('addactiontime'):
-    enc_shape = m.output.get_shape().as_list()
-    m.reshape([np.prod(enc_shape[1:])])
-    print('Flatten to shape %s' % m.output.get_shape().as_list())
-    if time_node is not None:
-      m.add_bypass([actions_node, time_node])
-    else:
-      m.add_bypass(actions_node)
-
-  nf0 = m.output.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
   print('Hidden depth: %d' % hidden_depth)
-  for i in range(1, hidden_depth + 1):
-    with tf.variable_scope('hidden' + str(i)):
-      nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
-      m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
-      nf0 = nf
+  encoded_states = []
 
-  #decode
-  # ds = encode_nodes[encode_depth].get_shape().as_list()[1]
-  ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
-
-  nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
-  if ds * ds * nf1 != nf0:
-    with tf.variable_scope('extra_hidden'):
-      m.fc(ds * ds * nf1, init = 'trunc_norm', activation  = None, bias = .01, dropout = None)
-    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
-  m.reshape([ds, ds, nf1])
-  print("Unflattening to", m.output.get_shape().as_list())
+  #forward one time step
+  with tf.variable_scope('flatten'):
+  	enc_shape = m.output.get_shape().as_list()
+  	current_encoded_state = m.reshape([np.prod(enc_shape[1:])])
+  for t in range(1, T_out + 1):
+  	with tf.variable_scope('addaction'):
+  		next_action = actions_node[(T_in + t - 1) * action_size : (T_in + t) * action_size]
+  		m.add_bypass(next_action)
+  	nf0 = m.output.get_shape().as_list()[1]
+  	for i in range(1, hidden_depth + 1):
+  		with tf.variable_scope('hidden' + str(i)) as scope:
+  			if t > 1:
+  				scope.reuse_variables()
+  			nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
+  			m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+  			nf0 = nf
+  	encoded_states.append(m.output)
+  	assert m.output.get_shape().as_list() == current_encoded_state.get_shape().as_list()
+  	#this naming of things isn't super functional
+  	current_encoded_state = m.output
 
   decode_depth = getDecodeDepth(rng, cfg, slippage=slippage)
-  for i in range(1, decode_depth + 1):
-    with tf.variable_scope('decode' + str(i+1)):
-      ds = getDecodeSize(i, decode_depth, enc_shape[1], image_size, rng, cfg, slippage=slippage)
-      if i == decode_depth:
-        assert ds == image_size, (ds, image_size)
-      m.resize_images(ds)
-      print('Decode resize %d to shape' % i, m.output.get_shape().as_list())
-      add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
-      if add_bypass != None:
-        bypass_layer = encode_nodes[add_bypass]
-        bypass_shape = bypass_layer.get_shape().as_list()
-        # if bypass_shape[1] != ds:
-        #   bypass_layer = tf.image.resize_images(bypass_layer, ds, ds)
-        m.add_bypass(bypass_layer)
-        print('Decode bypass from %d at %d for shape' % (add_bypass, i), m.output.get_shape().as_list())
 
-      cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
-      nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
-      #hack, some sort of cfg processing problem?
-      if nf1 is None:
-        nf1 = cfg['decode'][i]['num_filters']
-      if i == decode_depth:
-        assert nf1 == T_out * num_channels
-        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
+  decoded = []
+
+  for t in range(1, T_out + 1):
+  	m.output = encoded_states[t - 1]
+  	ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
+  	nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
+	  if ds * ds * nf1 != nf0:
+	    with tf.variable_scope('extra_hidden') as scope:
+	    	if t > 1:
+	    		scope.reuse_variables()
+	     	m.fc(ds * ds * nf1, init = 'trunc_norm', activation  = None, bias = .01, dropout = None)
+	    print("Linear from %d to %d for input size %d" % (nf0, ds * ds * nf1, ds))
+	  m.reshape([ds, ds, nf1])
+	  print("Unflattening to", m.output.get_shape().as_list())
+    for i in range(1, decode_depth + 1):
+      with tf.variable_scope('decode' + str(i+1)) as scope:
+      	if t > 1:
+      		scope.reuse_variables()
+        ds = getDecodeSize(i, decode_depth, enc_shape[1], image_size, rng, cfg, slippage=slippage)
+        if i == decode_depth:
+          assert ds == image_size, (ds, image_size)
+        m.resize_images(ds)
+        print('Decode resize %d to shape' % i, m.output.get_shape().as_list())
+        add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
+        if add_bypass != None:
+          bypass_layer = encode_nodes[add_bypass]
+          bypass_shape = bypass_layer.get_shape().as_list()
+          # if bypass_shape[1] != ds:
+          #   bypass_layer = tf.image.resize_images(bypass_layer, ds, ds)
+          m.add_bypass(bypass_layer)
+          print('Decode bypass from %d at %d for shape' % (add_bypass, i), m.output.get_shape().as_list())
+
+        cfs = getDecodeFilterSize(i, encode_depth, rng, cfg, slippage=slippage)
+        nf1 = getDecodeNumFilters(i, encode_depth, rng, cfg, slippage=slippage)
+        #hack, some sort of cfg processing problem?
+        if nf1 is None:
+          nf1 = cfg['decode'][i]['num_filters']
+        if i == decode_depth:
+          assert nf1 == num_channels
+          m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
-      else:
-        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+        else:
+          m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+    decoded.append(m.output)
 
-  return {'pred' : m.output, 'tv' : future_node}, m.params
+  pred = tf.concat(decoded, 3)
+
+  return {'pred' : pred, 'tv' : future_node}, m.params
 
 def compute_diffs_timestep_1(original_image, subsequent_images, num_channels = 3):
   curr_image = original_image
@@ -517,44 +543,6 @@ def something_or_nothing_loss_fn(outputs, image, num_channels = 3, **kwargs):
   return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, tv))
 
 
-
-def get_model(rng, batch_size, cfg, slippage, slippage_error, host, port, datapath):
-  global sock
-  if sock is None:
-    initialize(host, port, datapath)
-
-  observations_node = tf.placeholder(
-      tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
-  future_node = tf.placeholder(
-        tf.float32,
-      shape=(batch_size, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-
-  actions_node = tf.placeholder(tf.float32,
-                                shape=(batch_size,
-                                       ACTION_LENGTH))
-  
-  time_node = tf.placeholder(tf.float32,
-                             shape=(batch_size, 1))
-
-  train_prediction, cfg = model(observations_node, actions_node, time_node, 
-                                rng=rng, cfg=cfg, 
-                                slippage=slippage, slippage_error=slippage_error)
-
-  norm = (IMAGE_SIZE**2) * NUM_CHANNELS * batch_size
-  loss = tf.nn.l2_loss(train_prediction - future_node) / norm
-  
-  innodedict = {'current': observations_node,
-                'future': future_node,
-                'actions': actions_node,
-                'timediff': time_node}
-
-  outnodedict = {'train_prediction': train_prediction,
-                 'loss': loss}
-                
-  return outnodedict, innodedict, cfg
-  
 
 
 
