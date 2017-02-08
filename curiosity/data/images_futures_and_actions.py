@@ -6,7 +6,7 @@ import tensorflow as tf
 import copy
 
 class FuturePredictionData(TFRecordsDataProvider):
-    batch_num = 0
+    example_counter = 0
     def __init__(self,
                  data_path,
                  batch_size=256,
@@ -64,16 +64,25 @@ class FuturePredictionData(TFRecordsDataProvider):
         if not self.use_object_ids:
             # object ids are at columns 13 and 22, thus remove those columns
             actions = tf.concat(1, [
-                 tf.slice(actions, [0,  1], [-1, 8]),
-                 tf.slice(actions, [0, 11], [-1, 1]),
-                 tf.slice(actions, [0, 14], [-1, 2]),
+# EGO MOTION
+#                  tf.slice(actions, [0,  1], [-1, 6]),
 
+# ONLY ONE ACTION
+                  tf.slice(actions, [0,  7], [-1, 6]),
+                  tf.slice(actions, [0, 14], [-1, 2]),
+
+# NO OBJ IDS, TELEPORT, FORCE_Z, TORQUE_X, TORQUE_Z
+#                 tf.slice(actions, [0,  1], [-1, 8]),
+#                 tf.slice(actions, [0, 11], [-1, 1]),
+#                 tf.slice(actions, [0, 14], [-1, 2]),
+
+# NO OBJ IDS
 #                tf.slice(actions, [0,  0], [-1, 13]),
 #                tf.slice(actions, [0, 14], [-1, 8]),
 #                tf.slice(actions, [0, 23], [-1, -1]),
             ])
             # now shape is 23 instead 25 since object ids were removed
-            shape = [11] #23
+            shape = [8] #23
         return [actions, dtype, shape]
 
     def init_threads(self):
@@ -124,6 +133,12 @@ class FuturePredictionData(TFRecordsDataProvider):
 
             else:
                 raise KeyError('Unknown action output format')
+
+            # add ids
+            self.input_ops[i] = self.add_ids(self.input_ops[i])
+            if(i == 0):
+                self.shapes['id'] = []
+                self.dtypes['id'] = tf.int32
             
             #TODO Expand self.batch_size to be of dimension input_ops
             # and modify is_remove_teleport
@@ -133,8 +148,15 @@ class FuturePredictionData(TFRecordsDataProvider):
         if(self.is_remove_teleport):
             self.batch_size -= 1 #TODO Remove
 
-
         return [self.input_ops, self.dtypes, self.shapes]
+
+    def add_ids(self, data):
+        batch_size_loaded = data[self.images].get_shape().as_list()[0]
+        data['id'] = tf.range(self.example_counter, 
+                self.example_counter + batch_size_loaded, 1)
+        self.example_counter = self.example_counter + batch_size_loaded
+
+        return data
 
     def remove_teleport(self, data, dtypes, shapes):
         size = [self.batch_size - 1, -1, -1, -1]

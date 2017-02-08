@@ -10,7 +10,7 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
-import curiosity.models.tf_action_pred as modelsource
+import curiosity.models.tf_ego_pred_sequence as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test29'
+exp_id = 'test33'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -80,7 +80,7 @@ params = {
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
         'exp_id': exp_id,
-        'save_valid_freq': 2000,
+        'save_valid_freq': 5000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
@@ -120,17 +120,17 @@ params = {
             'data_path': DATA_PATH,
             #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
             'min_time_difference': TIME_DIFFERENCE,
-            'output_format': {'images': 'pairs', 'actions': 'sequence'},
+            'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
     	    'batch_size': INPUT_BATCH_SIZE,
-            'n_threads': 4,
+            'n_threads': 1,
         },
 
         'queue_params': {
             'queue_type': 'random',
             'batch_size': OUTPUT_BATCH_SIZE,
             'seed': 0,
-    	    'capacity': OUTPUT_BATCH_SIZE * 100
+    	    'capacity': OUTPUT_BATCH_SIZE * 60
         },
         
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
@@ -164,17 +164,17 @@ params = {
                 'func': FuturePredictionData,
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
-                'output_format': {'images': 'pairs', 'actions': 'sequence'},
+                'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'use_object_ids': False,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,
-                'n_threads': 4,
+                'n_threads': 1,
             },
             'queue_params': {
-                'queue_type': 'random',
+                'queue_type': 'fifo',
                 'batch_size': OUTPUT_BATCH_SIZE,
                 'seed': 0,
-              'capacity': OUTPUT_BATCH_SIZE * 100,
+              'capacity': OUTPUT_BATCH_SIZE * 2,
             },
             'targets': {
                 'func': get_current_predicted_future_action,
@@ -183,7 +183,7 @@ params = {
             },
         'agg_func' : mean_losses_keep_rest,
         #'agg_func': utils.mean_dict,
-        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 100 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }

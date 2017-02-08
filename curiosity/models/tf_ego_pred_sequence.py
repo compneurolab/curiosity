@@ -86,7 +86,15 @@ def actionPredictionModelBase(inputs,
         print('Encode depth: %d' % encode_depth)
   
     cfs0 = None
-    encode_nodes_current = [current_node]
+
+    # Split current nodes
+    shape = current_node.get_shape().as_list()
+    dim = int(shape[3] / 3)
+    current_nodes = []
+    for d in range(dim):
+        current_nodes.append(tf.slice(current_node, [0,0,0,d*3], [-1,-1,-1,3]))
+
+    encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
 
     with tf.contrib.framework.arg_scope([net.conv, net.fc], \
@@ -100,15 +108,17 @@ def actionPredictionModelBase(inputs,
                         encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
                 cfs0 = cfs
 
-                #encode current images (conv + pool)
-                new_encode_node_current = net.conv(nf, cfs, cs, \
-                        in_layer = encode_nodes_current[i - 1])
-                if do_pool:
-                    new_encode_node_current = net.pool(pfs, ps, \
-                            in_layer = new_encode_node_current, pfunc = pool_type)
-        
-                #share the variables between current and future encoding
-                encode_scope.reuse_variables()
+                new_encode_nodes_current = []
+                for encode_node_current in encode_nodes_current[i - 1]:
+                    #encode current images (conv + pool)
+                    new_encode_node_current = net.conv(nf, cfs, cs, \
+                            in_layer = encode_node_current)
+                    if do_pool:
+                        new_encode_node_current = net.pool(pfs, ps, \
+                                in_layer = new_encode_node_current, pfunc = pool_type)
+                    new_encode_nodes_current.append(new_encode_node_current)
+                    #share the variables between current and future encoding
+                    encode_scope.reuse_variables()
             
                 #encode future images (conv + pool)
                 new_encode_node_future = net.conv(nf, cfs, cs, \
@@ -126,7 +136,7 @@ def actionPredictionModelBase(inputs,
                     print('Type: ' + pool_type) 
 
                 #store layers
-                encode_nodes_current.append(new_encode_node_current)
+                encode_nodes_current.append(new_encode_nodes_current)
                 encode_nodes_future.append(new_encode_node_future)
 
 
@@ -134,7 +144,8 @@ def actionPredictionModelBase(inputs,
 
         with tf.variable_scope('concat'):
             #flatten
-            flat_node_current = flatten(net, encode_nodes_current[-1])
+            flat_node_current = tf.concat(3, encode_nodes_current[-1])
+            flat_node_current = flatten(net, flat_node_current)
             flat_node_future = flatten(net, encode_nodes_future[-1])
 
             #concat current and future
@@ -158,10 +169,10 @@ def actionPredictionModelBase(inputs,
                 if(DEBUG):
                     print('Hidden shape %s' % hidden.get_shape().as_list())
 
-        #TODO Test and remove
-        shape = actions_node.get_shape().as_list()
-        actions_node = net.reshape([6,int(shape[1]/6)], in_layer = actions_node)
-        actions_node = tf.reduce_sum(actions_node, 2)
+#        #TODO Test and remove summing actions
+#        shape = actions_node.get_shape().as_list()
+#        actions_node = net.reshape([6,int(shape[1]/6)], in_layer = actions_node)
+#        actions_node = tf.reduce_sum(actions_node, 2)
 
         #match the shape of the action vector
         #by using another hidden layer if necessary
@@ -177,7 +188,8 @@ def actionPredictionModelBase(inputs,
 
     if minmax_end:
         print("Min max clipping active")
-        pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
+        #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
+        pred = tf.tanh(pred) * 10
 
     #output batch normalized labels for storage and loss
 #    norm_actions0 = tf.slice(actions_node, [0, 0], [-1, 9])
@@ -210,4 +222,5 @@ def l2_action_loss(labels, logits, **kwargs):
     norm_labels = logits['norm_actions']
     #store normalized labels
     loss = tf.nn.l2_loss(pred - norm_labels) / norm    
+    #loss = tf.minimum(loss, 0.1) #TODO remove and find reason!
     return loss
