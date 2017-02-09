@@ -18,11 +18,15 @@ import numpy as np
 
 # res = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(my_pred, my_tv))
 
-my_ten = tf.constant([[1, 2, 3], [4, 5, 6]])
-my_ten = my_ten - 1
+
+
+my_ten = tf.constant([[-.1, -.2, -.3], [.1, .2, .3]])
+dmy_ten = tf.ceil(tf.abs(my_ten))
+my_other = tf.cast(my_ten, 'uint8')
 
 
 # print(res)
 
 with tf.Session() as sess:
 	print(my_ten.eval())
+	print(my_other.eval())

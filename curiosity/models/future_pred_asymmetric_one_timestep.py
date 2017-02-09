@@ -518,23 +518,26 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
 def compute_diffs_timestep_1(original_image, subsequent_images, num_channels = 3):
   curr_image = original_image
   diffs = []
-  for i in range(len(subsequent_images)):
+  for i in range(int(subsequent_images.get_shape().as_list()[-1] / num_channels)):
     next_image = subsequent_images[:, :, :, num_channels * i : num_channels * (i + 1)]
     diffs.append(next_image - curr_image)
     curr_image = next_image
-  return tf.concat(diffs, 3)
+  return tf.concat(3, diffs)
 
-def something_or_nothing_loss_fn(outputs, image, num_channels = 3, **kwargs):
+def something_or_nothing_loss_fn(outputs, image, threshold = None, num_channels = 3, **kwargs):
   print('inside loss')
   print(outputs)
   print(image)
   pred = outputs['pred']
   future_images = tf.cast(outputs['tv'], 'float32')
-  #Wrong! TODO: fix
-  T_in = pred.get_shape().as_list()[-1] / num_channels
-  original_image = tf.cast(image[:, :, :, (T_in - 1) * num_channels: T_in * num_channels], 'float32')
+  assert threshold is not None
+  T_in = int((image.get_shape().as_list()[-1] -  pred.get_shape().as_list()[-1]) / num_channels)
+  original_image = image[:, :, :, (T_in - 1) * num_channels: T_in * num_channels]
+  original_image = tf.cast(original_image, 'float32')
   diffs = compute_diffs_timestep_1(original_image, future_images, num_channels = num_channels)
-  tv = tf.cast(tf.ceil(diffs / 255.), 'uint8')
+  #just measure some absolute change relative to a threshold
+  diffs = tf.abs(diffs / 255.) - threshold
+  tv = tf.cast(tf.ceil(diffs), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
   my_shape = pred.get_shape().as_list()
   my_shape.append(1)
