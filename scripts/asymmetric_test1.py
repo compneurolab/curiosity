@@ -78,7 +78,7 @@ def get_loss_for_val(inputs, outputs, num_channels = 3, threshold = None, **loss
    	return {'loss' : modelsource.something_or_nothing_loss_fn(outputs, inputs['images'], num_channels = num_channels, threshold = threshold)}
 
 def get_ids_target(inputs, outputs, *ttarg_params):
-    return {'ids' : inputs['ids']}
+    return {'ids' : inputs['id']}
 
 
 
@@ -88,13 +88,14 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': '33_big',
+        'exp_id': '33_big2',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['pred', 'img', 'act', 'tv'],
-        'cache_dir' : '/media/data/nhaber'
+        'save_to_gfs': ['pred', 'img', 'act', 'tv', 'ids'],
+        'cache_dir' : '/media/data/nhaber',
+        'save_intermediate_freq' : 10
 	},
 
 	'model_params' : {
@@ -115,7 +116,6 @@ params = {
             'min_time_difference': SEQ_LEN,
     	    'batch_size': BATCH_SIZE,
             'n_threads' : 2,
-            'targets' : {'func' : get_ids_target}
         },
         'queue_params': {
             'queue_type': 'random',
@@ -125,7 +125,8 @@ params = {
             # 'n_threads' : 4
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
-        'thres_loss' : float('inf')
+        'thres_loss' : float('inf'),
+        'targets' : {'func' : get_ids_target}
     },
 
 
