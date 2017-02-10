@@ -10,9 +10,9 @@ import numpy as np
 from PIL import Image
 
 dbname = 'future_pred_test'
-collname = 'discretized'
+collname = 'asymmetric'
 port = 27017
-exp_id = 'sn_loss'
+exp_id = '3_3'
 save_loc = '/home/nhaber/really_temp'
 save_fn = os.path.join(save_loc, exp_id + '.p')
 target_name = 'valid0'

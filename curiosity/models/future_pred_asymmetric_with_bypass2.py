@@ -91,13 +91,14 @@ def getEncodeDoPool(i, encode_depth, rng, cfg, slippage=0):
     if 'do_pool' in cfg['encode'][i]:
       val = cfg['encode'][i]['do_pool']
     elif 'pool' in cfg['encode'][i]:
-      val = True
-  if val is not None and rng.uniform() > slippage:
-    return val
-  if i < 3 or i == encode_depth:
-    return rng.uniform() < .75
-  else:
-    return rng.uniform() < .25
+      return True
+  return False
+  # if val is not None and rng.uniform() > slippage:
+  #   return val
+  # if i < 3 or i == encode_depth:
+  #   return rng.uniform() < .75
+  # else:
+  #   return rng.uniform() < .25
     
 def getEncodePoolFilterSize(i, encode_depth, rng, cfg, slippage=0):
   val = None
@@ -161,16 +162,17 @@ def getDecodeDepth(rng, cfg, slippage=0):
   return d
 
 def getDecodeNumFilters(i, decode_depth, rng, cfg, slippage=0):
-  if i < decode_depth:
-    val = None
-    if 'decode' in cfg and (i in cfg['decode']):
-      if 'num_filters' in cfg['decode'][i]:
-        val = cfg['decode'][i]['num_filters']
-    if val is not None and rng.uniform() > slippage:
-      return val
-    return 32
-  else:
-    return NUM_CHANNELS
+  return cfg['decode'][i]['num_filters']
+  # if i < decode_depth:
+  #   val = None
+  #   if 'decode' in cfg and (i in cfg['decode']):
+  #     if 'num_filters' in cfg['decode'][i]:
+  #       val = cfg['decode'][i]['num_filters']
+  #   if val is not None and rng.uniform() > slippage:
+  #     return val
+  #   return 32
+  # else:
+  #   return NUM_CHANNELS
 
 def getDecodeFilterSize(i, decode_depth, rng, cfg, slippage=0):
   val = None
@@ -202,14 +204,16 @@ def getDecodeBypass(i, encode_nodes, decode_size, decode_depth, rng, cfg, slippa
   if 'decode' in cfg and (i in cfg['decode']):
     if 'bypass' in cfg['decode'][i]:
       val = cfg['decode'][i]['bypass']
-  #prevent error that can occur here if encode is not large enough due to slippage modification?
-  if val is not None and rng.uniform() > slippage:
-    return val 
-  switch = rng.uniform() 
-  print('sw', switch)
-  if switch < 0.5:
-    sdiffs = [e.get_shape().as_list()[1] - decode_size for e in encode_nodes]
-    return np.abs(sdiffs).argmin()
+      return val
+  return None
+  # #prevent error that can occur here if encode is not large enough due to slippage modification?
+  # if val is not None and rng.uniform() > slippage:
+  #   return val 
+  # switch = rng.uniform() 
+  # print('sw', switch)
+  # if switch < 0.5:
+  #   sdiffs = [e.get_shape().as_list()[1] - decode_size for e in encode_nodes]
+  #   return np.abs(sdiffs).argmin()
     
 def getFilterSeed(rng, cfg):
   if 'filter_seed' in cfg:
@@ -230,11 +234,13 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
   encode_depth = getEncodeDepth(rng, cfg, slippage=slippage)
   cfg0['encode_depth'] = encode_depth
   print('Encode depth: %d' % encode_depth)
+  print('why is this not printing')
   encode_nodes = []
   encode_nodes.append(data)
   cfs0 = None
   cfg0['encode'] = {}
   for i in range(1, encode_depth + 1):
+    print('got here')
     cfg0['encode'][i] = {}
     cfs = getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
     cfg0['encode'][i]['conv'] = {'filter_size': cfs}
@@ -362,7 +368,7 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
   batch_size = inputs['images'].get_shape().as_list()[0]
-  new_inputs = {'images' : inputs['images'], 'actions' : inputs['parsed_actions'], 'time' : tf.ones([batch_size, 1])}
+  new_inputs = {'images' : inputs['images'], 'actions' : inputs['parsed_actions']}
   return model_tfutils(new_inputs, **kwargs)
 
 
@@ -381,7 +387,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
   # current_node = inputs['images'][]
   # current_node = inputs['current']
   # actions_node = inputs['actions']
-  time_node = inputs['time']
+  # time_node = inputs['time']
 
 
 
@@ -427,15 +433,16 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
         pool_type = getEncodePoolType(i, encode_depth, rng, cfg, slippage=slippage)
         m.pool(pfs, ps)
       encode_nodes.append(m.output)
+      print(m.output)
 
   with tf.variable_scope('addactiontime'):
     enc_shape = m.output.get_shape().as_list()
     m.reshape([np.prod(enc_shape[1:])])
     print('Flatten to shape %s' % m.output.get_shape().as_list())
-    if time_node is not None:
-      m.add_bypass([actions_node, time_node])
-    else:
-      m.add_bypass(actions_node)
+    # if time_node is not None:
+    #   m.add_bypass([actions_sequence, time_node])
+    # else:
+    m.add_bypass(actions_sequence)
 
   nf0 = m.output.get_shape().as_list()[1]
   hidden_depth = getHiddenDepth(rng, cfg, slippage=slippage)
@@ -443,11 +450,13 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
   for i in range(1, hidden_depth + 1):
     with tf.variable_scope('hidden' + str(i)):
       nf = getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
+      print(nf)
       m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
       nf0 = nf
 
   #decode
   # ds = encode_nodes[encode_depth].get_shape().as_list()[1]
+  decode_depth = getDecodeDepth(rng, cfg, slippage=slippage) 
   ds = getDecodeSize(0, decode_depth, enc_shape[1], IMAGE_SIZE, rng, cfg, slippage=slippage)
 
   nf1 = getDecodeNumFilters(0, encode_depth, rng, cfg, slippage=slippage)
@@ -458,7 +467,6 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
   m.reshape([ds, ds, nf1])
   print("Unflattening to", m.output.get_shape().as_list())
 
-  decode_depth = getDecodeDepth(rng, cfg, slippage=slippage)
   for i in range(1, decode_depth + 1):
     with tf.variable_scope('decode' + str(i+1)):
       ds = getDecodeSize(i, decode_depth, enc_shape[1], image_size, rng, cfg, slippage=slippage)
@@ -467,6 +475,8 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
       m.resize_images(ds)
       print('Decode resize %d to shape' % i, m.output.get_shape().as_list())
       add_bypass = getDecodeBypass(i, encode_nodes, ds, decode_depth, rng, cfg, slippage=slippage)
+      print('by')
+      print(add_bypass)
       if add_bypass != None:
         bypass_layer = encode_nodes[add_bypass]
         bypass_shape = bypass_layer.get_shape().as_list()
@@ -481,7 +491,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
       if nf1 is None:
         nf1 = cfg['decode'][i]['num_filters']
       if i == decode_depth:
-        assert nf1 == T_out * num_channels
+        assert nf1 == T_out * num_channels, (nf1, T_out, num_channels)
         m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
       else:
@@ -492,23 +502,26 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
 def compute_diffs_timestep_1(original_image, subsequent_images, num_channels = 3):
   curr_image = original_image
   diffs = []
-  for i in range(len(subsequent_images)):
+  for i in range(int(subsequent_images.get_shape().as_list()[-1] / num_channels)):
     next_image = subsequent_images[:, :, :, num_channels * i : num_channels * (i + 1)]
     diffs.append(next_image - curr_image)
     curr_image = next_image
-  return tf.concat(diffs, 3)
+  return tf.concat(3, diffs)
 
-def something_or_nothing_loss_fn(outputs, image, num_channels = 3, **kwargs):
+def something_or_nothing_loss_fn(outputs, image, threshold = None, num_channels = 3, **kwargs):
   print('inside loss')
   print(outputs)
   print(image)
   pred = outputs['pred']
   future_images = tf.cast(outputs['tv'], 'float32')
-  #Wrong! TODO: fix
-  T_in = pred.get_shape().as_list()[-1] / num_channels
-  original_image = tf.cast(image[:, :, :, (T_in - 1) * num_channels: T_in * num_channels], 'float32')
+  assert threshold is not None
+  T_in = int((image.get_shape().as_list()[-1] -  pred.get_shape().as_list()[-1]) / num_channels)
+  original_image = image[:, :, :, (T_in - 1) * num_channels: T_in * num_channels]
+  original_image = tf.cast(original_image, 'float32')
   diffs = compute_diffs_timestep_1(original_image, future_images, num_channels = num_channels)
-  tv = tf.cast(tf.ceil(diffs / 255.), 'uint8')
+  #just measure some absolute change relative to a threshold
+  diffs = tf.abs(diffs / 255.) - threshold
+  tv = tf.cast(tf.ceil(diffs), 'uint8')
   tv = tf.one_hot(tv, depth = 2)
   my_shape = pred.get_shape().as_list()
   my_shape.append(1)
