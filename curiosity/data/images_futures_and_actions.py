@@ -14,7 +14,7 @@ class FuturePredictionData(TFRecordsDataProvider):
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
                  use_object_ids=True,
-                 use_action_matrix=False,
+                 action_matrix_radius=None,
                  is_remove_teleport=True,
                  n_threads=4,
                  *args,
@@ -26,7 +26,7 @@ class FuturePredictionData(TFRecordsDataProvider):
         self.output_format = output_format
         self.use_object_ids = use_object_ids
         self.is_remove_teleport = is_remove_teleport
-        self.use_action_matrix = use_action_matrix
+        self.action_matrix_radius = action_matrix_radius
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -101,7 +101,7 @@ class FuturePredictionData(TFRecordsDataProvider):
                 self.batch_size -= 1 #TODO Remove
 
             # convert to action matrix
-            if self.use_action_matrix:
+            if self.action_matrix_radius is not None:
                 self.input_ops[i], self.dtypes, self.shapes = \
                     self.convert_to_action_matrix(self.input_ops[i], \
                         self.dtypes, self.shapes)
@@ -196,7 +196,8 @@ class FuturePredictionData(TFRecordsDataProvider):
         image_shape[-1] += 1
         shapes[self.images] = image_shape[1:]
 
-        gauss_img = self.create_gaussian_kernel(image_shape[0:3], action_pos)
+        gauss_img = self.create_gaussian_kernel(image_shape[0:3], \
+                action_pos, self.action_matrix_radius)
         data[self.images] = tf.concat(3, [data[self.images], gauss_img])
 
         data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 6])

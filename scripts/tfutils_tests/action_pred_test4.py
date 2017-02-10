@@ -123,7 +123,7 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            'use_action_matrix': True,
+            'action_matrix_radius': 10.0,
     	    'batch_size': INPUT_BATCH_SIZE,
             'n_threads': 1,
         },
@@ -168,7 +168,7 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'use_object_ids': False,
-                'use_action_matrix': True,
+                'action_matrix_radius': 10.0,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,
                 'n_threads': 1,
