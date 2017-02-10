@@ -14,16 +14,19 @@ class FuturePredictionData(TFRecordsDataProvider):
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
                  use_object_ids=True,
+                 use_action_matrix=False,
                  is_remove_teleport=True,
                  n_threads=4,
                  *args,
                  **kwargs):
 
-        self.orig_shape = None
+        self.data_sess = tf.Session()
 
+        self.orig_shape = None
         self.output_format = output_format
         self.use_object_ids = use_object_ids
         self.is_remove_teleport = is_remove_teleport
+        self.use_action_matrix = use_action_matrix
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -69,6 +72,7 @@ class FuturePredictionData(TFRecordsDataProvider):
 
 # ONLY ONE ACTION
                   tf.slice(actions, [0,  7], [-1, 6]),
+# INCLUDE ACTION ID
                   tf.slice(actions, [0, 14], [-1, 2]),
 
 # NO OBJ IDS, TELEPORT, FORCE_Z, TORQUE_X, TORQUE_Z
@@ -96,6 +100,13 @@ class FuturePredictionData(TFRecordsDataProvider):
                         self.dtypes, self.shapes)
                 self.batch_size -= 1 #TODO Remove
 
+            # convert to action matrix
+            if self.use_action_matrix:
+                self.input_ops[i], self.dtypes, self.shapes = \
+                    self.convert_to_action_matrix(self.input_ops[i], \
+                        self.dtypes, self.shapes)
+
+            # create image pairs / sequences
             if (self.output_format['images'] == 'pairs'):
                 self.input_ops[i], self.dtypes, self.shapes = \
                     self.create_image_pairs(self.input_ops[i], \
@@ -149,6 +160,49 @@ class FuturePredictionData(TFRecordsDataProvider):
             self.batch_size -= 1 #TODO Remove
 
         return [self.input_ops, self.dtypes, self.shapes]
+
+    def create_gaussian_kernel(self, size, center=None, fwhm = 10.0):
+        '''
+        size: kernel size
+        fwhm: full-width-half-maximum (effective radius)
+        center: kernel_center
+        '''
+        batch_size = size[0]
+        x = tf.range(0, size[1], 1, dtype=tf.float32)
+        x = tf.tile(x, [batch_size])
+        x = tf.reshape(x, [batch_size, 1, size[1]]) #column vector
+        y = tf.range(0, size[2], 1, dtype=tf.float32)
+        y = tf.tile(y, [batch_size])
+        y = tf.reshape(y, [batch_size, size[2], 1]) #row vector
+
+        if center is None:
+            x0 = tf.constant(size[1] // 2)
+            y0 = tf.constant(size[2] // 2)
+        else:
+            x0 = tf.slice(center, [0, 0], [-1, 1])
+            y0 = tf.slice(center, [0, 1], [-1, 1]) 
+
+        x0 = tf.reshape(x0, [batch_size, 1, 1])
+        y0 = tf.reshape(y0, [batch_size, 1, 1])
+        gauss = tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
+        size.append(1) # append channel dimension
+        gauss = tf.reshape(gauss*255, size) # scale to whole uint8 range
+        return tf.cast(gauss, tf.uint8)
+
+    def convert_to_action_matrix(self, data, dtypes, shapes):
+        action_pos = tf.slice(data[self.actions], [0, 6], [-1, 2])
+        
+        image_shape = data[self.images].get_shape().as_list()
+        image_shape[-1] += 1
+        shapes[self.images] = image_shape[1:]
+
+        gauss_img = self.create_gaussian_kernel(image_shape[0:3], action_pos)
+        data[self.images] = tf.concat(3, [data[self.images], gauss_img])
+
+        data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 6])
+        shapes[self.actions] = [6]
+
+        return [data, dtypes, shapes]
 
     def add_ids(self, data):
         batch_size_loaded = data[self.images].get_shape().as_list()[0]
