@@ -30,7 +30,8 @@ def actionPredictionModelBase(inputs,
                         cfg = {}, 
                         train = True, 
                         slippage = 0, 
-                        minmax_end = True, 
+                        minmax_end = True,
+                        n_channels = 3,
                         **kwargs):
     '''
     Action Prediction Network Model Definition:
@@ -89,10 +90,10 @@ def actionPredictionModelBase(inputs,
 
     # Split current nodes
     shape = current_node.get_shape().as_list()
-    dim = int(shape[3] / 3)
+    dim = int(shape[3] / n_channels)
     current_nodes = []
     for d in range(dim):
-        current_nodes.append(tf.slice(current_node, [0,0,0,d*3], [-1,-1,-1,3]))
+        current_nodes.append(tf.slice(current_node, [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
@@ -193,6 +194,7 @@ def actionPredictionModelBase(inputs,
 
     #output batch normalized labels for storage and loss
 
+    '''
     #first concatenate all actions into one batch batch to normalize across
     #the last two entries, i.e. the pixel values will always get normalized by 255
     norm_actions0 = []
@@ -216,9 +218,11 @@ def actionPredictionModelBase(inputs,
         norm_actions.append(tf.slice(norm_actions0, [d*batch_size, 0], [batch_size, -1]))
         norm_actions.append(tf.slice(norm_actions1, [d*batch_size, 0], [batch_size, -1]))
     norm_actions = tf.concat(1, norm_actions)
-#    epsilon = 1e-3
-#    batch_mean, batch_var = tf.nn.moments(actions_node, [0])
-#    norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
+    '''
+    # normalize action vector
+    epsilon = 1e-3
+    batch_mean, batch_var = tf.nn.moments(actions_node, [0])
+    norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
 
     outputs = {'pred': pred, 'norm_actions': norm_actions}
     return outputs, net.params
