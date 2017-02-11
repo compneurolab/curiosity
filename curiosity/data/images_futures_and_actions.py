@@ -6,7 +6,7 @@ import tensorflow as tf
 import copy
 
 class FuturePredictionData(TFRecordsDataProvider):
-    example_counter = 0
+    example_counter = tf.constant(0)
     def __init__(self,
                  data_path,
                  batch_size=256,
