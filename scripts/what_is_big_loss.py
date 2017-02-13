@@ -89,7 +89,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': '33_big',
+        'exp_id': '33_big2',
     },
 
 
