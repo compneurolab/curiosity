@@ -372,7 +372,7 @@ def model_tfutils_fpd_compatible(inputs, **kwargs):
   return model_tfutils(new_inputs, **kwargs)
 
 
-def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T_out = 1, num_channels = 3, **kwargs):
+def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T_out = 1, num_channels = 3, batch_normalize = False, **kwargs):
   '''Model definition, compatible with tfutils.
 
   inputs should have 'current', 'future', 'action', 'time' keys. Outputs is a dict with keys, pred and future, within those, dicts with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.'''
@@ -417,7 +417,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
     #not sure this usage ConvNet class creates exactly the params that we want to have, specifically in the 'input' field, but should give us an accurate record of this network's configuration
     with tf.variable_scope('encode' + str(i)):
 
-      with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu'):
+      with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu', batch_normalize = batch_normalize):
 
         cfs = getEncodeConvFilterSize(i, encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
         cfs0 = cfs
@@ -492,10 +492,10 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
         nf1 = cfg['decode'][i]['num_filters']
       if i == decode_depth:
         assert nf1 == T_out * num_channels, (nf1, T_out, num_channels)
-        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, activation = None)
+        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, batch_normalize = batch_normalize, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
       else:
-        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
+        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, batch_normalize = batch_normalize, activation='relu')
 
   return {'pred' : m.output, 'tv' : future_node}, m.params
 

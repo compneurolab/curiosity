@@ -89,7 +89,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': '33_big5',
+        'exp_id': '33_bn',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -104,7 +104,8 @@ params = {
 		'cfg' : cfg,
 		'slippage' : 0,
         'T_in' : T_in,
-        'T_out' : T_out
+        'T_out' : T_out,
+        'batch_normalize' : True
 	},
 
 	'train_params': {

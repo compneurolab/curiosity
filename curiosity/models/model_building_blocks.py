@@ -36,6 +36,75 @@ class ConvNetwithBypasses(model.ConvNet):
 			self._params[name][value['type']] = value
 
 
+	
+	@tf.contrib.framework.add_arg_scope
+	def conv(self, out_shape, ksize=3, stride=1, padding='SAME', init='xavier', stddev=.01, bias=1, activation='relu', weight_decay=None, in_layer=None, init_file=None, init_layer_keys=None, batch_normalize = False):
+		if in_layer is None:
+		    in_layer = self.output
+		if weight_decay is None:
+		    weight_decay = 0.
+		in_shape = in_layer.get_shape().as_list()[-1]
+
+		if isinstance(ksize, int):
+		    ksize1 = ksize
+		    ksize2 = ksize
+		else:
+		    ksize1, ksize2 = ksize
+
+		if init != 'from_file':
+		    kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+		                             shape=[ksize1, ksize2, in_shape, out_shape],
+		                             dtype=tf.float32,
+		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+		                             name='weights')
+		    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+		                             shape=[out_shape],
+		                             dtype=tf.float32,
+		                             name='bias')
+		else:
+		    init_dict = self.initializer(init,
+		                                 init_file=init_file,
+		                                 init_keys=init_layer_keys)
+		    kernel = tf.get_variable(initializer=init_dict['weight'],
+		                             dtype=tf.float32,
+		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+		                             name='weights')
+		    biases = tf.get_variable(initializer=init_dict['bias'],
+		                             dtype=tf.float32,
+		                             name='bias')
+
+		conv = tf.nn.conv2d(in_layer, kernel,
+		                    strides=[1, stride, stride, 1],
+		                    padding=padding)
+		if batch_normalize:
+			#Using "global normalization," which is recommended in the original paper
+			print('doing batch normalization')
+			mean, var = tf.nn.moments(conv, [0, 1, 2])
+			scale = tf.get_variable(initializer=tf.constant_initializer(bias),
+			                         shape=[out_shape],
+			                         dtype=tf.float32,
+			                         name='scale')
+			self.output = tf.nn.batch_normalization(conv, mean, var, biases, scale, 1e-3, name = 'conv')
+		else:
+			self.output = tf.nn.bias_add(conv, biases, name='conv')
+
+		if activation is not None:
+		    self.output = self.activation(kind=activation)
+		self.params = {'input': in_layer.name,
+		               'type': 'conv',
+		               'num_filters': out_shape,
+		               'stride': stride,
+		               'kernel_size': (ksize1, ksize2),
+		               'padding': padding,
+		               'init': init,
+		               'stddev': stddev,
+		               'bias': bias,
+		               'activation': activation,
+		               'weight_decay': weight_decay,
+		               'seed': self.seed}
+		return self.output
+
+
 	@tf.contrib.framework.add_arg_scope
 	def pool(self,
 	         ksize=3,
