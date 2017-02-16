@@ -135,7 +135,6 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 
             # add ids
             #self.input_ops[i] = self.add_ids(self.input_ops[i])
-        print(self.input_ops[0])    
         return self.input_ops
 
     def create_gaussian_kernel(self, size, center=None, fwhm = 10.0):
