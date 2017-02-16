@@ -492,10 +492,10 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
         nf1 = cfg['decode'][i]['num_filters']
       if i == decode_depth:
         assert nf1 == T_out * num_channels, (nf1, T_out, num_channels)
-        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, batch_normalize = batch_normalize, activation = None)
+        m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, batch_normalize = False, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
       else:
-        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, batch_normalize = batch_normalize, activation='relu')
+        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, batch_normalize = False, activation='relu')
 
   return {'pred' : m.output, 'tv' : future_node}, m.params
 

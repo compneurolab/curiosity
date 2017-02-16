@@ -1,5 +1,5 @@
 '''
-Basic asymmetric network training script.
+A bottleneck architecture.
 '''
 
 import numpy as np
@@ -12,17 +12,45 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
-import curiosity.models.future_pred_asymmetric_with_bypass2 as modelsource
+import curiosity.models.asymmetric_modularized as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 
 
-CODE_ROOT = os.environ['CODE_ROOT']
-cfgfile = os.path.join(CODE_ROOT, 
-                       'curiosity/curiosity/configs/asymmetric_test.cfg')
-cfg = postprocess_config(json.load(open(cfgfile)))
 
+
+cfg = {
+	'encode_depth' : 5,
+	'decode_depth' : 5,
+	'hidden_depth' : 5,
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 96}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		2 : {'conv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 96}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 96}},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32}}, # Size 16 image, giving 16 * 16 * 32 = 8192 neurons. Let's try it!
+	},
+
+	'decode' : {
+		0 : {'size' : 16, 'num_filters' : 32},
+		1 : {'filter_size' : 3, 'size' : 16, 'num_filters' : 64},
+		2 : {'filter_size' : 3, 'size' : 16, 'num_filters' : 32},
+		3 : {'filter_size' : 3, 'size' : 16, 'num_filters' : 32},
+		4 : {'filter_size' : 5, 'size' : 64, 'num_filters' : 32},
+		5 : {'filter_size' : 11, 'size' : 256, 'num_filters' : 9}
+	},
+
+	'hidden' : {
+		'to_repn' : {'num_features' : 1024},
+		1 : {'num_features' : 256},
+		2 : {'num_features' : 256},
+		3 : {'num_features' : 64},
+		4 : {'num_features' : 32},
+		5 : {'num_features' : 8192, 'bypass' : 0}
+	}
+
+}
 
 
 DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
@@ -87,28 +115,23 @@ def mean_losses_keep_rest(step_results):
 def get_loss_for_val(inputs, outputs, num_channels = 3, threshold = None, **loss_params):
    	return {'loss' : modelsource.something_or_nothing_loss_fn(outputs, inputs['images'], num_channels = num_channels, threshold = threshold)}
 
-def get_ids_target(inputs, outputs, *ttarg_params):
-    return {'ids' : inputs['id']}
-
-
-
 params = {
 	'save_params' : {
 	    'host': 'localhost',
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': 'bn_small2',
+        'exp_id': 'bottleneck',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['pred', 'img', 'act', 'tv', 'ids'],
+        'save_to_gfs': ['pred', 'img', 'act', 'tv'],
         'cache_dir' : '/media/data/nhaber',
 	},
 
 	'model_params' : {
-		'func' : modelsource.model_tfutils_fpd_compatible,
+		'func' : modelsource.asymmetric_with_bottleneck,
 		'rng' : None,
 		'cfg' : cfg,
 		'slippage' : 0,
@@ -136,7 +159,6 @@ params = {
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
         'thres_loss' : float('inf'),
-        'targets' : {'func' : get_ids_target}
     },
 
 
