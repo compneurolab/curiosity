@@ -1,11 +1,12 @@
-from tfutils.data import HDF5DataProvider, TFRecordsDataProvider#, LMDBDataProvider
+from tfutils.data import TFRecordsParallelByFileProvider
 import numpy as np
 import json
 from PIL import Image
 import tensorflow as tf
 import copy
+import os
 
-class FuturePredictionData(TFRecordsDataProvider):
+class FuturePredictionData(TFRecordsParallelByFileProvider):
     example_counter = tf.constant(0)
     def __init__(self,
                  data_path,
@@ -19,8 +20,6 @@ class FuturePredictionData(TFRecordsDataProvider):
                  n_threads=4,
                  *args,
                  **kwargs):
-
-        self.data_sess = tf.Session()
 
         self.orig_shape = None
         self.output_format = output_format
@@ -41,12 +40,16 @@ class FuturePredictionData(TFRecordsDataProvider):
 
         self.images = 'images'
         self.actions = 'parsed_actions' #'actions'
+
+        self.source_paths = [os.path.join(data_path, self.images),
+                             os.path.join(data_path, self.actions)]
+
         super(FuturePredictionData, self).__init__(
-            data_path,
-            {self.images: tf.string, self.actions: tf.string},
+            self.source_paths,
             batch_size=batch_size,
-            postprocess={self.images: self.postproc_img, self.actions: self.postproc_parsed_actions}, #self.postproc_actions},
-            imagelist=[self.images],
+            postprocess={self.images: [(self.postproc_img, (), {})],
+                        self.actions: [(self.postproc_parsed_actions, (), {})] },
+                        #self.postproc_actions},
             n_threads=n_threads,
             *args, **kwargs)
 
@@ -54,15 +57,13 @@ class FuturePredictionData(TFRecordsDataProvider):
         if self.crop_size is not None:
             raise NotImplementedError('Do not use crop_size as it is not implemented!')
 
-    def postproc_img(self, images, dtype, shape):
+    def postproc_img(self, images):
         #TODO Implement cropping via warping
-        return [images, dtype, shape]
+        return images
 
-    def postproc_parsed_actions(self, actions, dtype, shape):
+    def postproc_parsed_actions(self, actions):
         actions = tf.decode_raw(actions, tf.float64)
         actions = tf.cast(actions, tf.float32)
-        dtype = tf.float32
-        shape = [25]
 
         if not self.use_object_ids:
             # object ids are at columns 13 and 22, thus remove those columns
@@ -87,79 +88,55 @@ class FuturePredictionData(TFRecordsDataProvider):
             ])
             # now shape is 23 instead 25 since object ids were removed
             shape = [8] #23
-        return [actions, dtype, shape]
+        return actions
 
-    def init_threads(self):
-        self.input_ops, self.dtypes, self.shapes = \
-                super(FuturePredictionData, self).init_threads()
+    def set_data_shapes(self, data):
+        for i in range(len(data)):
+            # set image batch size
+            img_shape = data[i][self.images].get_shape().as_list()
+            img_shape[0] = self.batch_size
+            data[i][self.images].set_shape(img_shape)
+            # set action batch size
+            act_shape = data[i][self.actions].get_shape().as_list()
+            act_shape[0] = self.batch_size
+            data[i][self.actions].set_shape(act_shape)
+        return data
+
+    def init_ops(self):
+        self.input_ops = super(FuturePredictionData, self).init_ops()
+
+        # make sure batch size shapes of tensors are set
+        self.input_ops = self.set_data_shapes(self.input_ops)
 
         for i in range(len(self.input_ops)):
+            # remove first image pair as it is teleporting
             if(self.is_remove_teleport):
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.remove_teleport(self.input_ops[i], \
-                        self.dtypes, self.shapes)
-                self.batch_size -= 1 #TODO Remove
-
-            # convert to action matrix
+                self.input_ops[i] = self.remove_teleport(self.input_ops[i])
+            # convert action position into gaussian channel
             if self.action_matrix_radius is not None:
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.convert_to_action_matrix(self.input_ops[i], \
-                        self.dtypes, self.shapes)
+                self.input_ops[i] = self.convert_to_action_matrix(self.input_ops[i])
 
             # create image pairs / sequences
             if (self.output_format['images'] == 'pairs'):
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.create_image_pairs(self.input_ops[i], \
-                        self.dtypes, self.shapes)
+                self.input_ops[i] = self.create_image_pairs(self.input_ops[i])
             
             elif (self.output_format['images'] == 'sequence'):
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.create_image_sequence(self.input_ops[i], \
-                        self.dtypes, self.shapes)
-                if (i == 0):
-                    self.dtypes['future_images'] = self.dtypes[self.images]
-                    self.shapes['future_images'] = \
-                            copy.deepcopy(self.shapes[self.images])
-                    # update shapes to match the concatenated action vector
-                    self.shapes[self.images][2] *= self.min_time_difference
-                   
+                self.input_ops[i] = self.create_image_sequence(self.input_ops[i])
             else:
                 raise KeyError('Unknown image output format')
 
             if (self.output_format['actions'] == 'pairs'):
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.create_action_pairs(self.input_ops[i], \
-                        self.dtypes, self.shapes)
+                self.input_ops[i] = self.create_action_pairs(self.input_ops[i])
 
             elif (self.output_format['actions'] == 'sequence'):
-                self.input_ops[i], self.dtypes, self.shapes = \
-                    self.create_action_sequence(self.input_ops[i], \
-                        self.dtypes, self.shapes)
-                if (i == 0):
-                    self.dtypes['future_actions'] = self.dtypes[self.actions]
-                    self.shapes['future_actions'] = \
-                            copy.deepcopy(self.shapes[self.actions])
-                    # update shapes to match the concatenated action vector
-                    self.shapes[self.actions][0] *= self.min_time_difference
-
+                self.input_ops[i] = self.create_action_sequence(self.input_ops[i])
             else:
                 raise KeyError('Unknown action output format')
 
             # add ids
-            self.input_ops[i] = self.add_ids(self.input_ops[i])
-            if(i == 0):
-                self.shapes['id'] = []
-                self.dtypes['id'] = tf.int32
-            
-            #TODO Expand self.batch_size to be of dimension input_ops
-            # and modify is_remove_teleport
-            if(self.is_remove_teleport):
-                self.batch_size += 1
-
-        if(self.is_remove_teleport):
-            self.batch_size -= 1 #TODO Remove
-
-        return [self.input_ops, self.dtypes, self.shapes]
+            #self.input_ops[i] = self.add_ids(self.input_ops[i])
+        print(self.input_ops[0])    
+        return self.input_ops
 
     def create_gaussian_kernel(self, size, center=None, fwhm = 10.0):
         '''
@@ -185,73 +162,76 @@ class FuturePredictionData(TFRecordsDataProvider):
         x0 = tf.reshape(x0, [batch_size, 1, 1])
         y0 = tf.reshape(y0, [batch_size, 1, 1])
         gauss = tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
+        y0 = tf.reshape(y0, [batch_size, 1, 1])
+        gauss = tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
         size.append(1) # append channel dimension
         gauss = tf.reshape(gauss*255, size) # scale to whole uint8 range
         return tf.cast(gauss, tf.uint8)
 
-    def convert_to_action_matrix(self, data, dtypes, shapes):
+    def convert_to_action_matrix(self, data):
         action_pos = tf.slice(data[self.actions], [0, 6], [-1, 2])
         
         image_shape = data[self.images].get_shape().as_list()
         image_shape[-1] += 1
-        shapes[self.images] = image_shape[1:]
 
         gauss_img = self.create_gaussian_kernel(image_shape[0:3], \
                 action_pos, self.action_matrix_radius)
         data[self.images] = tf.concat(3, [data[self.images], gauss_img])
 
         data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 6])
-        shapes[self.actions] = [6]
 
-        return [data, dtypes, shapes]
+        return data
 
     def add_ids(self, data):
         batch_size_loaded = data[self.images].get_shape().as_list()[0]
         data['id'] = tf.range(self.example_counter, 
                 self.example_counter + batch_size_loaded, 1)
-        self.example_counter = self.example_counter + batch_size_loaded
 
+        shape = data['id'].get_shape().as_list()
+        shape[0] = data[self.images].get_shape().as_list()[0]
+        data['id'].set_shape(shape)
+
+        self.example_counter = self.example_counter + batch_size_loaded
         return data
 
-    def remove_teleport(self, data, dtypes, shapes):
-        size = [self.batch_size - 1, -1, -1, -1]
+    def remove_teleport(self, data):
+        size = data[self.images].get_shape().as_list()
+        size[0] -= 1
         begin = [1, 0, 0, 0]
         data[self.images] = tf.slice(data[self.images], begin, size)
 
-        size = [self.batch_size - 1, -1]
+        size = data[self.actions].get_shape().as_list()
+        size[0] -= 1
         begin = [1, 0]
         data[self.actions] = tf.slice(data[self.actions], begin, size)
 
-        return [data, dtypes, shapes]
+        return data
 
-    def create_image_pairs(self, data, dtypes, shapes):
-        size = [self.batch_size - self.min_time_difference, -1, -1, -1]
+    def create_image_pairs(self, data):
+        size = data[self.images].get_shape().as_list()
+        size[0] -= self.min_time_difference
         begin = [self.min_time_difference, 0, 0, 0]
         data['future_images'] = tf.slice(data[self.images], begin, size)
 
         begin = [0,0,0,0]
         data[self.images] = tf.slice(data[self.images], begin, size)
 
-        dtypes['future_images'] = dtypes[self.images]
-        shapes['future_images'] = shapes[self.images]                   
+        return data
 
-        return [data, dtypes, shapes]
-
-    def create_action_pairs(self, data, dtypes, shapes):
-        size = [self.batch_size - self.min_time_difference, -1]
+    def create_action_pairs(self, data):
+        size = data[self.actions].get_shape().as_list()
+        size[0] -= self.min_time_difference
         begin = [self.min_time_difference, 0]
         data['future_actions'] = tf.slice(data[self.actions], begin, size)
 
         begin = [0,0]
         data[self.actions] = tf.slice(data[self.actions], begin, size)
 
-        dtypes['future_actions'] = dtypes[self.actions]
-        shapes['future_actions'] = shapes[self.actions]
-
-        return [data, dtypes, shapes]
+        return data
        
-    def create_image_sequence(self, data, dtypes, shapes):
-        size = [self.batch_size - self.min_time_difference, -1, -1, -1]
+    def create_image_sequence(self, data):
+        size = data[self.images].get_shape().as_list()
+        size[0] -= self.min_time_difference
         begin = [self.min_time_difference, 0, 0, 0]
         data['future_images'] = tf.slice(data[self.images], begin, size)
 
@@ -262,10 +242,11 @@ class FuturePredictionData(TFRecordsDataProvider):
 
         data[self.images] = tf.concat(3, shifts)
 
-        return [data, dtypes, shapes]
+        return data
 
-    def create_action_sequence(self, data, dtypes, shapes):
-        size = [self.batch_size - self.min_time_difference, -1]
+    def create_action_sequence(self, data):
+        size = data[self.actions].get_shape().as_list()
+        size[0] -= self.min_time_difference
         begin = [self.min_time_difference, 0]
         data['future_actions'] = tf.slice(data[self.actions], begin, size)        
 
@@ -276,9 +257,9 @@ class FuturePredictionData(TFRecordsDataProvider):
 
         data[self.actions] = tf.concat(1, shifts)
        
-        return [data, dtypes, shapes]
+        return data
 
-class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
+class FuturePredictionData_DEPRECATED(TFRecordsParallelByFileProvider):
     batch_num = 0
     def __init__(self,
 		 data_path,
@@ -493,5 +474,3 @@ class FuturePredictionData_DEPRECATED(TFRecordsDataProvider):
 	    future_actions.append(input_actions[i+delta_t])
 	    ids.append(i+self.batch_num*self.batch_size)
 	    future_ids.append(i+delta_t+self.batch_num*self.batch_size)
-	self.batch_num += 1
-	return [images, actions, future_images, future_actions, ids, future_ids]
