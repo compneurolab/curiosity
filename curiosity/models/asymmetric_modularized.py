@@ -24,10 +24,10 @@ def feedforward_conv_loop(input_node, m, cfg, reuse_weights = False):
 				scope.reuse_variables()
 
 			with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, activation='relu'):
-			    cfs = cfg['encode'][i]['filter_size']
+			    cfs = cfg['encode'][i]['conv']['filter_size']
 			    cfs0 = cfs
-			    nf = cfg['encode'][i]['num_filters']
-			    cs = cfg['encode'][i]['stride']
+			    nf = cfg['encode'][i]['conv']['num_filters']
+			    cs = cfg['encode'][i]['conv']['stride']
 			    m.conv(nf, cfs, cs)
 	#TODO add print function
 			pool = cfg['encode'][i].get('pool')
@@ -36,7 +36,25 @@ def feedforward_conv_loop(input_node, m, cfg, reuse_weights = False):
 			    ps = pool['stride']
 			    m.pool(pfs, ps)
 			encode_nodes.append(m.output)
+			print(m.output)
 	return encode_nodes
+
+def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass, reuse_weights = False):
+	assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
+	hidden_depth = cfg['hidden_depth']
+	m.output = input_node
+	for i in range(1, hidden_depth + 1):
+		with tf.variable_scope('hidden' + str(i)) as scope:
+			if reuse_weights:
+				scope.reuse_variables()
+			bypass = cfg['hidden'][i].get('bypass')
+			if bypass:
+				bypass_node = nodes_for_bypass[bypass]
+				m.add_bypass(bypass_node)
+			nf = cfg['hidden'][i]['num_features']
+			m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+			nodes_for_bypass.append(m.output)
+	return m.output
 
 def hidden_loop(input_node, m, cfg, reuse_weights = False):
 	assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
@@ -48,10 +66,11 @@ def hidden_loop(input_node, m, cfg, reuse_weights = False):
 				scope.reuse_variables()
 			nf = cfg['hidden'][i]['num_features']
 			m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+			print(m.output)
 	return m.output
 
 def decode_conv_loop(input_node, m, cfg, nodes_for_bypass, reuse_weights = False):
-	assert len(input_node, get_shape().as_list()) == 4, len(input_node, get_shape().as_list())
+	assert len(input_node.get_shape().as_list()) == 4, len(input_node.get_shape().as_list())
 	m.output = input_node
 	decode_depth = cfg['decode_depth']
 	for i in range(1, decode_depth + 1):
@@ -70,9 +89,11 @@ def decode_conv_loop(input_node, m, cfg, nodes_for_bypass, reuse_weights = False
 				m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation='relu')
 			else:
 				m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, activation=None)
+			print(m.output)
+	return m.output
 
 
-def std_asymmetric_model(inputs, cfg = None, num_channels = 3, T_in = 1, T_out = 1, rng = None **kwargs):
+def std_asymmetric_model(inputs, cfg = None, num_channels = 3, T_in = 1, T_out = 1, rng = None, **kwargs):
 	actions_sequence = tf.cast(inputs['parsed_actions'], tf.float32)
 	current_node = inputs['images'][:, :, :, :num_channels * T_in]
 	current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
@@ -90,6 +111,7 @@ def std_asymmetric_model(inputs, cfg = None, num_channels = 3, T_in = 1, T_out =
 	#flatten
 	enc_shape = m.output.get_shape().as_list()
 	m.reshape([np.prod(enc_shape[1:])])
+	m.add_bypass(actions_sequence)
 
 	#hidden
 	hidden_loop(m.output, m, cfg, reuse_weights = False)
@@ -103,11 +125,114 @@ def std_asymmetric_model(inputs, cfg = None, num_channels = 3, T_in = 1, T_out =
 
 	return {'pred' : m.output, 'tv' : future_node}, m.params
 
+def asymmetric_with_bottleneck(inputs, cfg = None, num_channels = 3, T_in = 3, T_out = 3, **kwargs):
+	actions_sequence = tf.cast(inputs['parsed_actions'], tf.float32)
+	current_node = inputs['images'][:, :, :, :num_channels * T_in]
+	current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
+	future_node = inputs['images'][:, :, :, num_channels * T_in : ]
+	assert num_channels * (T_in + T_out) == inputs['images'].get_shape().as_list()[3]
+
+	m = ConvNetwithBypasses(**kwargs)
+
+	#encode
+	encode_nodes = feedforward_conv_loop(current_node, m, cfg, reuse_weights = False)
+	
+	#flatten
+	enc_shape = m.output.get_shape().as_list()
+	m.reshape([np.prod(enc_shape[1:])])
+	m.add_bypass(actions_sequence)
+	nf = cfg['hidden']['to_repn']['num_features']
+	m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+	hidden_depth = cfg['hidden_depth']
+	n_dynamic = cfg['hidden'][hidden_depth - 1]
+	static_node = m.output[:, :, :, n_dynamic : ]
+	nodes_for_bypass = [static_node]
+
+	#hidden
+	hidden_loop_with_bypasses(m.output, m, cfg, nodes_for_bypass)
+
+	#unflatten
+	ds = cfg['decode'][0]['size']
+	nf1 = cfg['decode'][0]['num_filters']
+	m.reshape([ds, ds, nf1])
+
+	decode_conv_loop(m.output, m, cfg, encode_nodes, reuse_weights = False)
+
+	return {'pred' : m.output, 'tv' : future_node}, m.params
+
+
+
+def timestep_1_mlp_model(inputs, cfg = None, num_channels = 3, T_in = 3, T_out = 3, rng = None, **kwargs):
+	'''Some basic recurrence: the hidden layer is an mlp that "evolves one timestep."
+
+	So it predicts one loop, and the result is fed back in and augmented with another image.
+	A problem here: unclear how one should do bypasses, as decode inputs should somehow be timestep-distance independent,
+	and we don't get a full image for predictions down the line, if we're discretizing for the loss.
+	'''
+	actions_sequence = tf.cast(inputs['parsed_actions'], tf.float32)
+	current_node = inputs['images'][:, :, :, :num_channels * T_in]
+	current_node = tf.divide(tf.cast(current_node, tf.float32), 255.)
+	future_node = inputs['images'][:, :, :, num_channels * T_in : ]
+	assert num_channels * (T_in + T_out) == inputs['images'].get_shape().as_list()[3]
+
+	#just so I don't forget to check this...
+	assert actions_sequence.get_shape().as_list()[1] == 25 * (T_in + T_out), (actions_sequence.get_shape().as_list()[1], T_in, T_out)
+	actions_length = int(actions_sequence.get_shape().as_list()[1] / (T_in + T_out))
+	current_actions = actions_sequence[:, :actions_length * T_in]
+	future_actions = [actions_sequence[:, actions_length * t: actions_length * (t + 1)] for t in range(T_in, T_in + T_out)]
+
+	if rng is None:
+		rng = np.random.RandomState(seed=kwargs['seed'])
+
+	m = ConvNetwithBypasses(**kwargs)
+
+	#encode
+	encode_nodes = feedforward_conv_loop(current_node, m, cfg, reuse_weights = False)
+
+	#flatten
+	enc_shape = m.output.get_shape().as_list()
+	m.reshape([np.prod(enc_shape[1:])])
+	#include actions up until before prediction step
+	m.add_bypass(current_actions)
+	#one fc layer getting to "current state"
+	nf = cfg['hidden'][0]['num_features']
+	m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+	current_state = m.output
+
+	predictions = []
+
+	for t in range(T_out):
+		m.add_bypass(future_actions[t], in_layer = current_state)
+		if t == 0:
+			reuse_weights = False
+		else:
+			reuse_weights = True
+		next_state = hidden_loop(m.output, m, cfg, reuse_weights = reuse_weights)
+		assert current_state.get_shape().as_list() == next_state.get_shape().as_list(), (current_state.get_shape().as_list(), next_state.get_shape().as_list())
+		current_state = next_state
+		#unflatten
+		ds = cfg['decode'][0]['size']
+		nf1 = cfg['decode'][0]['num_filters']
+		m.reshape([ds, ds, nf1])
+		#decode
+		future_decoded = decode_conv_loop(m.output, m, cfg, encode_nodes, reuse_weights = reuse_weights)
+		predictions.append(future_decoded)
+
+	return {'pred' : tf.concat(3, predictions), 'tv' : future_node}, m.params
+
+
+def compute_diffs_timestep_1(original_image, subsequent_images, num_channels = 3):
+  curr_image = original_image
+  diffs = []
+  for i in range(int(subsequent_images.get_shape().as_list()[-1] / num_channels)):
+    next_image = subsequent_images[:, :, :, num_channels * i : num_channels * (i + 1)]
+    diffs.append(next_image - curr_image)
+    curr_image = next_image
+  return tf.concat(3, diffs)
+
+
 
 def something_or_nothing_loss_fn(outputs, image, threshold = None, num_channels = 3, **kwargs):
-	print('inside loss')
-	print(outputs)
-	print(image)
 	pred = outputs['pred']
 	future_images = tf.cast(outputs['tv'], 'float32')
 	assert threshold is not None
