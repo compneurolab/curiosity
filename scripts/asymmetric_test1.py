@@ -38,6 +38,15 @@ T_out = 3
 SEQ_LEN = T_in + T_out
 
 
+def append_every_kth(x, y, step, k):
+    if x is None:
+        x = []
+    if step % k == 0:
+        x.append(y)
+    return x
+
+
+
 def get_current_predicted_future_action(inputs, outputs, num_channels, threshold = None, num_to_save = 1, **loss_params):
     '''
     Gives you input tensors and output tensors.
@@ -89,7 +98,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': '33_bn',
+        'exp_id': 'bn_lr1e-2',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -144,7 +153,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.001,
+        'learning_rate': 0.01,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -177,7 +186,8 @@ params = {
                 'threshold' : DISCRETE_THRESHOLD
             },
         'agg_func' : mean_losses_keep_rest,
-        'num_steps': 10
+        'online_agg_func' : lambda x, y, step : append_every_kth(x, y, step, 10),
+        'num_steps': 100
         }
     }
 
