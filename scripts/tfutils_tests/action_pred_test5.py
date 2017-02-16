@@ -125,6 +125,8 @@ params = {
             'use_object_ids': False,
             'action_matrix_radius': 10.0,
     	    'batch_size': INPUT_BATCH_SIZE,
+            'shuffle': True,
+            'shuffle_seed': 0,
             'n_threads': 1,
         },
 
@@ -132,7 +134,7 @@ params = {
             'queue_type': 'random',
             'batch_size': OUTPUT_BATCH_SIZE,
             'seed': 0,
-    	    'capacity': OUTPUT_BATCH_SIZE * 60
+    	    'capacity': OUTPUT_BATCH_SIZE * 20
         },
         
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
@@ -171,6 +173,8 @@ params = {
                 'action_matrix_radius': 10.0,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,
+                'shuffle': True,
+                'shuffle_seed': 0,
                 'n_threads': 1,
             },
             'queue_params': {
