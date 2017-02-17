@@ -91,7 +91,6 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 #                tf.slice(actions, [0, 23], [-1, -1]),
             ])
             # now shape is 23 instead 25 since object ids were removed
-            shape = [8] #23
         return actions
 
     def set_data_shapes(self, data):
