@@ -25,12 +25,13 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 
 
-DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
-VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions8.tfrecords'
-BATCH_SIZE = 128
+DATA_PATH = '/media/data2/one_world_dataset/tfdata'
+VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
+DATA_BATCH_SIZE = 256
+MODEL_BATCH_SIZE = 128
 DISCRETE_THRESHOLD = .1
 N = 2048000
-NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
+NUM_BATCHES_PER_EPOCH = N // MODEL_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 seed = 0
 T_in = 3
@@ -98,12 +99,12 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': 'bn_small2',
+        'exp_id': 'bn_small3',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['pred', 'img', 'act', 'tv', 'ids'],
+        'save_to_gfs': ['pred', 'img', 'act', 'tv'],
         'cache_dir' : '/media/data/nhaber',
 	},
 
@@ -124,19 +125,21 @@ params = {
             # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
             'output_format' : {'images' : 'sequence', 'actions' : 'sequence'},
             'min_time_difference': SEQ_LEN,
-    	    'batch_size': BATCH_SIZE,
-            'n_threads' : 2,
+    	    'batch_size': DATA_BATCH_SIZE,
+            # 'use_object_ids' : False,
+            'n_threads' : 1,
+            'random' : True,
+            'random_seed' : 0
         },
         'queue_params': {
             'queue_type': 'random',
-            'batch_size': BATCH_SIZE,
+            'batch_size': MODEL_BATCH_SIZE,
             'seed': 0,
-    	    'capacity': BATCH_SIZE * 60,
+    	    'capacity': MODEL_BATCH_SIZE * 10,
             # 'n_threads' : 4
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
         'thres_loss' : float('inf'),
-        'targets' : {'func' : get_ids_target}
     },
 
 
@@ -163,18 +166,21 @@ params = {
         'valid0': {
             'data_params': {
                 'func': FuturePredictionData,
-                'data_path': VALIDATION_DATA_PATH,  # path to image database
-                # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
+                'data_path': VALIDATION_DATA_PATH,
+                # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
+                'output_format' : {'images' : 'sequence', 'actions' : 'sequence'},
                 'min_time_difference': SEQ_LEN,
-                'batch_size': BATCH_SIZE,
-                'n_threads' : 2,
-                'output_format' : {'images' : 'sequence', 'actions' : 'sequence'}
+                'batch_size': DATA_BATCH_SIZE,
+                'n_threads' : 1,
+                # 'use_object_ids' : False,
+                'random' : True,
+                'random_seed' : 0
             },
             'queue_params': {
                 'queue_type': 'random',
-                'batch_size': BATCH_SIZE,
+                'batch_size': MODEL_BATCH_SIZE,
                 'seed': 0,
-              'capacity': BATCH_SIZE * 2,
+              'capacity': MODEL_BATCH_SIZE * 2,
                 # 'n_threads' : 4
 
             },
