@@ -65,6 +65,10 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         actions = tf.decode_raw(actions, tf.float64)
         actions = tf.cast(actions, tf.float32)
 
+        act_shape = actions.get_shape().as_list()
+        act_shape[1] = 25
+        actions.set_shape(act_shape)
+
         if not self.use_object_ids:
             # object ids are at columns 13 and 22, thus remove those columns
             actions = tf.concat(1, [
@@ -99,7 +103,6 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             # set action batch size
             act_shape = data[i][self.actions].get_shape().as_list()
             act_shape[0] = self.batch_size
-            act_shape[1] = 25
             data[i][self.actions].set_shape(act_shape)
         return data
 
