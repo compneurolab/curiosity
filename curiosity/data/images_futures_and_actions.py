@@ -99,6 +99,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             # set action batch size
             act_shape = data[i][self.actions].get_shape().as_list()
             act_shape[0] = self.batch_size
+            act_shape[1] = 25
             data[i][self.actions].set_shape(act_shape)
         return data
 
