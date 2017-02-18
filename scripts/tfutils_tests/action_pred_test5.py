@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test35'
+exp_id = 'test37'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -123,6 +123,7 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
+            'normalize_actions': True,
             'action_matrix_radius': 10.0,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
@@ -169,6 +170,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
+                'normalize_actions': True,
                 'use_object_ids': False,
                 'action_matrix_radius': 10.0,
                 'min_time_difference': TIME_DIFFERENCE,
@@ -178,19 +180,19 @@ params = {
                 'n_threads': 1,
             },
             'queue_params': {
-                'queue_type': 'fifo',
+                'queue_type': 'random',
                 'batch_size': OUTPUT_BATCH_SIZE,
                 'seed': 0,
-              'capacity': OUTPUT_BATCH_SIZE,
+              'capacity': OUTPUT_BATCH_SIZE * 10,
             },
             'targets': {
                 'func': get_current_predicted_future_action,
                 'targets' : [],
-                'num_to_save' : 5
+                'num_to_save' : 1
             },
         'agg_func' : mean_losses_keep_rest,
         #'agg_func': utils.mean_dict,
-        'num_steps': 100 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 5 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }

@@ -218,12 +218,13 @@ def actionPredictionModelBase(inputs,
         norm_actions.append(tf.slice(norm_actions0, [d*batch_size, 0], [batch_size, -1]))
         norm_actions.append(tf.slice(norm_actions1, [d*batch_size, 0], [batch_size, -1]))
     norm_actions = tf.concat(1, norm_actions)
-    '''
     # normalize action vector
     epsilon = 1e-3
     batch_mean, batch_var = tf.nn.moments(actions_node, [0])
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
+    '''
 
+    norm_actions = actions_node
     outputs = {'pred': pred, 'norm_actions': norm_actions}
     return outputs, net.params
 
