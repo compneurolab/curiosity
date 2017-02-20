@@ -116,6 +116,7 @@ params = {
     },
 
     'train_params': {
+        'validate_first': False,
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
