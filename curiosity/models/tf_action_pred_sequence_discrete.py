@@ -100,9 +100,10 @@ def actionPredictionModelBase(inputs,
     encode_nodes_future = [future_node]
 
     # Split action node and binary classify
+    action_shape = int(actions_node.get_shape().as_list()[1] / dim)
     actions_split = []
     for d in range(dim):
-        act_sp = tf.slice(actions_node, [0, 6*d], [-1, 6])
+        act_sp = tf.slice(actions_node, [0, action_shape*d], [-1, action_shape])
 #        act_sp = tf.reduce_sum(act_sp, 1)
         act_sp = tf.abs(act_sp)
         act_sp = tf.minimum(act_sp, 1)

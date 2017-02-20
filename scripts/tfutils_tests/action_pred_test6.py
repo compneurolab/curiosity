@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test44'
+exp_id = 'test45'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -116,6 +116,7 @@ params = {
     },
 
     'train_params': {
+        'validate_first': False,
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
@@ -135,7 +136,8 @@ params = {
             'queue_type': 'random',
             'batch_size': OUTPUT_BATCH_SIZE,
             'seed': 0,
-    	    'capacity': OUTPUT_BATCH_SIZE * 20
+    	    'capacity': OUTPUT_BATCH_SIZE * 20,
+            'min_after_dequeue': OUTPUT_BATCH_SIZE * 16,
         },
         
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
@@ -183,7 +185,8 @@ params = {
                 'queue_type': 'random',
                 'batch_size': OUTPUT_BATCH_SIZE,
                 'seed': 0,
-              'capacity': OUTPUT_BATCH_SIZE * 10,
+                'capacity': OUTPUT_BATCH_SIZE * 10,
+                'min_after_dequeue': OUTPUT_BATCH_SIZE * 6,
             },
             'targets': {
                 'func': get_current_predicted_future_action,
