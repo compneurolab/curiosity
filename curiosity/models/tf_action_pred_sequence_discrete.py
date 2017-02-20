@@ -99,7 +99,7 @@ def actionPredictionModelBase(inputs,
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
 
-    # Split action node and binary classify
+    # Split action node and binary discretize
     action_shape = int(actions_node.get_shape().as_list()[1] / dim)
     actions_split = []
     for d in range(dim):
@@ -204,7 +204,7 @@ def actionPredictionModelBase(inputs,
     if minmax_end:
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
-        #pred = tf.sigmoid(pred)
+        pred = tf.sigmoid(pred)
 
     #output batch normalized labels for storage and loss
 

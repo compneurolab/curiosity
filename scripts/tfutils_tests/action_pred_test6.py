@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test45'
+exp_id = 'test46'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -112,7 +112,7 @@ params = {
         'min_time_difference': TIME_DIFFERENCE,
         'min_max_end' : False,
         'diff_mode' : False,
-        'n_channels': 4,
+        'n_channels': 3,
     },
 
     'train_params': {
@@ -123,9 +123,9 @@ params = {
             #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
-            'use_object_ids': False,
+            'use_object_ids': True,
             'normalize_actions': False,
-            'action_matrix_radius': 10.0,
+            'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
             'shuffle_seed': 0,
@@ -147,7 +147,7 @@ params = {
     'loss_params': {
         'targets': ['parsed_actions'],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.l2_action_loss,
+        'loss_per_case_func': modelsource.binary_cross_entropy_action_loss,
     },
 
     'learning_rate_params': {
@@ -173,8 +173,8 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'normalize_actions': False,
-                'use_object_ids': False,
-                'action_matrix_radius': 10.0,
+                'use_object_ids': True,
+                'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,
                 'shuffle': True,
