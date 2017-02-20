@@ -99,7 +99,8 @@ def actionPredictionModelBase(inputs,
     encode_nodes_future = [future_node]
 
     with tf.contrib.framework.arg_scope([net.conv, net.fc], \
-                  init='trunc_norm', stddev=.01, bias=0, activation='relu'): 
+                  init='trunc_norm', stddev=.01, bias=0, activation='relu', \
+                  ): 
         for i in range(1, encode_depth + 1):
             with tf.variable_scope('encode' + str(i)) as encode_scope:
                 #get encode parameters 
@@ -113,7 +114,7 @@ def actionPredictionModelBase(inputs,
                 for encode_node_current in encode_nodes_current[i - 1]:
                     #encode current images (conv + pool)
                     new_encode_node_current = net.conv(nf, cfs, cs, \
-                            in_layer = encode_node_current)
+                            in_layer = encode_node_current, batch_normalize=True)
                     if do_pool:
                         new_encode_node_current = net.pool(pfs, ps, \
                                 in_layer = new_encode_node_current, pfunc = pool_type)
@@ -123,7 +124,7 @@ def actionPredictionModelBase(inputs,
             
                 #encode future images (conv + pool)
                 new_encode_node_future = net.conv(nf, cfs, cs, \
-                        in_layer = encode_nodes_future[i - 1])
+                        in_layer = encode_nodes_future[i - 1], batch_normalize=True)
                 if do_pool:
                     new_encode_node_future = net.pool(pfs, ps, \
                             in_layer = new_encode_node_future, pfunc = pool_type)
