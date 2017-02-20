@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test37'
+exp_id = 'test40'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -128,7 +128,7 @@ params = {
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
             'shuffle_seed': 0,
-            'n_threads': 1,
+            'n_threads': 4,
         },
 
         'queue_params': {
@@ -177,7 +177,7 @@ params = {
                 'batch_size': INPUT_BATCH_SIZE,
                 'shuffle': True,
                 'shuffle_seed': 0,
-                'n_threads': 1,
+                'n_threads': 4,
             },
             'queue_params': {
                 'queue_type': 'random',

@@ -66,6 +66,7 @@ def actionPredictionModelBase(inputs,
     current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
     future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
     actions_node = tf.cast(actions_node, tf.float32)
+    original_actions = actions_node
 
     if(DEBUG):
         print('Actions shape')
@@ -97,6 +98,18 @@ def actionPredictionModelBase(inputs,
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
+
+    # Split action node and binary classify
+    actions_split = []
+    for d in range(dim):
+        act_sp = tf.slice(actions_node, [0, 6*d], [-1, 6])
+#        act_sp = tf.reduce_sum(act_sp, 1)
+        act_sp = tf.abs(act_sp)
+        act_sp = tf.minimum(act_sp, 1)
+        act_sp = tf.ceil(act_sp)        
+#        act_sp = tf.reshape(act_sp, [-1, 1])
+        actions_split.append(act_sp)
+    actions_node = tf.concat(1, actions_split)
 
     with tf.contrib.framework.arg_scope([net.conv, net.fc], \
                   init='trunc_norm', stddev=.01, bias=0, activation='relu'): 
@@ -190,7 +203,7 @@ def actionPredictionModelBase(inputs,
     if minmax_end:
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
-        pred = tf.tanh(pred) * 10
+        #pred = tf.sigmoid(pred)
 
     #output batch normalized labels for storage and loss
 
@@ -218,13 +231,13 @@ def actionPredictionModelBase(inputs,
         norm_actions.append(tf.slice(norm_actions0, [d*batch_size, 0], [batch_size, -1]))
         norm_actions.append(tf.slice(norm_actions1, [d*batch_size, 0], [batch_size, -1]))
     norm_actions = tf.concat(1, norm_actions)
-    '''
     # normalize action vector
     epsilon = 1e-3
     batch_mean, batch_var = tf.nn.moments(actions_node, [0])
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
+    ''' 
 
-    outputs = {'pred': pred, 'norm_actions': norm_actions}
+    outputs = {'pred': pred, 'norm_actions': actions_node, 'actions': original_actions}
     return outputs, net.params
 
 def flatten(net, node):
@@ -243,4 +256,16 @@ def l2_action_loss(labels, logits, **kwargs):
     #store normalized labels
     loss = tf.nn.l2_loss(pred - norm_labels) / norm    
     #loss = tf.minimum(loss, 0.1) #TODO remove and find reason!
+    return loss
+
+def binary_cross_entropy_action_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    norm_labels = logits['norm_actions']
+    loss = tf.reduce_mean(-tf.reduce_sum(norm_labels * tf.log(pred), 1))
+    return loss
+
+def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    norm_labels = tf.cast(logits['norm_actions'], tf.int32)
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, norm_labels))
     return loss

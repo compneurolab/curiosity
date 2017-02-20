@@ -9,7 +9,7 @@ import os
 class FuturePredictionData(TFRecordsParallelByFileProvider):
     example_counter = tf.constant(0)
 
-    epsilon = np.array(1e-3).astype(np.float32)
+    epsilon = np.array(1e-1).astype(np.float32)
 
     actions_mean = np.array(
       [  3.90625000e-03,   0.00000000e+00,  -2.44093345e-04,
