@@ -28,10 +28,13 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test48'
+exp_id = 'test60'
 
 rng = np.random.RandomState(seed=seed)
 
+def get_high_loss_inputs(inputs, outputs):
+    return {'high_loss_actions': inputs['parsed_actions'], \
+            'high_loss_norm': outputs['norm_actions']}
 
 def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss_params):
     '''
@@ -80,11 +83,13 @@ params = {
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
         'exp_id': exp_id,
-        'save_valid_freq': 5000,
+        'save_valid_freq': 2000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
+        'save_metrics_freq': 100,
         'save_initial_filters' : False,
         'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'val_loss'],
+        #'high_loss_actions', 'high_loss_norm'],
         'cache_dir': '/media/data/mrowca/tfutils'
     },
 
@@ -117,6 +122,11 @@ params = {
 
     'train_params': {
         'validate_first': False,
+
+        #'targets': {
+        #    'func': get_high_loss_inputs,
+        #},
+
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
@@ -124,7 +134,7 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            'normalize_actions': True,
+            'normalize_actions': 'minmax',
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
@@ -151,7 +161,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 1.0,
+        'learning_rate': 0.001,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -171,7 +181,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
-                'normalize_actions': True,
+                'normalize_actions': 'minmax',
                 'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,

@@ -33,6 +33,29 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
          0.00000000e+00,   1.07432982e+01,   1.84946833e+01,
          2.16857321e+01]).astype(np.float32)
 
+    actions_min = np.array(
+       [  0.00000000e+00,   0.00000000e+00,  -8.44568036e-02,
+         -1.96909573e-01,  -2.37563629e+09,  -9.25147434e+00,
+         -2.00465812e+09,  -1.02400000e+04,   0.00000000e+00,
+         -1.53459117e+03,   0.00000000e+00,  -4.99995988e+01,
+          0.00000000e+00,   0.00000000e+00,   0.00000000e+00,
+          0.00000000e+00,  -1.90427973e+03,   0.00000000e+00,
+         -1.64339652e+03,   0.00000000e+00,  -1.49970194e+01,
+          0.00000000e+00,   0.00000000e+00,   0.00000000e+00,
+          0.00000000e+00]).astype(np.float32)
+
+    actions_max = np.array(
+       [  1.00000000e+00,   1+0.00000000e+00,   1.05496711e-01,
+          2.50000000e-01,   2.04533410e+09,   1.82908107e+00,
+          4.27925173e+08,   1.02400000e+04,   2.15040000e+05,
+          1.64339652e+03,   1+0.00000000e+00,   4.99999369e+01,
+          1+0.00000000e+00,   4.40000000e+02,   3.83000000e+02,
+          5.11000000e+02,   1.61245106e+03,   1+0.00000000e+00,
+          1.53459117e+03,   1+0.00000000e+00,   1.49993386e+01,
+          1+0.00000000e+00,   3.85000000e+02,   3.83000000e+02,
+          5.11000000e+02]).astype(np.float32)
+
+
     def __init__(self,
                  data_path,
                  batch_size=256,
@@ -40,7 +63,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
                  use_object_ids=True,
-                 normalize_actions=True,
+                 normalize_actions=None,
                  action_matrix_radius=None,
                  is_remove_teleport=True,
                  n_threads=4,
@@ -97,8 +120,12 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         actions.set_shape(act_shape)
 
         #normalize actions
-        if self.normalize_actions:
+        if self.normalize_actions is 'standard':
             actions = (actions - self.actions_mean) / (self.actions_std + self.epsilon)
+        elif self.normalize_actions is 'minmax':
+            actions = (actions - self.actions_min) / (self.actions_max - self.actions_min)
+        else:
+            raise TypeError('Normalization type unknown')
 
         if not self.use_object_ids:
             # object ids are at columns 13 and 22, thus remove those columns
@@ -205,11 +232,15 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         action_pos = tf.slice(data[self.actions], [0, 6], [-1, 2])
 
         #undo normalization
-        if self.normalize_actions:
+        if self.normalize_actions is 'standard':
             action_mean = tf.slice(self.actions_mean, [14], [2])
             action_std = tf.slice(self.actions_std, [14], [2])
-
             action_pos = action_pos * (action_std + self.epsilon) + action_mean
+            
+        elif self.normalize_actions is 'minmax':
+            action_min = tf.slice(self.actions_min, [14], [2])
+            action_max = tf.slice(self.actions_max, [14], [2])
+            action_pos = action_pos * (action_max - action_min) + action_min
             #action_pos = tf.cast(action_pos, tf.int32)
         
         image_shape = data[self.images].get_shape().as_list()
