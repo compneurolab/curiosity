@@ -124,7 +124,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             actions = (actions - self.actions_mean) / (self.actions_std + self.epsilon)
         elif self.normalize_actions is 'minmax':
             actions = (actions - self.actions_min) / (self.actions_max - self.actions_min)
-        else:
+        elif self.normalize_actions is not None:
             raise TypeError('Normalization type unknown')
 
         if not self.use_object_ids:
