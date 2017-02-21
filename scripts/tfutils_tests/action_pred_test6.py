@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test46'
+exp_id = 'test47'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -123,7 +123,7 @@ params = {
             #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
-            'use_object_ids': True,
+            'use_object_ids': False,
             'normalize_actions': False,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
@@ -173,7 +173,7 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'normalize_actions': False,
-                'use_object_ids': True,
+                'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,

@@ -25,6 +25,19 @@ def actionPredModel(inputs, min_time_difference, **kwargs):
                   'times' : tf.ones([batch_size, min_time_difference])}
     return actionPredictionModelBase(new_inputs, **kwargs)
 
+def preprocessing(inputs,
+                  n_channels = 3):
+    raise NotImplementedError
+
+def nNet(inputs,
+            rng,
+            cfg = {},
+            train = True,
+            slippage = 0,
+            n_channels = 3,
+            **kwargs):
+    raise NotImplementedError
+
 def actionPredictionModelBase(inputs, 
                         rng, 
                         cfg = {}, 

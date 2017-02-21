@@ -262,7 +262,8 @@ def l2_action_loss(labels, logits, **kwargs):
 def binary_cross_entropy_action_loss(labels, logits, **kwargs):
     pred = logits['pred']
     norm_labels = logits['norm_actions']
-    loss = tf.reduce_mean(-tf.reduce_sum(norm_labels * tf.log(pred), 1))
+    loss = -tf.reduce_sum(norm_labels * tf.log(pred) \
+                          + (1 - norm_labels) * tf.log(1 - pred), 1)
     return loss
 
 def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
