@@ -99,7 +99,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': 'bn_small3',
+        'exp_id': 'sm_np_more_bn',
         'save_valid_freq': 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -135,7 +135,7 @@ params = {
             'queue_type': 'random',
             'batch_size': MODEL_BATCH_SIZE,
             'seed': 0,
-    	    'capacity': MODEL_BATCH_SIZE * 10,
+    	    'capacity': MODEL_BATCH_SIZE * 60,
             # 'n_threads' : 4
         },
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
@@ -177,10 +177,10 @@ params = {
                 'random_seed' : 0
             },
             'queue_params': {
-                'queue_type': 'random',
+                'queue_type': 'fifo',
                 'batch_size': MODEL_BATCH_SIZE,
                 'seed': 0,
-              'capacity': MODEL_BATCH_SIZE * 2,
+              'capacity': MODEL_BATCH_SIZE * 1,
                 # 'n_threads' : 4
 
             },

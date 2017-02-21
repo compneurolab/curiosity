@@ -367,6 +367,8 @@ def model(data, actions_node, time_node, rng, cfg, slippage=0, slippage_error=Fa
 
 
 def model_tfutils_fpd_compatible(inputs, **kwargs):
+  print('future size!')
+  print(inputs['future_images'].get_shape().as_list())
   batch_size = inputs['images'].get_shape().as_list()[0]
   new_inputs = {'images' : inputs['images'], 'actions' : inputs['parsed_actions']}
   return model_tfutils(new_inputs, **kwargs)
@@ -495,7 +497,7 @@ def model_tfutils(inputs, rng, cfg = {}, train = True, slippage = 0, T_in = 1, T
         m.conv(nf1, cfs, 1, init = 'trunc_norm', stddev = .1, bias = 0, batch_normalize = False, activation = None)
         # m.minmax(min_arg = 1, max_arg = -1)
       else:
-        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, batch_normalize = False, activation='relu')
+        m.conv(nf1, cfs, 1, init='trunc_norm', stddev=.1, bias=0, batch_normalize = batch_normalize, activation='relu')
 
   return {'pred' : m.output, 'tv' : future_node}, m.params
 
