@@ -85,7 +85,7 @@ params = {
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
         'exp_id': exp_id,
-        'save_valid_freq': 2000,
+        'save_valid_freq': 1000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_metrics_freq': 100,
@@ -209,7 +209,7 @@ params = {
             },
         'agg_func' : mean_losses_keep_rest,
         #'agg_func': utils.mean_dict,
-        'num_steps': 5 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }
