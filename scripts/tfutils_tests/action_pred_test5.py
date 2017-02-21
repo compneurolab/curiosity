@@ -28,7 +28,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test45'
+exp_id = 'test48'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -112,7 +112,7 @@ params = {
         'min_time_difference': TIME_DIFFERENCE,
         'min_max_end' : False,
         'diff_mode' : False,
-        'n_channels': 4,
+        'n_channels': 3,
     },
 
     'train_params': {
@@ -124,8 +124,8 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            'normalize_actions': False,
-            'action_matrix_radius': 10.0,
+            'normalize_actions': True,
+            'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
             'shuffle_seed': 0,
@@ -151,7 +151,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.01,
+        'learning_rate': 1.0,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -171,9 +171,9 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
-                'normalize_actions': False,
+                'normalize_actions': True,
                 'use_object_ids': False,
-                'action_matrix_radius': 10.0,
+                'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,
                 'batch_size': INPUT_BATCH_SIZE,
                 'shuffle': True,
