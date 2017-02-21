@@ -204,7 +204,7 @@ def actionPredictionModelBase(inputs,
     if minmax_end:
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
-        pred = tf.tanh(pred) #*10
+        pred = tf.tanh(pred) * 10
 
     #output batch normalized labels for storage and loss
 
@@ -237,7 +237,65 @@ def actionPredictionModelBase(inputs,
     batch_mean, batch_var = tf.nn.moments(actions_node, [0])
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
     '''
-    norm_actions = actions_node
+    actions_mean = np.array(
+      [  3.90625000e-03,   0.00000000e+00,  -2.44093345e-04, #teleport, vel_x, vel_y
+         5.20533161e-02,   1.22121812e+02,  -3.34609385e-05, #vel_z, ang_x, ang_y
+        -7.55522251e+02,  -1.47485679e-01,   1.06664636e+02, #ang_z, a1_fx, a1_fy
+         1.28125378e-02,   0.00000000e+00,  -2.27804319e-02, #a1_fz, a1_tx, a1_ty,
+         0.00000000e+00,   3.44634385e+01,   7.06908594e+01, #a1_tz, a1_id, a1_pos_x,
+         6.58260645e+01,   3.78274760e-02,   0.00000000e+00, #a1_pos_y, a2_fx, a2_fy,
+        -1.28125378e-02,   0.00000000e+00,  -1.32991500e-03, #a2_fz, a2_tx, a2_ty,
+         0.00000000e+00,   6.64200195e-01,   1.27456543e+00, #a2_tz, a2_id, a2_pos_x,
+         1.30035547e+00]).astype(np.float32)                 #a2_pos_y
+
+    actions_std = np.array(
+      [  6.23778102e-02,   1+0.00000000e+00,   4.53425576e-03,
+         1.01547240e-01,   2.22054444e+06,   6.04687621e-02,
+         1.43378085e+06,   1.27678463e+02,   3.23207041e+03,
+         1.95972036e+01,   1+0.00000000e+00,   1.37277482e+01,
+         1+0.00000000e+00,   6.96205264e+01,   1.26656184e+02,
+         1.27864069e+02,   2.00925928e+01,   1+0.00000000e+00,
+         1.95972036e+01,   1+0.00000000e+00,   6.21731960e-01,
+         1+0.00000000e+00,   1.07432982e+01,   1.84946833e+01,
+         2.16857321e+01]).astype(np.float32)
+
+    actions_min = np.array(
+       [  0.00000000e+00,   0.00000000e+00,  -8.44568036e-02,
+         -1.96909573e-01,  -2.37563629e+09,  -9.25147434e+00,
+         -2.00465812e+09,  -1.02400000e+04,   0.00000000e+00,
+         -1.53459117e+03,   0.00000000e+00,  -4.99995988e+01,
+          0.00000000e+00,   0.00000000e+00,   0.00000000e+00,
+          0.00000000e+00,  -1.90427973e+03,   0.00000000e+00,
+         -1.64339652e+03,   0.00000000e+00,  -1.49970194e+01,
+          0.00000000e+00,   0.00000000e+00,   0.00000000e+00,
+          0.00000000e+00]
+    ).astype(np.float32)
+
+    actions_max = np.array(
+       [  1.00000000e+00,   1+0.00000000e+00,   1.05496711e-01,
+          2.50000000e-01,   2.04533410e+09,   1.82908107e+00,
+          4.27925173e+08,   1.02400000e+04,   2.15040000e+05,
+          1.64339652e+03,   1+0.00000000e+00,   4.99999369e+01,
+          1+0.00000000e+00,   4.40000000e+02,   3.83000000e+02,
+          5.11000000e+02,   1.61245106e+03,   1+0.00000000e+00,
+          1.53459117e+03,   1+0.00000000e+00,   1.49993386e+01,
+          1+0.00000000e+00,   3.85000000e+02,   3.83000000e+02,
+          5.11000000e+02]
+    ).astype(np.float32)
+
+    actions_std = np.concatenate([actions_std[7:13], actions_std[14:16]], axis=0)
+    actions_mean = np.concatenate([actions_mean[7:13], actions_mean[14:16]], axis=0)
+    actions_min = np.concatenate([actions_min[7:13], actions_min[14:16]], axis=0)
+    actions_max = np.concatenate([actions_max[7:13], actions_max[14:16]], axis=0)
+
+    actions_std = np.tile(actions_std, dim)
+    actions_mean = np.tile(actions_mean, dim)
+    actions_min = np.tile(actions_min, dim)
+    actions_max = np.tile(actions_max, dim)
+
+#    norm_actions = (actions_node - actions_mean) / actions_std
+    norm_actions = (actions_node - actions_min) / (actions_max - actions_min) 
+
     outputs = {'pred': pred, 'norm_actions': norm_actions}
     return outputs, net.params
 
