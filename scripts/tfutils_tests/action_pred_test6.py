@@ -21,6 +21,8 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 DATA_PATH = '/media/data2/one_world_dataset/tfdata'
 VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
+STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
+
 INPUT_BATCH_SIZE = 256
 OUTPUT_BATCH_SIZE = 128
 N = 2048000
@@ -125,6 +127,8 @@ params = {
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
             'normalize_actions': None,
+            'normalize_images': 'standard',
+            'stats_file': STATS_FILE,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
@@ -173,6 +177,8 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'normalize_actions': None,
+                'normalize_images': 'standard',
+                'stats_file': STATS_FILE,
                 'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,

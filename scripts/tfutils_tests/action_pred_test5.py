@@ -21,6 +21,8 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 DATA_PATH = '/media/data2/one_world_dataset/tfdata'
 VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
+STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
+
 INPUT_BATCH_SIZE = 256
 OUTPUT_BATCH_SIZE = 128
 N = 2048000
@@ -28,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test60'
+exp_id = 'test63'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -135,6 +137,8 @@ params = {
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
             'normalize_actions': 'minmax',
+            'normalize_images': 'standard',
+            'stats_file': STATS_FILE,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
@@ -182,6 +186,8 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'normalize_actions': 'minmax',
+                'normalize_images': 'standard',
+                'stats_file': STATS_FILE,
                 'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,
