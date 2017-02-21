@@ -204,7 +204,7 @@ def actionPredictionModelBase(inputs,
     if minmax_end:
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
-        pred = tf.tanh(pred) * 10
+        pred = tf.tanh(pred) #*10
 
     #output batch normalized labels for storage and loss
 
