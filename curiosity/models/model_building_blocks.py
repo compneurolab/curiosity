@@ -36,7 +36,46 @@ class ConvNetwithBypasses(model.ConvNet):
 			self._params[name][value['type']] = value
 
 
-	
+	@tf.contrib.framework.add_arg_scope
+	def conv_given_filters(self, kernel, biases, stride = 1, padding = 'SAME', activation = 'relu', batch_normalize = False, in_layer = None):
+		if in_layer is None:
+			in_layer = self.output
+		k_shape = kernel.get_shape().as_list()
+		out_shape = k_shape[3]
+		ksize1 = k_shape[0]
+		ksize2 = k_shape[1]
+		conv = tf.nn.conv2d(in_layer, kernel,
+		                    strides=[1, stride, stride, 1],
+		                    padding=padding)
+		
+		if batch_normalize:
+			#Using "global normalization," which is recommended in the original paper
+			print('doing batch normalization')
+			mean, var = tf.nn.moments(conv, [0, 1, 2])
+			scale = tf.get_variable(initializer=tf.constant_initializer(bias),
+			                         shape=[out_shape],
+			                         dtype=tf.float32,
+			                         name='scale')
+			self.output = tf.nn.batch_normalization(conv, mean, var, biases, scale, 1e-3, name = 'conv')
+		else:
+			self.output = tf.nn.bias_add(conv, biases, name='conv')
+		
+		if activation is not None:
+		    self.output = self.activation(kind=activation)
+		
+		self.params = {'input': in_layer.name,
+		               'type': 'conv',
+		               'num_filters': out_shape,
+		               'stride': stride,
+		               'kernel_size': (ksize1, ksize2),
+		               'padding': padding,
+		               'init': init,
+		               'activation': activation}
+		return self.output
+
+
+
+
 	@tf.contrib.framework.add_arg_scope
 	def conv(self, out_shape, ksize=3, stride=1, padding='SAME', init='xavier', stddev=.01, bias=1, activation='relu', weight_decay=None, in_layer=None, init_file=None, init_layer_keys=None, batch_normalize = False):
 		if in_layer is None:
@@ -175,9 +214,6 @@ class ConvNetwithBypasses(model.ConvNet):
 
 
 	def add_bypass(self, bypass_layers, in_layer=None):
-		#TODO add params update
-		#TODO add multiple concatenations
-		#not sure best way to do this...doesn't contain where the bypass layer comes from, as is
 	    if in_layer is None:
 	        in_layer = self.output
 
