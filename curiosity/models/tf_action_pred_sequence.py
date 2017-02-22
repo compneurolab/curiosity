@@ -103,8 +103,10 @@ def actionPredictionModelBase(inputs,
     time_node = inputs['times']
 
     #normalize and cast 
-    current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
-    future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
+    current_node = tf.cast(current_node, tf.float32)
+    future_node = tf.cast(future_node, tf.float32)
+    #current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
+    #future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
     actions_node = tf.cast(actions_node, tf.float32)
 
     if(DEBUG):
