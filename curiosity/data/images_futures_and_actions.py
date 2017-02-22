@@ -76,8 +76,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                     imresize(self.stats[k][self.images], \
                         [self.image_height, self.image_width, 3]).astype(np.float32)
 
-        # correct zero entries in action_max to prevent nan loss
-        if self.normalize_actions is not None:
+            # correct zero entries in action_max to prevent nan loss
             self.stats['max'][self.actions][self.stats['max'][self.actions] == 0] = 1.0
 
         self.source_paths = [os.path.join(data_path, self.images),
@@ -98,8 +97,8 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 
     def postproc_img(self, images):
         #TODO Implement cropping via warping
-        images = tf.cast(images, tf.float32)
         if self.normalize_images is 'standard':
+            images = tf.cast(images, tf.float32)
             images = (images - self.stats['mean'][self.images]) / \
                      (self.stats['std'][self.images] + self.epsilon)
         elif self.normalize_images is not None:

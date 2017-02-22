@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test63'
+exp_id = 'test65'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -118,6 +118,7 @@ params = {
 	'slippage' : 0,
         'min_time_difference': TIME_DIFFERENCE,
         'min_max_end' : False,
+        'normalize_images_after_dequeue': True, 
         'diff_mode' : False,
         'n_channels': 3,
     },
@@ -137,7 +138,7 @@ params = {
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
             'normalize_actions': 'minmax',
-            'normalize_images': 'standard',
+            #'normalize_images': 'standard' BLOWS UP MEMORY!,
             'stats_file': STATS_FILE,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
@@ -186,7 +187,7 @@ params = {
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
                 'normalize_actions': 'minmax',
-                'normalize_images': 'standard',
+                #'normalize_images': 'standard', BLOWS UP MEMORY
                 'stats_file': STATS_FILE,
                 'use_object_ids': False,
                 'action_matrix_radius': None,

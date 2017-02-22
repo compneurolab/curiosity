@@ -14,8 +14,35 @@ import numpy as np
 import tensorflow as tf
 from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import curiosity.models.get_parameters as gp
+import cPickle
+from scipy.misc import imresize
 
 DEBUG = True
+
+global dataset_stats 
+dataset_stats = None 
+
+def load_stats(n_channels):
+    global dataset_stats
+
+    print('Loading data statistics...')
+
+    stats_file = '/media/data/one_world_dataset/dataset_stats.pkl' 
+    image_size = [256, 256, 3]
+    with open(stats_file) as f:
+        stats = cPickle.load(f)
+
+    for k in ['mean', 'std']:
+        stats[k]['images'] = \
+            stats[k]['images'].astype(np.float32)
+        stats[k]['images'] = \
+            imresize(stats[k]['images'], \
+            image_size).astype(np.float32)
+
+    if n_channels != 3:
+        raise NotImplementedError
+
+    dataset_stats = stats
 
 def actionPredModel(inputs, min_time_difference, **kwargs):
     batch_size = inputs['images'].get_shape().as_list()[0]
@@ -45,6 +72,7 @@ def actionPredictionModelBase(inputs,
                         slippage = 0, 
                         minmax_end = True,
                         n_channels = 3,
+                        normalize_images_after_dequeue = False,
                         **kwargs):
     '''
     Action Prediction Network Model Definition:
@@ -65,7 +93,6 @@ def actionPredictionModelBase(inputs,
     Outputs: dict with keys, pred and future, within those, dicts 
     with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.
     '''
-
 
 ###### PREPROCESSING ######
 
@@ -88,11 +115,33 @@ def actionPredictionModelBase(inputs,
     if rng is None:
         rng = np.random.RandomState(seed=kwargs['seed'])
 
-    #init ConvNet
-    net = ConvNetwithBypasses(**kwargs)
+    # Split current nodes
+    shape = current_node.get_shape().as_list()
+    dim = int(shape[3] / n_channels)
+    current_nodes = []
+    for d in range(dim):
+        current_nodes.append(tf.slice(current_node, \
+            [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
+    if normalize_images_after_dequeue:
+        if(DEBUG):
+            print('Normalizing images')
+        # load dataset_stats
+        if dataset_stats is None:
+            load_stats(n_channels)
+
+        #normalize images
+        future_node = (future_node - dataset_stats['mean']['images']) / \
+            (dataset_stats['std']['images'] + 10e-4)
+
+        for d in range(dim):
+            current_nodes[d] = (current_nodes[d] - dataset_stats['mean']['images']) / \
+                (dataset_stats['std']['images'] + 10e-4)
 
 ####### ENCODING #######
+
+    #init ConvNet
+    net = ConvNetwithBypasses(**kwargs)
 
     encode_depth = gp.getEncodeDepth(rng, cfg, slippage=slippage)
   
@@ -100,13 +149,6 @@ def actionPredictionModelBase(inputs,
         print('Encode depth: %d' % encode_depth)
   
     cfs0 = None
-
-    # Split current nodes
-    shape = current_node.get_shape().as_list()
-    dim = int(shape[3] / n_channels)
-    current_nodes = []
-    for d in range(dim):
-        current_nodes.append(tf.slice(current_node, [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
