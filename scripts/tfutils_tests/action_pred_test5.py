@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test65'
+exp_id = 'test66'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -137,7 +137,7 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            'normalize_actions': 'minmax',
+            'normalize_actions': 'custom',
             #'normalize_images': 'standard' BLOWS UP MEMORY!,
             'stats_file': STATS_FILE,
             'action_matrix_radius': None,
@@ -186,7 +186,7 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
-                'normalize_actions': 'minmax',
+                'normalize_actions': 'custom',
                 #'normalize_images': 'standard', BLOWS UP MEMORY
                 'stats_file': STATS_FILE,
                 'use_object_ids': False,

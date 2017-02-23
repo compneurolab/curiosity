@@ -121,19 +121,45 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         elif self.normalize_actions is 'minmax':
             actions = (actions - self.stats['min'][self.actions]) / \
                       (self.stats['max'][self.actions] - self.stats['min'][self.actions])
+        elif self.normalize_actions is 'custom':
+            features = []
+            for i in range(25):
+                features.append(tf.slice(actions, [0, i], [-1, 1]))
+            #clip at 0.28
+            features[5] = tf.maximum(tf.minimum(features[5], 0.28), -0.28)
+            #minmax norm on features
+            for i in [2, 3, 5, 7, 8, 9, 11, 16, 18, 20]:
+                features[i] = (features[i] - self.stats['custom_min'][self.actions][i]) \
+                     / (self.stats['custom_max'][self.actions][i] - \
+                     self.stats['custom_min'][self.actions][i])
+            #clip at 10 and then sigmoid
+            for i in [4, 6]:
+                features[i] = tf.sigmoid(tf.maximum(tf.minimum(features[i], 10), -10))
+            #divide by 255
+            for i in [14, 15, 23, 24]:
+                features[i] = tf.divide(features[i], 255)
+            #toss entries
+            actions = []
+            for i in range(25):
+                if i not in [0, 1, 10, 12, 13, 17, 19, 21, 22]:
+                    actions.append(features[i])
+            actions = tf.concat(1, actions)
+
         elif self.normalize_actions is not None:
             raise TypeError('Unknown normalization type for actions')
 
-        if not self.use_object_ids:
-            # object ids are at columns 13 and 22, thus remove those columns
+        if not self.use_object_ids: 
+            #TODO ONLY USE WITH CUSTOM!
+            if self.normalize_actions is not 'custom':
+                raise TypeError('use_object_ids = False only allowed for \
+                                 normalize_actions = \'custom\'')
             actions = tf.concat(1, [
 # EGO MOTION
 #                  tf.slice(actions, [0,  1], [-1, 6]),
 
 # ONLY ONE ACTION
-                  tf.slice(actions, [0,  7], [-1, 6]),
+                  tf.slice(actions, [0,  5], [-1, 6]),
 # INCLUDE ACTION ID
-                  tf.slice(actions, [0, 14], [-1, 2]),
 
 # NO OBJ IDS, TELEPORT, FORCE_Z, TORQUE_X, TORQUE_Z
 #                 tf.slice(actions, [0,  1], [-1, 8]),
@@ -172,6 +198,10 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                 self.input_ops[i] = self.remove_teleport(self.input_ops[i])
             # convert action position into gaussian channel
             if self.action_matrix_radius is not None:
+                if self.normalize_actions is not 'custom' or \
+                                   self.use_object_ids is True:
+                    raise TypeError('action_matrix_radius can only be used if  \
+                    self.normalize_actions = \'custom\' and self.use_object_ids = False')
                 self.input_ops[i] = self.convert_to_action_matrix(self.input_ops[i])
 
             # create image pairs / sequences
@@ -226,7 +256,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         return tf.cast(gauss, tf.uint8)
 
     def convert_to_action_matrix(self, data):
-        action_pos = tf.slice(data[self.actions], [0, 6], [-1, 2])
+        action_pos = tf.slice(data[self.actions], [0, 4], [-1, 2])
 
         #undo normalization
         if self.normalize_actions is 'standard':
@@ -239,6 +269,8 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             action_max = tf.slice(self.stats['max'][self.actions], [14], [2])
             action_pos = action_pos * (action_max - action_min) + action_min
             #action_pos = tf.cast(action_pos, tf.int32)
+        elif self.normalize_actions is 'custom':
+            action_pos = tf.multiply(action_pos, 255)
         
         image_shape = data[self.images].get_shape().as_list()
         image_shape[-1] += 1
@@ -247,7 +279,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                 action_pos, self.action_matrix_radius)
         data[self.images] = tf.concat(3, [data[self.images], gauss_img])
 
-        data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 6])
+        data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 4])
 
         return data
 
