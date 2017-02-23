@@ -282,7 +282,7 @@ def actionPredictionModelBase(inputs,
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
     '''
     norm_actions = actions_node
-    outputs = {'pred': pred, 'norm_actions': norm_actions}
+    outputs = {'pred': pred, 'norm_actions': norm_actions, 'dim': dim}
     return outputs, net.params
 
 def flatten(net, node):
@@ -301,4 +301,41 @@ def l2_action_loss(labels, logits, **kwargs):
     #store normalized labels
     loss = tf.nn.l2_loss(pred - norm_labels) / norm    
     #loss = tf.minimum(loss, 0.1) #TODO remove and find reason!
+    return loss
+
+def weighted_l2_action_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    shape = labels.get_shape().as_list()
+    norm = shape[0] * shape[1]
+    norm_labels = logits['norm_actions']
+    seq_len = logits['dim']    
+    dim = int(shape[1] / seq_len) 
+
+    pos_discount = np.array([10.13530233, 3.54033702, \
+                             98.61325116, 2.72365054, \
+                              1.92986523, 1.93214109])
+#    neg_discount = np.array([0.52594625, 0.58222773, \
+#                             0.50254808, 0.61242774, \
+#                             0.67484165, 0.67456381])
+    if dim == 4:
+        pos_discount = pos_discount[0:4]
+#        neg_discount = neg_discount[0:4]
+
+    rand = tf.random_uniform(shape)
+    rands = []
+    for i in range(seq_len):
+        r = tf.slice(rand, [0, i*dim], [-1, dim])
+        r = tf.multiply(r, pos_discount)
+        r = tf.round(r)
+        rands.append(r)
+    rands = tf.concat(1, rands)
+
+    zero = tf.constant(0, dtype=tf.float32)
+    pos_idx = tf.not_equal(norm_labels, zero)
+    neg_idx = tf.logical_not(pos_idx)
+
+    diff = pred - norm_labels
+    diff = diff * tf.cast(pos_idx, tf.float32) * rands \
+         + diff * tf.cast(neg_idx, tf.float32) * (1-rands)
+    loss = tf.nn.l2_loss(diff) / norm
     return loss

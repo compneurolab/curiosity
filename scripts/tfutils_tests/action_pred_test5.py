@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test66'
+exp_id = 'test67'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -161,7 +161,7 @@ params = {
     'loss_params': {
         'targets': ['parsed_actions'],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.l2_action_loss,
+        'loss_per_case_func': modelsource.weighted_l2_action_loss,
     },
 
     'learning_rate_params': {
