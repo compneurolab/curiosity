@@ -311,6 +311,7 @@ def weighted_l2_action_loss(labels, logits, **kwargs):
     seq_len = logits['dim']    
     dim = int(shape[1] / seq_len) 
 
+    #50:50 split
     pos_discount = np.array([10.13530233, 3.54033702, \
                              98.61325116, 2.72365054, \
                               1.92986523, 1.93214109])
@@ -329,6 +330,9 @@ def weighted_l2_action_loss(labels, logits, **kwargs):
         r = tf.round(r)
         rands.append(r)
     rands = tf.concat(1, rands)
+
+    #TODO REMOVE: only consider pos examples
+    rands = tf.ones(shape)
 
     zero = tf.constant(0, dtype=tf.float32)
     pos_idx = tf.not_equal(norm_labels, zero)
