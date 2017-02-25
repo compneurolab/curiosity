@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test64'
+exp_id = 'test69'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -55,11 +55,12 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
 
     shape = actions.get_shape().as_list()
     norm = shape[0] * shape[1]
-    loss = tf.nn.l2_loss(predictions - norm_actions) / norm
+    #TODO loss = tf.nn.l2_loss(predictions - norm_actions) / norm
 
     retval = {'pred' : predictions, 'fut' : futures, \
               'cur': currents, 'act' : actions, \
-              'norm': norm_actions, 'val_loss': loss}
+              'norm': norm_actions, #'val_loss': loss
+             }
     return retval
 
 
@@ -112,9 +113,10 @@ params = {
 	'cfg' : cfg,
 	'slippage' : 0,
         'min_time_difference': TIME_DIFFERENCE,
-        'min_max_end' : False,
+        'minmax_end' : False,
         'diff_mode' : False,
         'n_channels': 3,
+        'num_classes': 5,
     },
 
     'train_params': {
@@ -126,9 +128,9 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            #'normalize_actions': None,
+            'normalize_actions': 'toss_zeros',
             #'normalize_images': 'standard',
-            #'stats_file': STATS_FILE,
+            'stats_file': STATS_FILE,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
@@ -151,7 +153,7 @@ params = {
     'loss_params': {
         'targets': ['parsed_actions'],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.binary_cross_entropy_action_loss,
+        'loss_per_case_func': modelsource.softmax_cross_entropy_action_loss,
     },
 
     'learning_rate_params': {
@@ -176,9 +178,9 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
-                #'normalize_actions': None,
+                'normalize_actions': 'toss_zeros',
                 #'normalize_images': 'standard',
-                #'stats_file': STATS_FILE,
+                'stats_file': STATS_FILE,
                 'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,

@@ -145,14 +145,25 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                     actions.append(features[i])
             actions = tf.concat(1, actions)
 
+        elif self.normalize_actions is 'toss_zeros':
+            features = []
+            for i in range(25):
+                features.append(tf.slice(actions, [0, i], [-1, 1]))
+            #toss entries
+            actions = []
+            for i in range(25):
+                if i not in [0, 1, 10, 12, 13, 17, 19, 21, 22]:
+                    actions.append(features[i])
+            actions = tf.concat(1, actions)
+
         elif self.normalize_actions is not None:
             raise TypeError('Unknown normalization type for actions')
 
         if not self.use_object_ids: 
             #TODO ONLY USE WITH CUSTOM!
-            if self.normalize_actions is not 'custom':
+            if self.normalize_actions not in ['custom', 'toss_zeros']:
                 raise TypeError('use_object_ids = False only allowed for \
-                                 normalize_actions = \'custom\'')
+                                 normalize_actions = \'custom\'/\'toss_zeros\'')
             actions = tf.concat(1, [
 # EGO MOTION
 #                  tf.slice(actions, [0,  1], [-1, 6]),
@@ -198,10 +209,11 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                 self.input_ops[i] = self.remove_teleport(self.input_ops[i])
             # convert action position into gaussian channel
             if self.action_matrix_radius is not None:
-                if self.normalize_actions is not 'custom' or \
+                if self.normalize_actions not in ['custom', 'toss_zeros'] or \
                                    self.use_object_ids is True:
                     raise TypeError('action_matrix_radius can only be used if  \
-                    self.normalize_actions = \'custom\' and self.use_object_ids = False')
+                    self.normalize_actions = \'custom\'/\'toss_zeros\' \
+                    and self.use_object_ids = False')
                 self.input_ops[i] = self.convert_to_action_matrix(self.input_ops[i])
 
             # create image pairs / sequences

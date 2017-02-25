@@ -31,6 +31,7 @@ def actionPredictionModelBase(inputs,
                         train = True, 
                         slippage = 0, 
                         minmax_end = True,
+                        num_classes = None,
                         n_channels = 3,
                         **kwargs):
     '''
@@ -99,18 +100,6 @@ def actionPredictionModelBase(inputs,
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
 
-    # Split action node and binary discretize
-    action_shape = int(actions_node.get_shape().as_list()[1] / dim)
-    actions_split = []
-    for d in range(dim):
-        act_sp = tf.slice(actions_node, [0, action_shape*d], [-1, action_shape])
-#        act_sp = tf.reduce_sum(act_sp, 1)
-        act_sp = tf.abs(act_sp)
-        act_sp = tf.minimum(act_sp, 1)
-        act_sp = tf.ceil(act_sp)        
-#        act_sp = tf.reshape(act_sp, [-1, 1])
-        actions_split.append(act_sp)
-    actions_node = tf.concat(1, actions_split)
 
     with tf.contrib.framework.arg_scope([net.conv, net.fc], \
                   init='trunc_norm', stddev=.01, bias=0, activation='relu'): 
@@ -192,6 +181,10 @@ def actionPredictionModelBase(inputs,
         #match the shape of the action vector
         #by using another hidden layer if necessary
         ds = actions_node.get_shape().as_list()[1]
+
+        if num_classes is not None:
+            ds *= num_classes
+
         if ds != nf0:
             with tf.variable_scope('extra_hidden'):
                 pred = net.fc(ds, bias = .01, activation = None, dropout = None)
@@ -205,7 +198,6 @@ def actionPredictionModelBase(inputs,
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
         pred = tf.sigmoid(pred)
-
     #output batch normalized labels for storage and loss
 
     '''
@@ -238,7 +230,8 @@ def actionPredictionModelBase(inputs,
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
     ''' 
 
-    outputs = {'pred': pred, 'norm_actions': actions_node, 'actions': original_actions}
+    outputs = {'pred': pred, 'norm_actions': actions_node, 
+               'dim': dim, 'num_classes': num_classes}
     return outputs, net.params
 
 def flatten(net, node):
@@ -261,13 +254,101 @@ def l2_action_loss(labels, logits, **kwargs):
 
 def binary_cross_entropy_action_loss(labels, logits, **kwargs):
     pred = logits['pred']
-    norm_labels = logits['norm_actions']
+    dim = logits['dim']
+    actions_node = logits['norm_actions']
+    # Split action node and binary discretize
+    action_shape = int(actions_node.get_shape().as_list()[1] / dim)
+    actions_split = []
+    for d in range(dim):
+        act_sp = tf.slice(actions_node, [0, action_shape*d], [-1, action_shape])
+#        act_sp = tf.reduce_sum(act_sp, 1)
+        act_sp = tf.abs(act_sp)
+        act_sp = tf.minimum(act_sp, 1)
+        act_sp = tf.ceil(act_sp)        
+#        act_sp = tf.reshape(act_sp, [-1, 1])
+        actions_split.append(act_sp)
+    norm_labels = tf.concat(1, actions_split)
+
     loss = -tf.reduce_sum(norm_labels * tf.log(pred) \
                           + (1 - norm_labels) * tf.log(1 - pred), 1)
     return loss
 
 def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
     pred = logits['pred']
-    norm_labels = tf.cast(logits['norm_actions'], tf.int32)
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, norm_labels))
+    shape = labels.get_shape().as_list()
+    norm_labels = logits['norm_actions']
+    seq_len = logits['dim']
+    dim = int(shape[1] / seq_len)
+
+    '''
+    #50:50 split
+    pos_discount = np.array([10.13530233, 3.54033702, \
+                             98.61325116, 2.72365054, \
+                              1.92986523, 1.93214109])
+    if dim == 4:
+        pos_discount = pos_discount[0:4]
+
+    rand = tf.random_uniform(shape)
+    rands = []
+    for i in range(seq_len):
+        r = tf.slice(rand, [0, i*dim], [-1, dim])
+        r = tf.multiply(r, pos_discount)
+        r = tf.round(r)
+        rands.append(r)
+    rands = tf.concat(1, rands)
+    rands = tf.cast(rands, tf.int32)
+    '''
+
+    #100:0 split, only consider pos examples
+    rands = tf.ones(shape, dtype=tf.int32)
+
+    # upper bound for our 5 buckets, the last upper bound is inf and hence
+    # not necessary
+    buckets_dim = logits['num_classes']
+    if buckets_dim != 5:
+        raise NotImplementedError('So far only num_classes=5 can be used \
+              with this loss.')
+
+    buckets = np.array(
+              [[-5.0,  51.7, -156.1, -37.1, 141,  73], 
+               [-4.9,  52.5,  -43.7,  -7.9, 178, 114], 
+               [ 4.9,  52.6,   48.9,   7.5, 204, 140], 
+               [ 5.1,  55.2,  166.7,  36.7, 230, 181]])
+    if dim == 4:
+        buckets = buckets[:,0:4]
+    buckets = np.tile(buckets, (1,seq_len))
+
+    # bucket labels
+    labels = []
+    new_shape = shape + [1]
+    new_shape[0] = -1
+    for i in range(buckets_dim):
+        label = tf.zeros(shape, tf.bool)
+        if i == 0:
+            label = tf.less(norm_labels, buckets[i])
+        elif i == buckets_dim - 1:
+            label = tf.greater(norm_labels, buckets[i-1])
+        else:
+            label = tf.logical_and(tf.greater(norm_labels, buckets[i-1]), \
+                                   tf.less(norm_labels, buckets[i]))
+        label = tf.reshape(label, new_shape)
+        labels.append(label)
+    labels = tf.concat(2, labels)
+    labels = tf.cast(labels, tf.int32)
+
+    #find all positive indices
+    zero = tf.constant(0, dtype=tf.float32)
+    pos_idx = tf.not_equal(norm_labels, zero)
+    neg_idx = tf.logical_not(pos_idx)        
+
+    #mask out all negative entries
+    rands = tf.reshape(rands, new_shape)
+    pos_idx = tf.reshape(pos_idx, new_shape)
+    neg_idx = tf.reshape(neg_idx, new_shape) 
+    labels = labels * tf.cast(pos_idx, tf.int32) * rands \
+           + labels * tf.cast(neg_idx, tf.int32) * (1-rands)
+
+    pred = tf.reshape(pred, [-1,buckets_dim])
+    #labels = tf.reshape(labels, [-1,5])
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
     return loss
