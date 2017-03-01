@@ -124,7 +124,7 @@ params = {
     },
 
     'train_params': {
-        'validate_first': True,
+        'validate_first': False,
 
         #'targets': {
         #    'func': get_high_loss_inputs,
