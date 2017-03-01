@@ -14,8 +14,35 @@ import numpy as np
 import tensorflow as tf
 from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import curiosity.models.get_parameters as gp
+import cPickle
+from scipy.misc import imresize
 
 DEBUG = True
+
+global dataset_stats 
+dataset_stats = None 
+
+def load_stats(n_channels):
+    global dataset_stats
+
+    print('Loading data statistics...')
+
+    stats_file = '/media/data/one_world_dataset/dataset_stats.pkl' 
+    image_size = [256, 256, 3]
+    with open(stats_file) as f:
+        stats = cPickle.load(f)
+
+    for k in ['mean', 'std']:
+        stats[k]['images'] = \
+            stats[k]['images'].astype(np.float32)
+        stats[k]['images'] = \
+            imresize(stats[k]['images'], \
+            image_size).astype(np.float32)
+
+    if n_channels != 3:
+        raise NotImplementedError
+
+    dataset_stats = stats
 
 def actionPredModel(inputs, min_time_difference, **kwargs):
     batch_size = inputs['images'].get_shape().as_list()[0]
@@ -45,6 +72,7 @@ def actionPredictionModelBase(inputs,
                         slippage = 0, 
                         minmax_end = True,
                         n_channels = 3,
+                        normalize_images_after_dequeue = False,
                         **kwargs):
     '''
     Action Prediction Network Model Definition:
@@ -66,7 +94,6 @@ def actionPredictionModelBase(inputs,
     with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.
     '''
 
-
 ###### PREPROCESSING ######
 
     #set inputs
@@ -76,8 +103,10 @@ def actionPredictionModelBase(inputs,
     time_node = inputs['times']
 
     #normalize and cast 
-    current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
-    future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
+    current_node = tf.cast(current_node, tf.float32)
+    future_node = tf.cast(future_node, tf.float32)
+    #current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
+    #future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
     actions_node = tf.cast(actions_node, tf.float32)
 
     if(DEBUG):
@@ -88,11 +117,33 @@ def actionPredictionModelBase(inputs,
     if rng is None:
         rng = np.random.RandomState(seed=kwargs['seed'])
 
-    #init ConvNet
-    net = ConvNetwithBypasses(**kwargs)
+    # Split current nodes
+    shape = current_node.get_shape().as_list()
+    dim = int(shape[3] / n_channels)
+    current_nodes = []
+    for d in range(dim):
+        current_nodes.append(tf.slice(current_node, \
+            [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
+    if normalize_images_after_dequeue:
+        if(DEBUG):
+            print('Normalizing images')
+        # load dataset_stats
+        if dataset_stats is None:
+            load_stats(n_channels)
+
+        #normalize images
+        future_node = (future_node - dataset_stats['mean']['images']) / \
+            (dataset_stats['std']['images'] + 10e-4)
+
+        for d in range(dim):
+            current_nodes[d] = (current_nodes[d] - dataset_stats['mean']['images']) / \
+                (dataset_stats['std']['images'] + 10e-4)
 
 ####### ENCODING #######
+
+    #init ConvNet
+    net = ConvNetwithBypasses(**kwargs)
 
     encode_depth = gp.getEncodeDepth(rng, cfg, slippage=slippage)
   
@@ -100,13 +151,6 @@ def actionPredictionModelBase(inputs,
         print('Encode depth: %d' % encode_depth)
   
     cfs0 = None
-
-    # Split current nodes
-    shape = current_node.get_shape().as_list()
-    dim = int(shape[3] / n_channels)
-    current_nodes = []
-    for d in range(dim):
-        current_nodes.append(tf.slice(current_node, [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
@@ -238,7 +282,7 @@ def actionPredictionModelBase(inputs,
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
     '''
     norm_actions = actions_node
-    outputs = {'pred': pred, 'norm_actions': norm_actions}
+    outputs = {'pred': pred, 'norm_actions': norm_actions, 'dim': dim}
     return outputs, net.params
 
 def flatten(net, node):
@@ -257,4 +301,45 @@ def l2_action_loss(labels, logits, **kwargs):
     #store normalized labels
     loss = tf.nn.l2_loss(pred - norm_labels) / norm    
     #loss = tf.minimum(loss, 0.1) #TODO remove and find reason!
+    return loss
+
+def weighted_l2_action_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    shape = labels.get_shape().as_list()
+    norm = shape[0] * shape[1]
+    norm_labels = logits['norm_actions']
+    seq_len = logits['dim']    
+    dim = int(shape[1] / seq_len) 
+
+    #50:50 split
+    pos_discount = np.array([10.13530233, 3.54033702, \
+                             98.61325116, 2.72365054, \
+                              1.92986523, 1.93214109])
+#    neg_discount = np.array([0.52594625, 0.58222773, \
+#                             0.50254808, 0.61242774, \
+#                             0.67484165, 0.67456381])
+    if dim == 4:
+        pos_discount = pos_discount[0:4]
+#        neg_discount = neg_discount[0:4]
+
+    rand = tf.random_uniform(shape)
+    rands = []
+    for i in range(seq_len):
+        r = tf.slice(rand, [0, i*dim], [-1, dim])
+        r = tf.multiply(r, pos_discount)
+        r = tf.round(r)
+        rands.append(r)
+    rands = tf.concat(1, rands)
+
+    #TODO REMOVE: only consider pos examples
+    rands = tf.ones(shape)
+
+    zero = tf.constant(0, dtype=tf.float32)
+    pos_idx = tf.not_equal(norm_labels, zero)
+    neg_idx = tf.logical_not(pos_idx)
+
+    diff = pred - norm_labels
+    diff = diff * tf.cast(pos_idx, tf.float32) * rands \
+         + diff * tf.cast(neg_idx, tf.float32) * (1-rands)
+    loss = tf.nn.l2_loss(diff) / norm
     return loss

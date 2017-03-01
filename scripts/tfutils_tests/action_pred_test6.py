@@ -21,6 +21,8 @@ cfg = postprocess_config(json.load(open(cfgfile)))
 
 DATA_PATH = '/media/data2/one_world_dataset/tfdata'
 VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
+STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
+
 INPUT_BATCH_SIZE = 256
 OUTPUT_BATCH_SIZE = 128
 N = 2048000
@@ -28,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test62'
+exp_id = 'test80'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -53,11 +55,12 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
 
     shape = actions.get_shape().as_list()
     norm = shape[0] * shape[1]
-    loss = tf.nn.l2_loss(predictions - norm_actions) / norm
+    #TODO loss = tf.nn.l2_loss(predictions - norm_actions) / norm
 
     retval = {'pred' : predictions, 'fut' : futures, \
               'cur': currents, 'act' : actions, \
-              'norm': norm_actions, 'val_loss': loss}
+              'norm': norm_actions, #'val_loss': loss
+             }
     return retval
 
 
@@ -80,7 +83,7 @@ params = {
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
         'exp_id': exp_id,
-        'save_valid_freq': 5000,
+        'save_valid_freq': 1000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
@@ -110,9 +113,10 @@ params = {
 	'cfg' : cfg,
 	'slippage' : 0,
         'min_time_difference': TIME_DIFFERENCE,
-        'min_max_end' : False,
+        'minmax_end' : False,
         'diff_mode' : False,
         'n_channels': 3,
+        'num_classes': 5,
     },
 
     'train_params': {
@@ -124,12 +128,15 @@ params = {
             'min_time_difference': TIME_DIFFERENCE,
             'output_format': {'images': 'sequence', 'actions': 'sequence'},
             'use_object_ids': False,
-            'normalize_actions': None,
+            'normalize_actions': 'toss_zeros',
+            #'normalize_images': 'standard',
+            'stats_file': STATS_FILE,
             'action_matrix_radius': None,
     	    'batch_size': INPUT_BATCH_SIZE,
             'shuffle': True,
             'shuffle_seed': 0,
             'n_threads': 4,
+            'filters': ['rotating'],
         },
 
         'queue_params': {
@@ -147,12 +154,12 @@ params = {
     'loss_params': {
         'targets': ['parsed_actions'],
         'agg_func': tf.reduce_mean,
-        'loss_per_case_func': modelsource.binary_cross_entropy_action_loss,
+        'loss_per_case_func': modelsource.softmax_cross_entropy_action_loss,
     },
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.0005,
+        'learning_rate': 0.0001,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -172,7 +179,9 @@ params = {
                 'data_path': VALIDATION_DATA_PATH,  # path to image database
                 #'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP]
                 'output_format': {'images': 'sequence', 'actions': 'sequence'},
-                'normalize_actions': None,
+                'normalize_actions': 'toss_zeros',
+                #'normalize_images': 'standard',
+                'stats_file': STATS_FILE,
                 'use_object_ids': False,
                 'action_matrix_radius': None,
                 'min_time_difference': TIME_DIFFERENCE,
@@ -180,6 +189,7 @@ params = {
                 'shuffle': True,
                 'shuffle_seed': 0,
                 'n_threads': 4,
+                'filters': ['rotating'],
             },
             'queue_params': {
                 'queue_type': 'random',
@@ -195,7 +205,7 @@ params = {
             },
         'agg_func' : mean_losses_keep_rest,
         #'agg_func': utils.mean_dict,
-        'num_steps': 5 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }
