@@ -23,6 +23,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                  crop_size=None,
                  min_time_difference=1, # including, also specifies fixed time
                  output_format={'images': 'pairs', 'actions': 'sequence'},
+                 filters=None,
                  use_object_ids=True,
                  normalize_actions=None,
                  normalize_images=None,
@@ -41,6 +42,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         self.stats_file = stats_file
         self.is_remove_teleport = is_remove_teleport
         self.action_matrix_radius = action_matrix_radius
+        self.filters = filters
 
         self.images = 'images'
         self.actions = 'parsed_actions' #'actions'
@@ -79,8 +81,14 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             # correct zero entries in action_max to prevent nan loss
             self.stats['max'][self.actions][self.stats['max'][self.actions] == 0] = 1.0
 
+        # load images and parsed actions from tfrecords
         self.source_paths = [os.path.join(data_path, self.images),
                              os.path.join(data_path, self.actions)]
+
+        # also load filters
+        if self.filters is not None:
+            for f in self.filters:
+                self.source_paths.append(os.path.join(data_path, f))
 
         super(FuturePredictionData, self).__init__(
             self.source_paths,
@@ -187,14 +195,11 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 
     def set_data_shapes(self, data):
         for i in range(len(data)):
-            # set image batch size
-            img_shape = data[i][self.images].get_shape().as_list()
-            img_shape[0] = self.batch_size
-            data[i][self.images].set_shape(img_shape)
-            # set action batch size
-            act_shape = data[i][self.actions].get_shape().as_list()
-            act_shape[0] = self.batch_size
-            data[i][self.actions].set_shape(act_shape)
+            for k in data[i]:
+                # set shape[0] to batch size for all entries
+                shape = data[i][k].get_shape().as_list()
+                shape[0] = self.batch_size
+                data[i][k].set_shape(shape)
         return data
 
     def init_ops(self):
@@ -232,10 +237,53 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                 self.input_ops[i] = self.create_action_sequence(self.input_ops[i])
             else:
                 raise KeyError('Unknown action output format')
+            
+            # remove entries according to filters
+            if self.filters is not None:
+                self.input_ops[i] = self.apply_filters(self.input_ops[i])
 
             # add ids
             #self.input_ops[i] = self.add_ids(self.input_ops[i])
         return self.input_ops
+
+    def apply_filters(self, data):
+        # delta time which corresponds to the sequence length
+        delta_time = tf.constant(self.min_time_difference, dtype=tf.int32)
+
+        # filter actions and images based on provided binary labels
+        if self.output_format['actions'] is 'sequence' or \
+                    self.output_format['images'] is 'sequence':
+            output_format_func = self.create_sequence
+        else:
+            output_format_func = self.create_pairs
+
+        for f in self.filters:
+            # decode filter
+            data[f] = tf.decode_raw(data[f], tf.int32)
+            # set the correct shape
+            shape = data[f].get_shape().as_list()
+            if len(shape) < 2:
+                # make sure filter has second dimension (important when pair output)
+                data[f] = tf.expand_dims(data[f], -1)
+                shape = data[f].get_shape().as_list()
+            shape[1] = 1
+            data[f].set_shape(shape)
+            # format filters in the same way as data
+            data = output_format_func(data, f, 'future_' + f)
+            # check if ALL binary labels within sequence are not zero
+            filter_sum = tf.reduce_sum(data[f], 1)
+            pos_idx = tf.equal(filter_sum, delta_time)
+            # gather positive examples for each data entry
+            for k in data:
+                shape = data[k].get_shape().as_list()
+                shape[0] = -1
+                data[k] = tf.gather(data[k], tf.where(pos_idx))
+                data[k] = tf.reshape(data[k], shape)
+            # remove filter from dict such that it is not enqueued
+            data.pop(f)
+            data.pop('future_' + f)
+
+        return data
 
     def create_gaussian_kernel(self, size, center=None, fwhm = 10.0):
         '''
@@ -308,66 +356,48 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         return data
 
     def remove_teleport(self, data):
-        size = data[self.images].get_shape().as_list()
-        size[0] -= 1
-        begin = [1, 0, 0, 0]
-        data[self.images] = tf.slice(data[self.images], begin, size)
+        for k in data:
+            size = data[k].get_shape().as_list()
+            size[0] -= 1
+            begin = [1] + [0] * (len(size) - 1)
+            data[k] = tf.slice(data[k], begin, size)
 
-        size = data[self.actions].get_shape().as_list()
-        size[0] -= 1
-        begin = [1, 0]
-        data[self.actions] = tf.slice(data[self.actions], begin, size)
+        return data
+
+    def create_pairs(self, data, current_key, future_key):
+        size = data[current_key].get_shape().as_list()
+        size[0] -= self.min_time_difference
+        begin = [self.min_time_difference] + [0] * (len(size) - 1)
+        data[future_key] = tf.slice(data[current_key], begin, size)
+
+        begin = [0] * len(size)
+        data[current_key] = tf.slice(data[current_key], begin, size)
+
+        return data
+
+    def create_sequence(self, data, current_key, future_key):
+        size = data[current_key].get_shape().as_list()
+        size[0] -= self.min_time_difference
+        begin = [self.min_time_difference] + [0] * (len(size) - 1)
+        data[future_key] = tf.slice(data[current_key], begin, size)
+
+        shifts = []
+        for i in range(self.min_time_difference):
+            begin = [i] + [0] * (len(size) - 1)
+            shifts.append(tf.slice(data[current_key], begin, size))
+
+        data[current_key] = tf.concat((len(size) - 1), shifts)
 
         return data
 
     def create_image_pairs(self, data):
-        size = data[self.images].get_shape().as_list()
-        size[0] -= self.min_time_difference
-        begin = [self.min_time_difference, 0, 0, 0]
-        data['future_images'] = tf.slice(data[self.images], begin, size)
-
-        begin = [0,0,0,0]
-        data[self.images] = tf.slice(data[self.images], begin, size)
-
-        return data
+        return self.create_pairs(data, self.images, 'future_images')
 
     def create_action_pairs(self, data):
-        size = data[self.actions].get_shape().as_list()
-        size[0] -= self.min_time_difference
-        begin = [self.min_time_difference, 0]
-        data['future_actions'] = tf.slice(data[self.actions], begin, size)
+        return self.create_pairs(data, self.actions, 'future_actions')
 
-        begin = [0,0]
-        data[self.actions] = tf.slice(data[self.actions], begin, size)
-
-        return data
-       
     def create_image_sequence(self, data):
-        size = data[self.images].get_shape().as_list()
-        size[0] -= self.min_time_difference
-        begin = [self.min_time_difference, 0, 0, 0]
-        data['future_images'] = tf.slice(data[self.images], begin, size)
-
-        shifts = []
-        for i in range(self.min_time_difference):
-            begin = [i,0,0,0]
-            shifts.append(tf.slice(data[self.images], begin, size))
-
-        data[self.images] = tf.concat(3, shifts)
-
-        return data
+        return self.create_sequence(data, self.images, 'future_images')
 
     def create_action_sequence(self, data):
-        size = data[self.actions].get_shape().as_list()
-        size[0] -= self.min_time_difference
-        begin = [self.min_time_difference, 0]
-        data['future_actions'] = tf.slice(data[self.actions], begin, size)        
-
-        shifts = []
-        for i in range(self.min_time_difference):
-            begin = [i,0]
-            shifts.append(tf.slice(data[self.actions], begin, size))
-
-        data[self.actions] = tf.concat(1, shifts)
-       
-        return data
+        return self.create_sequence(data, self.actions, 'future_actions')

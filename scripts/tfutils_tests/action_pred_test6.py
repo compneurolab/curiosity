@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test71'
+exp_id = 'test80'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -136,6 +136,7 @@ params = {
             'shuffle': True,
             'shuffle_seed': 0,
             'n_threads': 4,
+            'filters': ['rotating'],
         },
 
         'queue_params': {
@@ -188,6 +189,7 @@ params = {
                 'shuffle': True,
                 'shuffle_seed': 0,
                 'n_threads': 4,
+                'filters': ['rotating'],
             },
             'queue_params': {
                 'queue_type': 'random',

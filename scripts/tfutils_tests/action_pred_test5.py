@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test68'
+exp_id = 'test81'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -124,7 +124,7 @@ params = {
     },
 
     'train_params': {
-        'validate_first': False,
+        'validate_first': True,
 
         #'targets': {
         #    'func': get_high_loss_inputs,
@@ -145,6 +145,7 @@ params = {
             'shuffle': True,
             'shuffle_seed': 0,
             'n_threads': 4,
+            'filters': ['rotating'],
         },
 
         'queue_params': {
@@ -196,6 +197,7 @@ params = {
                 'shuffle': True,
                 'shuffle_seed': 0,
                 'n_threads': 4,
+                'filters': ['rotating'],
             },
             'queue_params': {
                 'queue_type': 'random',
