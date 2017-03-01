@@ -12,25 +12,31 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.images_futures_and_actions import FuturePredictionData 
-import curiosity.models.future_pred_asymmetric_with_bypass2 as modelsource
+import curiosity.models.asymmetric_modularized as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 
+encode_depth = 10
 
-CODE_ROOT = os.environ['CODE_ROOT']
-cfgfile = os.path.join(CODE_ROOT, 
-                       'curiosity/curiosity/configs/largest_asymmetric_really_naive.cfg')
-cfg = postprocess_config(json.load(open(cfgfile)))
+cfg_simple = {'encode_depth' : encode_depth, 'encode' : {}}
 
 
+for i in range(1, encode_depth + 1):
+    cfg_simple['encode'][i] = {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 9}}
 
-DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions.tfrecords'
-VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/dataset_images_parsed_actions8.tfrecords'
-BATCH_SIZE = 128
+
+
+
+
+
+DATA_PATH = '/media/data2/one_world_dataset/tfdata'
+VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
+DATA_BATCH_SIZE = 256
+MODEL_BATCH_SIZE = 128
 DISCRETE_THRESHOLD = .1
 N = 2048000
-NUM_BATCHES_PER_EPOCH = N // BATCH_SIZE
+NUM_BATCHES_PER_EPOCH = N // 256
 IMAGE_SIZE_CROP = 256
 seed = 0
 T_in = 3
@@ -43,7 +49,7 @@ def get_current_predicted_future_action(inputs, outputs, num_channels, threshold
 
     Assumes to_extract has an inputs field (with list of arguments) and outputs field (with pairs of arguments -- assuming outputs is a dict of dicts)
     '''
-    return {'img' : inputs['images']}
+    return {'act' : inputs['parsed_actions']}
     # images = inputs['images'][:num_to_save]
     # predictions = outputs['pred'][:num_to_save]
     # actions = inputs['parsed_actions'][:num_to_save]
@@ -89,24 +95,26 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': '33_big2',
+        'exp_id': 'simplenet10_2',
+        'cache_dir' : '/media/data/nhaber',
+        'save_initial_filters' : False
     },
-
+    # 'load_params' : None,
 
 	'save_params' : {
 	    'host': 'localhost',
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'asymmetric',
-        'exp_id': 'big_loss',
-        'save_to_gfs': ['img'],
+        'exp_id': 'big_loss3',
+        'save_to_gfs': ['act'],
         'cache_dir' : '/media/data/nhaber',
 	},
 
 	'model_params' : {
-		'func' : modelsource.model_tfutils_fpd_compatible,
+		'func' : modelsource.simple_net,
 		'rng' : None,
-		'cfg' : cfg,
+		'cfg' : cfg_simple,
 		'slippage' : 0,
         'T_in' : T_in,
         'T_out' : T_out
@@ -156,32 +164,34 @@ params = {
 
     'validation_params': {
         'valid0': {
-            'data_params': {
-                'func': FuturePredictionData,
-                'data_path': DATA_PATH,  # path to image database
-                # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],  # size after cropping an image
-                'min_time_difference': SEQ_LEN,
-                'batch_size': BATCH_SIZE,
-                'n_threads' : 2,
-                'output_format' : {'images' : 'sequence', 'actions' : 'sequence'}
-            },
-            'queue_params': {
-                'queue_type': 'random',
-                'batch_size': BATCH_SIZE,
-                'seed': 0,
-              'capacity': BATCH_SIZE * 60,
-                # 'n_threads' : 4
-
-            },
+        'data_params': {
+            'func': FuturePredictionData,
+            'data_path': DATA_PATH,
+            # 'crop_size': [IMAGE_SIZE_CROP, IMAGE_SIZE_CROP],
+            'output_format' : {'images' : 'sequence', 'actions' : 'sequence'},
+            'min_time_difference': SEQ_LEN,
+            'batch_size': DATA_BATCH_SIZE,
+            # 'use_object_ids' : False,
+            'n_threads' : 1,
+            'random' : True,
+            'random_seed' : 0
+        },
+        'queue_params': {
+            'queue_type': 'random',
+            'batch_size': MODEL_BATCH_SIZE,
+            'seed': 0,
+            'capacity': MODEL_BATCH_SIZE * 60,
+            # 'n_threads' : 4
+        },
         'targets': {
                 'func': get_current_predicted_future_action,
                 'targets' : [],
-                'num_to_save' : BATCH_SIZE,
+                'num_to_save' : MODEL_BATCH_SIZE,
                 'num_channels' : 3,
                 'threshold' : DISCRETE_THRESHOLD
             },
         'agg_func' : mean_losses_keep_rest,
-        'num_steps': 2500
+        'num_steps': 3200
         }
     }
 
