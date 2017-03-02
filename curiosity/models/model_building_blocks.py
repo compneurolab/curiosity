@@ -77,7 +77,23 @@ class ConvNetwithBypasses(model.ConvNet):
 
 
 	@tf.contrib.framework.add_arg_scope
-	def conv(self, out_shape, ksize=3, stride=1, padding='SAME', init='xavier', stddev=.01, bias=1, activation='relu', weight_decay=None, in_layer=None, init_file=None, init_layer_keys=None, batch_normalize = False):
+	def conv(self, 
+                 out_shape, 
+                 ksize=3, 
+                 stride=1, 
+                 padding='SAME', 
+                 init='xavier', 
+                 stddev=.01, 
+                 bias=1, 
+                 activation='relu', 
+                 weight_decay=None, 
+                 in_layer=None, 
+                 init_file=None, 
+                 init_layer_keys=None, 
+                 batch_normalize=False,
+                 group=None,
+                 trainable=True,
+                   ):
 		if in_layer is None:
 		    in_layer = self.output
 		if weight_decay is None:
@@ -95,11 +111,11 @@ class ConvNetwithBypasses(model.ConvNet):
 		                             shape=[ksize1, ksize2, in_shape, out_shape],
 		                             dtype=tf.float32,
 		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
-		                             name='weights')
+		                             name='weights', trainable=trainable)
 		    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
 		                             shape=[out_shape],
 		                             dtype=tf.float32,
-		                             name='bias')
+		                             name='bias', trainable=trainable)
 		else:
 		    init_dict = self.initializer(init,
 		                                 init_file=init_file,
@@ -107,14 +123,25 @@ class ConvNetwithBypasses(model.ConvNet):
 		    kernel = tf.get_variable(initializer=init_dict['weight'],
 		                             dtype=tf.float32,
 		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
-		                             name='weights')
+		                             name='weights', trainable=trainable)
 		    biases = tf.get_variable(initializer=init_dict['bias'],
 		                             dtype=tf.float32,
-		                             name='bias')
+		                             name='bias', trainable=trainable)
 
-		conv = tf.nn.conv2d(in_layer, kernel,
+                if group is None or group == 1:
+		    conv = tf.nn.conv2d(in_layer, kernel,
 		                    strides=[1, stride, stride, 1],
 		                    padding=padding)
+                else:
+                    print('Partially convolving; group=%d' % group)
+                    assert in_layer.get_shape()[-1] % group == 0
+                    convolve = lambda i, k: tf.nn.conv2d(i, k, [1, stride, stride, 1],\
+                                                         padding=padding)
+                    in_layers = tf.split(3, group, in_layer)
+                    kernels = tf.split(3, group, kernel)
+                    convs = [convolve(i, k) for i,k in zip(in_layers, kernels)]
+                    conv = tf.concat(3, convs)
+
 		if batch_normalize:
 			#Using "global normalization," which is recommended in the original paper
 			print('doing batch normalization')
@@ -122,7 +149,7 @@ class ConvNetwithBypasses(model.ConvNet):
 			scale = tf.get_variable(initializer=tf.constant_initializer(bias),
 			                         shape=[out_shape],
 			                         dtype=tf.float32,
-			                         name='scale')
+			                         name='scale', trainable=trainable)
 			self.output = tf.nn.batch_normalization(conv, mean, var, biases, scale, 1e-3, name = 'conv')
 		else:
 			self.output = tf.nn.bias_add(conv, biases, name='conv')
