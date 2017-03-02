@@ -73,6 +73,19 @@ class ConvNetwithBypasses(model.ConvNet):
 		               'activation': activation}
 		return self.output
 
+	def activation(self, kind='relu', in_layer=None):
+		if in_layer is None:
+			in_layer = self.output
+		if kind == 'relu':
+			out = tf.nn.relu(in_layer, name='relu')
+		elif kind == 'tanh':
+			out = tf.tanh(in_layer, name = 'tanh')
+		else:
+			raise ValueError("Activation '{}' not defined".format(kind))
+		self.output = out
+		return out
+
+
 
 
 

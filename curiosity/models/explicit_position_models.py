@@ -8,7 +8,7 @@ import tensorflow as tf
 
 from curiosity.models.model_building_blocks import ConvNetwithBypasses
 
-def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], reuse_weights = False):
+def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev = .01, reuse_weights = False, activation = 'relu'):
 	assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
 	hidden_depth = cfg['hidden_depth']
 	m.output = input_node
@@ -23,12 +23,12 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], reuse_w
 				bypass_node = nodes_for_bypass[bypass]
 				m.add_bypass(bypass_node)
 			nf = cfg['hidden'][i]['num_features']
-			m.fc(nf, init = 'trunc_norm', activation = 'relu', bias = .01, dropout = None)
+			m.fc(nf, init = 'trunc_norm', activation = activation, bias = .01, stddev = stddev, dropout = None)
 			nodes_for_bypass.append(m.output)
 			print(m.output)
 	return m.output
 
-def position_only_mlp(inputs, cfg = None, T_in = 3, T_out = 3, num_points = 50, **kwargs):
+def position_only_mlp(inputs, cfg = None, T_in = 3, T_out = 3, num_points = 50, stddev = .01, activation = 'relu', **kwargs):
 	input_shape = inputs['positions'].get_shape().as_list()
 	assert len(input_shape) == 2
 	assert input_shape[1] == (T_in + T_out) * 3 * num_points, (T_in, T_out, num_points, input_shape[1])
@@ -36,13 +36,15 @@ def position_only_mlp(inputs, cfg = None, T_in = 3, T_out = 3, num_points = 50, 
 	future_node = inputs['positions'][:, T_in * 3 * num_points : ]
 
 	m = ConvNetwithBypasses(**kwargs)
-	hidden_loop_with_bypasses(current_node, m, cfg)
+	hidden_loop_with_bypasses(current_node, m, cfg, activation = activation, stddev = stddev)
 	num_end_features = T_out * 3 * num_points
-	m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, dropout = None)
+	with tf.variable_scope('out'):
+		m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, stddev = stddev, dropout = None)
 
+	print(m.output)
 	return {'pred' : m.output, 'tv' : future_node}, m.params
 
-def position_only_with_skip(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num_points = 50, num_actions = 10, **kwargs):
+def position_only_with_skip(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num_points = 50, stddev = .01, activation = 'relu', **kwargs):
 	input_shape = inputs['positions'].get_shape().as_list()
 	assert len(input_shape) == 2
 	assert input_shape[1] == (T_in + skip + T_out) * 3 * num_points, (T_in, T_out, num_points, input_shape[1])
@@ -50,13 +52,14 @@ def position_only_with_skip(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, n
 	future_node = inputs['positions'][:, -T_out * 3 * num_points : ]
 
 	m = ConvNetwithBypasses(**kwargs)
-	hidden_loop_with_bypasses(current_node, m, cfg)
-	num_end_features = T_out * 3 * num_points
-	m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, dropout = None)
+	hidden_loop_with_bypasses(current_node, m, cfg,	activation = activation, stddev = stddev)
+	with tf.variable_scope('out'):
+		num_end_features = T_out * 3 * num_points
+		m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, dropout = None, stddev = stddev)
 
 	return {'pred' : m.output, 'tv' : future_node, 'in_pos' : current_node}, m.params
 
-def positions_and_actions(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num_points = 50, **kwargs):
+def positions_and_actions(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num_points = 50, stddev = .01, activation = 'relu', **kwargs):
 	input_shape = inputs['positions'].get_shape().as_list()
 	assert len(input_shape) == 2
 	assert input_shape[1] == (T_in + skip + T_out) * 3 * num_points, (T_in, T_out, num_points, input_shape[1])
@@ -66,10 +69,13 @@ def positions_and_actions(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num
 
 	concat_node = tf.concat(1, [current_node, action_node])
 	m = ConvNetwithBypasses(**kwargs)
-	hidden_loop_with_bypasses(concat_node, m, cfg)
-	num_end_features = T_out * 3 * num_points
-	m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, dropout = None)
-
+	hidden_loop_with_bypasses(concat_node, m, cfg, activation = activation, stddev = stddev)
+	print('final stretch')
+	print(m.output)
+	with tf.variable_scope('out'):
+		num_end_features = T_out * 3 * num_points
+		m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, stddev = stddev, dropout = None)
+	print(m.output)
 	return {'pred' : m.output, 'tv' : future_node, 'in_pos' : current_node}, m.params
 
 def l2_loss_fn(outputs, images, **kwargs):
