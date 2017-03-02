@@ -16,7 +16,7 @@ import tfutils.data as d
 import tfutils.base as b
 import tensorflow as tf
 import json
-from curiosity.data.explicit_positions import PositionPredictionData
+from curiosity.data.explicit_positions import PositionPredictionData, RandomParabolaGenerator
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
@@ -105,11 +105,31 @@ def test_new_tfrecord():
 	    print(np.linalg.norm(res['corresponding_actions']))
 	    # print(np.linalg.norm(res['positions_parsed'][:, -30:]))
 
+def test_random_parabolas():
+	dp = RandomParabolaGenerator()
+	sess = tf.Session()
+	ops = dp.init_ops()
+	queue = b.get_queue(ops[0], queue_type='random')
+	enqueue_ops = []
+	for op in ops:
+	    enqueue_ops.append(queue.enqueue_many(op))
+	tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
+	tf.train.start_queue_runners(sess=sess)
+	inputs = queue.dequeue_many(256)
+
+	for i in range(10):
+		res = sess.run(inputs)
+		print(res['X'].shape)
+		print(res['Y'].shape)
+		print(res['Z'].shape)
+		print(res['X'][0])
+		print(res['Y'][0])
+		print(res['Z'][0])
+
 
 
 if __name__ == '__main__':
-	test_new_tfrecord()
-
+	test_random_parabolas()
 
 
 
