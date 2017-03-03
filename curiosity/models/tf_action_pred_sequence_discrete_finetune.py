@@ -367,11 +367,12 @@ def get_quaternion_labels(inputs, seq_len, buckets_dim):
 
     # bucket labels
     labels = []
-    zero = tf.constant(0, dtype=tf.float32)
+    boundary = tf.constant(0.05, dtype=tf.float32)
     # 3 buckets: smaller zero, zero, greater zero
-    labels.append(tf.less(theta, zero))
-    labels.append(tf.equal(theta, zero))
-    labels.append(tf.greater(theta, zero))
+    labels.append(tf.less(theta, tf.negative(boundary)))
+    labels.append(tf.logical_and(tf.greater(theta, tf.negative(boundary)),
+                                 tf.less(theta, boundary)))
+    labels.append(tf.greater(theta, boundary))
 
     # concatenate and cast to labels
     labels = tf.concat(1, labels)
