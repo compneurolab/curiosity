@@ -21,6 +21,7 @@ def actionPredModel(inputs, min_time_difference, **kwargs):
     batch_size = inputs['images'].get_shape().as_list()[0]
     new_inputs = {'current' : inputs['images'], \
                   'poses' : inputs['poses'], \
+                  'future_poses': inputs['future_poses'], \
                   'future' : inputs['future_images'], \
                   'times' : tf.ones([batch_size, min_time_difference])}
     return actionPredictionModelBase(new_inputs, **kwargs)
@@ -263,8 +264,9 @@ def actionPredictionModelBase(inputs,
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
     ''' 
 
-    outputs = {'pred': pred, 'norm_poses': actions_node, 
-               'dim': dim, 'num_classes': num_classes}
+    theta, labels = get_quaternion_labels(inputs, dim, num_classes)
+
+    outputs = {'pred': pred, 'theta_labels': labels, 'theta': theta}
     return outputs, net.params
 
 def flatten(net, node):
@@ -306,23 +308,21 @@ def binary_cross_entropy_action_loss(labels, logits, **kwargs):
                           + (1 - norm_labels) * tf.log(1 - pred), 1)
     return loss
 
-def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
-    pred = logits['pred']
-    shape = labels[0].get_shape().as_list()
-    seq_len = logits['dim']
+
+def get_quaternion_labels(inputs, seq_len, buckets_dim):
+    shape = inputs['poses'].get_shape().as_list()
     dim = int(shape[1] / seq_len)
 
     assert dim == 4, 'dimension is not 4 but quaternions are used!'
 
     # upper bound for our 5 buckets, the last upper bound is inf and hence
     # not necessary
-    buckets_dim = logits['num_classes']
     assert buckets_dim == 3, 'Only num_classes=3 can be used with this loss.'
 
     # take the difference between the last and the first quaternion
     # quat_diff = quat_end * inv(quat_start)
-    quat_start = tf.slice(labels[0], [0, 0], [-1, dim])
-    quat_end = labels[1]
+    quat_start = tf.slice(inputs['poses'], [0, 0], [-1, dim])
+    quat_end = inputs['future_poses']
     #inv(quat_start) = (q0 - iq1 - jq2 - kq3) / (q0^2 + q1^2 + q2^2 + q3^2)
     quats = []
     for i in range(dim):
@@ -377,6 +377,11 @@ def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
     labels = tf.concat(1, labels)
     labels = tf.cast(labels, tf.int32)
 
+    return [theta, labels]
+
+def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    labels = logits['theta_labels']
     # reshape predictions to match labels
     #pred = tf.reshape(pred, [-1,buckets_dim])
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))

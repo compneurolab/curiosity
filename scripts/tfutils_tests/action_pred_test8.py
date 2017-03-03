@@ -49,9 +49,10 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
     futures = inputs['future_images'][:num_to_save]
     futures = tf.cast(futures, tf.uint8)
 
-    actions = inputs['poses'][:num_to_save]
+#    actions = inputs['poses'][:num_to_save]
+    actions = outputs['theta'][:num_to_save]
     predictions = outputs['pred'][:num_to_save]
-    norm_actions = outputs['norm_poses'][:num_to_save]
+    norm_actions = outputs['theta_labels'][:num_to_save]
 
     shape = actions.get_shape().as_list()
     norm = shape[0] * shape[1]
@@ -120,7 +121,7 @@ params = {
     },
 
     'train_params': {
-        'validate_first': False,
+        'validate_first': True, #False,
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
