@@ -7,6 +7,7 @@ Meant to deal with positions_parsed data written in explicit_pos_writer.py in sc
 from tfutils.data import TFRecordsParallelByFileProvider
 import os
 import tensorflow as tf
+import cPickle
 
 
 class PositionPredictionData(TFRecordsParallelByFileProvider):
@@ -23,6 +24,8 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 				output_num_actions = None, 
 				remove_teleport = True,
 				filters = None,
+				normalize_actions = None,
+				stats_file = None,
 				* args, 
 				** kwargs):
 		self.filters = filters
@@ -36,11 +39,17 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 		self.output_num_objects = max_num_objects if output_num_objects is None else output_num_objects
 		self.output_num_actions = max_num_actions if output_num_actions is None else output_num_actions
 		self.remove_teleport = remove_teleport
+		self.normalize_actions = normalize_actions
 		if time_skip != 1:
 			raise NotImplementedError('Time skip not yet implemented')
 		if filters is not None:
 			for f in self.filters:
 				self.source_paths.append(os.path.join(data_path, f))
+		if self.normalize_actions is not None:
+			if stats_file is None:
+				raise Exception('normalize_actions is not None, but a stats filename was not provided')
+			with open(stats_file) as f:
+				self.stats = cPickle.load(f)
 		super(PositionPredictionData, self).__init__(
 			self.source_paths, 
 			postprocess = {'positions': [(self.postprocess_positions, (), {})]}, 
@@ -58,6 +67,15 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 			data['positions'] = data['positions'][1:]
 		if not self.positions_only:
 			data['corresponding_actions'] = data['positions'][:, 3 * self.max_num_objects : 3 * (self.max_num_objects + self.output_num_actions)]
+			if self.normalize_actions is not None:
+				if self.normalize_actions == 'custom':
+					features = []
+					for i in range(3 * self.output_num_actions):
+						stats_file_idx = (i % 3) + 7
+						features.append((tf.slice(data['corresponding_actions'], [0, i], [-1, 1]) - self.stats['custom_min']['parsed_actions'][stats_file_idx]) / (self.stats['custom_max']['parsed_actions'][stats_file_idx] - self.stats['custom_min']['parsed_actions'][stats_file_idx]))
+					data['corresponding_actions'] = tf.concat(1, features)
+				else:
+					raise NotImplementedError('normalize_actions ' + str(self.normalize_actions) + ' not yet implemented')
 		data['positions'] = data['positions'][:, : 3 * self.output_num_objects]
 
 		return data
@@ -91,9 +109,10 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 		return self.input_ops
 
 	def apply_filters(self, data):
-		delta_t = tf.constant(self.num_timesteps, self.int32)
+		delta_t = tf.constant(self.num_timesteps, tf.int32)
 
 		for f in self.filters:
+			print('applying filter ' + f)
 			data[f] = tf.decode_raw(data[f], tf.int32)
 			shape = data[f].get_shape().as_list()
 
@@ -102,6 +121,7 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 				data[f] = tf.expand_dims(data[f], -1)
 				shape = data[f].get_shape().as_list()
 			shape[1] = 1
+			shape[0] = self.batch_size
 			data[f].set_shape(shape)
 
 			#toss and cut analogue...should modify toss and cut
@@ -116,7 +136,7 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 			data[f] = tf.concat(1, shifts)
 
 			filter_sum = tf.reduce_sum(data[f], 1)
-			pos_idx = tf.equal(filter_sum, delta_time)
+			pos_idx = tf.equal(filter_sum, delta_t)
 			data.pop(f)
 			for k in data:
 				shape = data[k].get_shape().as_list()
@@ -128,8 +148,32 @@ class PositionPredictionData(TFRecordsParallelByFileProvider):
 
 
 
+class RandomParabolaGenerator():
+	def __init__(self,
+				gravity = 1.0,
+				batch_size = 256,
+				seq_len = 10,
+				y_vel_mean = .25,
+				n_threads = 1
+		):
+		self.g = gravity
+		self.batch_size = batch_size
+		self.seq_len = seq_len
+		self.y_vel_mean = y_vel_mean
 
-
+	def init_ops(self):
+		T = tf.range(self.seq_len, dtype = tf.float32) / 10.
+		T2 = T * T
+		x_0 = tf.random_normal([self.batch_size, 1], dtype = tf.float32, seed = 0)
+		y_0 = tf.random_normal([self.batch_size, 1], dtype = tf.float32, seed = 1)
+		z_0 = tf.random_normal([self.batch_size, 1], dtype = tf.float32, seed = 2)
+		v_x0 = tf.random_normal([self.batch_size, 1], dtype = tf.float32, seed = 3)
+		v_y0 = tf.random_normal([self.batch_size, 1], mean = self.y_vel_mean, dtype = tf.float32, seed = 4)
+		v_z0 = tf.random_normal([self.batch_size, 1], dtype = tf.float32, seed = 5)
+		X = x_0 + v_x0 * T
+		Y = y_0 + v_y0 * T - self.g * T2 / 2.0
+		Z = z_0 + v_z0 * T
+		return [{'X' : X, 'Y' : Y, 'Z' : Z}]
 
 
 
