@@ -14,56 +14,16 @@ import numpy as np
 import tensorflow as tf
 from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import curiosity.models.get_parameters as gp
-import cPickle
-from scipy.misc import imresize
 
 DEBUG = True
-
-global dataset_stats 
-dataset_stats = None 
-
-def load_stats(n_channels):
-    global dataset_stats
-
-    print('Loading data statistics...')
-
-    stats_file = '/media/data/one_world_dataset/dataset_stats.pkl' 
-    image_size = [256, 256, 3]
-    with open(stats_file) as f:
-        stats = cPickle.load(f)
-
-    for k in ['mean', 'std']:
-        stats[k]['images'] = \
-            stats[k]['images'].astype(np.float32)
-        stats[k]['images'] = \
-            imresize(stats[k]['images'], \
-            image_size).astype(np.float32)
-
-    if n_channels != 3:
-        raise NotImplementedError
-
-    dataset_stats = stats
 
 def actionPredModel(inputs, min_time_difference, **kwargs):
     batch_size = inputs['images'].get_shape().as_list()[0]
     new_inputs = {'current' : inputs['images'], \
-                  'actions' : inputs['parsed_actions'], \
+                  'poses' : inputs['poses'], \
                   'future' : inputs['future_images'], \
                   'times' : tf.ones([batch_size, min_time_difference])}
     return actionPredictionModelBase(new_inputs, **kwargs)
-
-def preprocessing(inputs,
-                  n_channels = 3):
-    raise NotImplementedError
-
-def nNet(inputs,
-            rng,
-            cfg = {},
-            train = True,
-            slippage = 0,
-            n_channels = 3,
-            **kwargs):
-    raise NotImplementedError
 
 def actionPredictionModelBase(inputs, 
                         rng, 
@@ -71,8 +31,8 @@ def actionPredictionModelBase(inputs,
                         train = True, 
                         slippage = 0, 
                         minmax_end = True,
+                        num_classes = None,
                         n_channels = 3,
-                        normalize_images_after_dequeue = False,
                         **kwargs):
     '''
     Action Prediction Network Model Definition:
@@ -94,20 +54,20 @@ def actionPredictionModelBase(inputs,
     with keys predi and futurei for i in 0:encode_depth, to be matched up in loss.
     '''
 
+
 ###### PREPROCESSING ######
 
     #set inputs
     current_node = inputs['current']
     future_node = inputs['future']
-    actions_node = inputs['actions']
+    actions_node = inputs['poses']
     time_node = inputs['times']
 
     #normalize and cast 
-    current_node = tf.cast(current_node, tf.float32)
-    future_node = tf.cast(future_node, tf.float32)
-    #current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
-    #future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
+    current_node = tf.divide(tf.cast(current_node, tf.float32), 255)
+    future_node = tf.divide(tf.cast(future_node, tf.float32), 255)
     actions_node = tf.cast(actions_node, tf.float32)
+    original_actions = actions_node
 
     if(DEBUG):
         print('Actions shape')
@@ -117,35 +77,12 @@ def actionPredictionModelBase(inputs,
     if rng is None:
         rng = np.random.RandomState(seed=kwargs['seed'])
 
-    # Split current nodes
-    shape = current_node.get_shape().as_list()
-    dim = int(shape[3] / n_channels)
-    current_nodes = []
-    for d in range(dim):
-        current_nodes.append(tf.slice(current_node, \
-            [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
-
-    if normalize_images_after_dequeue:
-        if(DEBUG):
-            print('Normalizing images')
-        # load dataset_stats
-        if dataset_stats is None:
-            load_stats(n_channels)
-
-        #normalize images
-        future_node = (future_node - dataset_stats['mean']['images']) / \
-            (dataset_stats['std']['images'] + 10e-4)
-
-        for d in range(dim):
-            current_nodes[d] = (current_nodes[d] - dataset_stats['mean']['images']) / \
-                (dataset_stats['std']['images'] + 10e-4)
-
 ####### ENCODING #######
 
     #init from file
     init_file = '/media/data2/one_world_dataset/scripts/bvlc_alexnet_tfutils.npy'
     init_keys = [
-     'conv1_b', 
+     'conv1_b',
      'conv1_w',
      'conv2_b',
      'conv2_w',
@@ -175,12 +112,19 @@ def actionPredictionModelBase(inputs,
   
     cfs0 = None
 
+    # Split current nodes
+    shape = current_node.get_shape().as_list()
+    dim = int(shape[3] / n_channels)
+    current_nodes = []
+    for d in range(dim):
+        current_nodes.append(tf.slice(current_node, [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
+
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
 
+
     with tf.contrib.framework.arg_scope([net.conv, net.fc], \
-                  init='xavier', stddev=.01, bias=0, activation='relu', \
-                  ): 
+                  init='xavier', stddev=.01, bias=0, activation='relu'): 
         for i in range(1, encode_depth + 1):
             with tf.variable_scope('encode' + str(i)) as encode_scope:
                 #get encode parameters 
@@ -190,14 +134,10 @@ def actionPredictionModelBase(inputs,
                         encode_depth, rng, cfg, prev=cfs0, slippage=slippage)
                 cfs0 = cfs
 
-                #print( cfs, nf, cs, do_pool, pfs, ps, pool_type)
-                #print(init_keys[2*(i-1)], init_keys[2*(i-1)+1])
-
                 new_encode_nodes_current = []
                 for encode_node_current in encode_nodes_current[i - 1]:
-                    #print(encode_node_current)
                     #encode current images (conv + pool)
-                    init_layer_keys = {'bias': init_keys[2*(i-1)], 
+                    init_layer_keys = {'bias': init_keys[2*(i-1)],
                                        'weight': init_keys[2*(i-1)+1]}
                     group = groups[(i-1)]
                     new_encode_node_current = net.conv(nf, cfs, cs, \
@@ -270,6 +210,14 @@ def actionPredictionModelBase(inputs,
         #match the shape of the action vector
         #by using another hidden layer if necessary
         ds = actions_node.get_shape().as_list()[1]
+
+        if num_classes is not None:
+            ds *= num_classes
+
+        #TODO 
+        if 'poses' in inputs:
+            ds = num_classes
+
         if ds != nf0:
             with tf.variable_scope('extra_hidden'):
                 pred = net.fc(ds, bias = .01, activation = None, dropout = None)
@@ -282,8 +230,7 @@ def actionPredictionModelBase(inputs,
     if minmax_end:
         print("Min max clipping active")
         #pred = net.minmax(min_arg = 10, max_arg = -10, in_layer = pred)
-        pred = tf.tanh(pred) #*10
-
+        pred = tf.sigmoid(pred)
     #output batch normalized labels for storage and loss
 
     '''
@@ -314,9 +261,10 @@ def actionPredictionModelBase(inputs,
     epsilon = 1e-3
     batch_mean, batch_var = tf.nn.moments(actions_node, [0])
     norm_actions = (actions_node - batch_mean) / tf.sqrt(batch_var + epsilon)
-    '''
-    norm_actions = actions_node
-    outputs = {'pred': pred, 'norm_actions': norm_actions, 'dim': dim}
+    ''' 
+
+    outputs = {'pred': pred, 'norm_poses': actions_node, 
+               'dim': dim, 'num_classes': num_classes}
     return outputs, net.params
 
 def flatten(net, node):
@@ -337,24 +285,120 @@ def l2_action_loss(labels, logits, **kwargs):
     #loss = tf.minimum(loss, 0.1) #TODO remove and find reason!
     return loss
 
-def weighted_l2_action_loss(labels, logits, **kwargs):
+def binary_cross_entropy_action_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    dim = logits['dim']
+    actions_node = logits['norm_actions']
+    # Split action node and binary discretize
+    action_shape = int(actions_node.get_shape().as_list()[1] / dim)
+    actions_split = []
+    for d in range(dim):
+        act_sp = tf.slice(actions_node, [0, action_shape*d], [-1, action_shape])
+#        act_sp = tf.reduce_sum(act_sp, 1)
+        act_sp = tf.abs(act_sp)
+        act_sp = tf.minimum(act_sp, 1)
+        act_sp = tf.ceil(act_sp)        
+#        act_sp = tf.reshape(act_sp, [-1, 1])
+        actions_split.append(act_sp)
+    norm_labels = tf.concat(1, actions_split)
+
+    loss = -tf.reduce_sum(norm_labels * tf.log(pred) \
+                          + (1 - norm_labels) * tf.log(1 - pred), 1)
+    return loss
+
+def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
+    pred = logits['pred']
+    shape = labels[0].get_shape().as_list()
+    seq_len = logits['dim']
+    dim = int(shape[1] / seq_len)
+
+    if dim != 4:
+        raise TypeError('dimension is not 4 but quaternions are used!')
+
+    # upper bound for our 5 buckets, the last upper bound is inf and hence
+    # not necessary
+    buckets_dim = logits['num_classes']
+    if buckets_dim != 3:
+        raise NotImplementedError('Only num_classes=3 can be used \
+              with this loss.')
+
+    # take the difference between the last and the first quaternion
+    # quat_diff = quat_end * inv(quat_start)
+    quat_start = tf.slice(labels[0], [0,0], [-1,dim])
+    quat_end = labels[1]
+    #inv(quat_start) = (q0 - iq1 - jq2 - kq3) / (q0^2 + q1^2 + q2^2 + q3^2)
+    quats = []
+    for i in range(dim):
+        quats.append(tf.slice(quat_start, [0,i*dim], [-1, dim]))
+
+    quats[1] = tf.negative(quats[1])
+    quats[2] = tf.negative(quats[2])
+    quats[3] = tf.negative(quats[3]) 
+
+    quat_norm = []
+    for i in range(len(quats)):
+        quat_norm.append(tf.multiply(quats[i], quats[i]))
+    quat_norm = tf.concat(1, quat_norm)
+    quat_norm = tf.reduce_sum(quat_norm, 1)
+    quat_norm = tf.reshape(quat_norm, [-1, 1])
+
+    quats = tf.concat(1, quats)
+
+    inv_quat_start = tf.divide(quats, quat_norm)
+
+    # quat multiplication: t = q * r
+    # t0 = r0*q0 - r1*q1 - r2*q2 - r3*q3
+    # t1 = r0*q1 + r1*q0 - r2*q3 + r3*q2
+    # t2 = r0*q2 + r1*q3 + r2*q0 - r3*q1
+    # t3 = r0*q3 - r1*q2 + r2*q1 + r3*q0
+    r = []
+    q = []
+    t = []
+    for i in range(dim):
+        r.append(tf.slice(inv_quat_start, [0, i], [-1, 1]))
+        q.append(tf.slice(quat_end, [0, i], [-1, 1])) 
+
+    t.append(r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3])
+    t.append(r[0]*q[1] + r[1]*q[0] - r[2]*q[3] + r[3]*q[2])
+    t.append(r[0]*q[2] + r[1]*q[3] + r[2]*q[0] - r[3]*q[1])
+    t.append(r[0]*q[3] - r[1]*q[2] + r[2]*q[1] + r[3]*q[0])
+
+    quat_diff = tf.concat(1, t) 
+
+    # convert the quarternion to euler angle
+    theta = tf.asin(2*(t[0]*t[2] - t[3]*t[1]))
+
+    # bucket labels
+    labels = []
+    zero = tf.constant(0, dtype=tf.float32)
+    # 3 buckets: smaller zero, zero, greater zero
+    labels.append(tf.less(theta, zero))
+    labels.append(tf.equal(theta, zero))
+    labels.append(tf.greater(theta, zero))
+
+    # concatenate and cast to labels
+    labels = tf.concat(1, labels)
+    labels = tf.cast(labels, tf.int32)
+
+    # reshape predictions to match labels
+    #pred = tf.reshape(pred, [-1,buckets_dim])
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
+    return loss
+
+def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
     pred = logits['pred']
     shape = labels.get_shape().as_list()
-    norm = shape[0] * shape[1]
     norm_labels = logits['norm_actions']
-    seq_len = logits['dim']    
-    dim = int(shape[1] / seq_len) 
+    seq_len = logits['dim']
+    dim = int(shape[1] / seq_len)
 
+    '''
     #50:50 split
     pos_discount = np.array([10.13530233, 3.54033702, \
                              98.61325116, 2.72365054, \
                               1.92986523, 1.93214109])
-#    neg_discount = np.array([0.52594625, 0.58222773, \
-#                             0.50254808, 0.61242774, \
-#                             0.67484165, 0.67456381])
     if dim == 4:
         pos_discount = pos_discount[0:4]
-#        neg_discount = neg_discount[0:4]
 
     rand = tf.random_uniform(shape)
     rands = []
@@ -364,16 +408,59 @@ def weighted_l2_action_loss(labels, logits, **kwargs):
         r = tf.round(r)
         rands.append(r)
     rands = tf.concat(1, rands)
+    rands = tf.cast(rands, tf.int32)
+    '''
 
-    #TODO REMOVE: only consider pos examples
-    rands = tf.ones(shape)
+    #100:0 split, only consider pos examples
+    rands = tf.ones(shape, dtype=tf.int32)
 
+    # upper bound for our 5 buckets, the last upper bound is inf and hence
+    # not necessary
+    buckets_dim = logits['num_classes']
+    if buckets_dim != 5:
+        raise NotImplementedError('So far only num_classes=5 can be used \
+              with this loss.')
+
+    buckets = np.array(
+              [[-5.0,  51.7, -156.1, -37.1, 141,  73], 
+               [-4.9,  52.5,  -43.7,  -7.9, 178, 114], 
+               [ 4.9,  52.6,   48.9,   7.5, 204, 140], 
+               [ 5.1,  55.2,  166.7,  36.7, 230, 181]])
+    if dim == 4:
+        buckets = buckets[:,0:4]
+    buckets = np.tile(buckets, (1,seq_len))
+
+    # bucket labels
+    labels = []
+    new_shape = shape + [1]
+    new_shape[0] = -1
+    for i in range(buckets_dim):
+        label = tf.zeros(shape, tf.bool)
+        if i == 0:
+            label = tf.less(norm_labels, buckets[i])
+        elif i == buckets_dim - 1:
+            label = tf.greater(norm_labels, buckets[i-1])
+        else:
+            label = tf.logical_and(tf.greater(norm_labels, buckets[i-1]), \
+                                   tf.less(norm_labels, buckets[i]))
+        label = tf.reshape(label, new_shape)
+        labels.append(label)
+    labels = tf.concat(2, labels)
+    labels = tf.cast(labels, tf.int32)
+
+    #find all positive indices
     zero = tf.constant(0, dtype=tf.float32)
     pos_idx = tf.not_equal(norm_labels, zero)
-    neg_idx = tf.logical_not(pos_idx)
+    neg_idx = tf.logical_not(pos_idx)        
 
-    diff = pred - norm_labels
-    diff = diff * tf.cast(pos_idx, tf.float32) * rands \
-         + diff * tf.cast(neg_idx, tf.float32) * (1-rands)
-    loss = tf.nn.l2_loss(diff) / norm
+    #mask out all negative entries
+    rands = tf.reshape(rands, new_shape)
+    pos_idx = tf.reshape(pos_idx, new_shape)
+    neg_idx = tf.reshape(neg_idx, new_shape) 
+    labels = labels * tf.cast(pos_idx, tf.int32) * rands \
+           + labels * tf.cast(neg_idx, tf.int32) * (1-rands)
+
+    pred = tf.reshape(pred, [-1,buckets_dim])
+    #labels = tf.reshape(labels, [-1,5])
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
     return loss

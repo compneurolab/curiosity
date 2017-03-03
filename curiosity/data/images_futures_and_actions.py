@@ -30,6 +30,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
                  stats_file=None,
                  action_matrix_radius=None,
                  is_remove_teleport=True,
+                 use_poses=False,
                  n_threads=4,
                  *args,
                  **kwargs):
@@ -43,9 +44,12 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         self.is_remove_teleport = is_remove_teleport
         self.action_matrix_radius = action_matrix_radius
         self.filters = filters
+        self.use_poses = use_poses
 
         self.images = 'images'
         self.actions = 'parsed_actions' #'actions'
+        if self.use_poses:
+            self.actions = 'poses' #'actions'
 
         if int(min_time_difference) < 1:
    	    self.min_time_difference = 1
@@ -115,6 +119,14 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         return images
 
     def postproc_parsed_actions(self, actions):
+        if self.use_poses:
+            actions = tf.decode_raw(actions, tf.float32)
+            actions = tf.slice(actions, [0,0], [-1, 4])
+            act_shape = actions.get_shape().as_list()
+            act_shape[1] = 4
+            actions.set_shape(act_shape)
+        return actions
+
         actions = tf.decode_raw(actions, tf.float64)
         actions = tf.cast(actions, tf.float32)
 
@@ -391,13 +403,13 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         return data
 
     def create_image_pairs(self, data):
-        return self.create_pairs(data, self.images, 'future_images')
+        return self.create_pairs(data, self.images, 'future_' + self.images)
 
     def create_action_pairs(self, data):
-        return self.create_pairs(data, self.actions, 'future_actions')
+        return self.create_pairs(data, self.actions, 'future_' + self.actions)
 
     def create_image_sequence(self, data):
-        return self.create_sequence(data, self.images, 'future_images')
+        return self.create_sequence(data, self.images, 'future_' + self.images)
 
     def create_action_sequence(self, data):
-        return self.create_sequence(data, self.actions, 'future_actions')
+        return self.create_sequence(data, self.actions, 'future_' + self.actions)
