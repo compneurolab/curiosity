@@ -220,7 +220,7 @@ def actionPredictionModelBase(inputs,
             print('Hidden depth: %d' % hidden_depth)
 
         #fully connected hidden layers
-        for i in range(1, hidden_depth + 1):
+        for i in range(1, hidden_depth): # + 1):
             with tf.variable_scope('hidden' + str(i)) as hidden_scope:
 
                 nf = gp.getHiddenNumFeatures(i, hidden_depth, rng, \
