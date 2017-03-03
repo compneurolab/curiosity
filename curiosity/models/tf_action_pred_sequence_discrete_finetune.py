@@ -312,15 +312,12 @@ def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
     seq_len = logits['dim']
     dim = int(shape[1] / seq_len)
 
-    if dim != 4:
-        raise TypeError('dimension is not 4 but quaternions are used!')
+    assert dim == 4, 'dimension is not 4 but quaternions are used!'
 
     # upper bound for our 5 buckets, the last upper bound is inf and hence
     # not necessary
     buckets_dim = logits['num_classes']
-    if buckets_dim != 3:
-        raise NotImplementedError('Only num_classes=3 can be used \
-              with this loss.')
+    assert buckets_dim == 3, 'Only num_classes=3 can be used with this loss.'
 
     # take the difference between the last and the first quaternion
     # quat_diff = quat_end * inv(quat_start)
