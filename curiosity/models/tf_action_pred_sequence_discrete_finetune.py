@@ -160,53 +160,115 @@ def actionPredictionModelBase(inputs,
                 if do_pool:
                     new_encode_node_future = net.pool(pfs, ps, \
                             in_layer = new_encode_node_future, pfunc = pool_type)
- 
-                if(DEBUG):
-                    print('Current encode node shape: ' + \
-                            str(new_encode_node_current.get_shape().as_list()))
-                    print('Future encode node shape: ' + \
-                            str(new_encode_node_current.get_shape().as_list()))
                     print('Pool size %d, stride %d' % (pfs, ps))
                     print('Type: ' + pool_type) 
 
                 #store layers
                 encode_nodes_current.append(new_encode_nodes_current)
                 encode_nodes_future.append(new_encode_node_future)
+ 
+                if(DEBUG):
+                    print('Number of current node layers: ' + \
+                            str(len(encode_nodes_current)))
+                    print('Number of future node layers: ' + \
+                            str(len(encode_nodes_future)))
+                    print('Current encode node shape: ' + \
+                            str(new_encode_node_current.get_shape().as_list()))
+                    print('Future encode node shape: ' + \
+                            str(new_encode_node_future.get_shape().as_list()))
 
 
 ###### HIDDEN ######
 
+        encode_nodes_current = [encode_nodes_current[-1]]
+        encode_nodes_future = [encode_nodes_future[-1]]
+
+        #reshape to alexnet hidden dim
+        encode_shape = encode_nodes_future[0].get_shape().as_list()
+        fc6_alex_dim = 9216
+        with tf.variable_scope('reshape' + str(i)) as reshape_scope:
+            if(DEBUG):
+                print('Linear from %d to %d' % (np.prod(encode_shape[1:]), fc6_alex_dim))
+            
+            new_encode_nodes_current = []
+            for encode_node_current in encode_nodes_current[0]:
+                new_encode_node_current = net.fc(fc6_alex_dim, bias = .01, \
+                       in_layer = encode_node_current, \
+                       activation = None, dropout = None)
+                new_encode_nodes_current.append(new_encode_node_current)
+                reshape_scope.reuse_variables()
+
+            new_encode_node_future = net.fc(fc6_alex_dim, bias = .01, \
+                       in_layer = encode_nodes_future[0], \
+                       activation = None, dropout = None)
+
+        encode_nodes_current = [new_encode_nodes_current]
+        encode_nodes_future = [new_encode_node_future]
+
+        #get hidden layer parameters
+        nf0 = encode_nodes_future[-1].get_shape().as_list()[1]
+        hidden_depth = gp.getHiddenDepth(rng, cfg, slippage=slippage)
+
+        if(DEBUG):
+            print('Hidden depth: %d' % hidden_depth)
+
+        #fully connected hidden layers
+        for i in range(1, hidden_depth): #+ 1):
+            with tf.variable_scope('hidden' + str(i)) as hidden_scope:
+
+                nf = gp.getHiddenNumFeatures(i, hidden_depth, rng, \
+                                             cfg, slippage=slippage)
+    
+                if(DEBUG):
+                    print('Hidden shape %s' % nf)
+
+                new_encode_nodes_current = []
+                for encode_node_current in encode_nodes_current[i - 1]:
+                    init_layer_keys = {'bias': init_keys[2*(i+4)],
+                                       'weight': init_keys[2*(i+4)+1]}
+
+                    new_encode_node_current = net.fc(nf, bias = 0.01, \
+                            in_layer = encode_node_current, dropout = None, \
+                            init='from_file', init_file=init_file, 
+                            init_layer_keys=init_layer_keys, trainable=False)
+
+                    new_encode_nodes_current.append(new_encode_node_current)
+                    #share the variables between current and future encoding
+                    hidden_scope.reuse_variables()
+
+                nf0 = nf    
+
+                #encode future images (conv + pool)
+                new_encode_node_future = net.fc(nf, bias = 0.01, \
+                        in_layer = encode_nodes_future[i - 1], dropout=None, \
+                        init='from_file', init_file=init_file, 
+                        init_layer_keys=init_layer_keys, trainable=False)
+
+                #store layers
+                encode_nodes_current.append(new_encode_nodes_current)
+                encode_nodes_future.append(new_encode_node_future)
+
+                if(DEBUG):
+                    print('Number of current node layers: ' + \
+                            str(len(encode_nodes_current)))
+                    print('Number of future node layers: ' + \
+                            str(len(encode_nodes_future)))
+                    print('Current encode node shape: ' + \
+                            str(new_encode_node_current.get_shape().as_list()))
+                    print('Future encode node shape: ' + \
+                            str(new_encode_node_future.get_shape().as_list()))
+
+
+###### CONCAT ######
+
         with tf.variable_scope('concat'):
             #flatten
-            flat_node_current = tf.concat(3, encode_nodes_current[-1])
+            flat_node_current = tf.concat(1, encode_nodes_current[-1])
             flat_node_current = flatten(net, flat_node_current)
             flat_node_future = flatten(net, encode_nodes_future[-1])
 
             #concat current and future
             encode_flat = tf.concat(1, [flat_node_current, flat_node_future])
-
-            #get hidden layer parameters
-            nf0 = encode_flat.get_shape().as_list()[1]
-            hidden_depth = gp.getHiddenDepth(rng, cfg, slippage=slippage)
-  
-            if(DEBUG):
-                print('Hidden depth: %d' % hidden_depth)
-
-        #fully connected hidden layers
-        hidden = encode_flat
-        for i in range(1, hidden_depth + 1):
-            with tf.variable_scope('hidden' + str(i)):
-                nf = gp.getHiddenNumFeatures(i, hidden_depth, rng, cfg, slippage=slippage)
-                hidden = net.fc(nf, bias = 0.01, in_layer = hidden, dropout = None)
-                nf0 = nf 
-    
-                if(DEBUG):
-                    print('Hidden shape %s' % hidden.get_shape().as_list())
-
-#        #TODO Test and remove summing actions
-#        shape = actions_node.get_shape().as_list()
-#        actions_node = net.reshape([6,int(shape[1]/6)], in_layer = actions_node)
-#        actions_node = tf.reduce_sum(actions_node, 2)
 
         #match the shape of the action vector
         #by using another hidden layer if necessary
@@ -221,12 +283,13 @@ def actionPredictionModelBase(inputs,
 
         if ds != nf0:
             with tf.variable_scope('extra_hidden'):
-                pred = net.fc(ds, bias = .01, activation = None, dropout = None)
+                pred = net.fc(ds, bias = .01, in_layer = encode_flat, \
+                       activation = None, dropout = None)
 
             if(DEBUG):
                 print("Linear from %d to %d" % (nf0, ds))
         else:
-            pred = hidden
+            pred = encode_flat
 
     if minmax_end:
         print("Min max clipping active")
