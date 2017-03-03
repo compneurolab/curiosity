@@ -324,12 +324,12 @@ def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
 
     # take the difference between the last and the first quaternion
     # quat_diff = quat_end * inv(quat_start)
-    quat_start = tf.slice(labels[0], [0,0], [-1,dim])
+    quat_start = tf.slice(labels[0], [0, 0], [-1, dim])
     quat_end = labels[1]
     #inv(quat_start) = (q0 - iq1 - jq2 - kq3) / (q0^2 + q1^2 + q2^2 + q3^2)
     quats = []
     for i in range(dim):
-        quats.append(tf.slice(quat_start, [0,i*dim], [-1, dim]))
+        quats.append(tf.slice(quat_start, [0, i], [-1, 1]))
 
     quats[1] = tf.negative(quats[1])
     quats[2] = tf.negative(quats[2])
@@ -383,8 +383,9 @@ def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
     # reshape predictions to match labels
     #pred = tf.reshape(pred, [-1,buckets_dim])
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
-    return loss
 
+    return loss
+ 
 def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
     pred = logits['pred']
     shape = labels.get_shape().as_list()
