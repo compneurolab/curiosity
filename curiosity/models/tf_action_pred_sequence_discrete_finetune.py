@@ -120,6 +120,11 @@ def actionPredictionModelBase(inputs,
     for d in range(dim):
         current_nodes.append(tf.slice(current_node, [0,0,0,d*n_channels], [-1,-1,-1,n_channels]))
 
+    #TODO Center crop current nodes to fit AlexNet
+    for d in range(dim):
+        current_nodes[d] = tf.image.resize_images(current_nodes[d], [192,192])
+    future_node = tf.image.resize_images(future_node, [192,192])
+
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
 
@@ -183,6 +188,7 @@ def actionPredictionModelBase(inputs,
         encode_nodes_current = [encode_nodes_current[-1]]
         encode_nodes_future = [encode_nodes_future[-1]]
 
+        '''
         #reshape to alexnet hidden dim
         encode_shape = encode_nodes_future[0].get_shape().as_list()
         fc6_alex_dim = 9216
@@ -204,6 +210,7 @@ def actionPredictionModelBase(inputs,
 
         encode_nodes_current = [new_encode_nodes_current]
         encode_nodes_future = [new_encode_node_future]
+        '''
 
         #get hidden layer parameters
         nf0 = encode_nodes_future[-1].get_shape().as_list()[1]
@@ -213,7 +220,7 @@ def actionPredictionModelBase(inputs,
             print('Hidden depth: %d' % hidden_depth)
 
         #fully connected hidden layers
-        for i in range(1, hidden_depth): #+ 1):
+        for i in range(1, hidden_depth + 1):
             with tf.variable_scope('hidden' + str(i)) as hidden_scope:
 
                 nf = gp.getHiddenNumFeatures(i, hidden_depth, rng, \
