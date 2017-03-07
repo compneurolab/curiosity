@@ -149,7 +149,7 @@ def actionPredictionModelBase(inputs,
                     new_encode_node_current = net.conv(nf, cfs, cs, \
                             in_layer = encode_node_current, batch_normalize=False,
                             init='from_file', init_file=init_file, group=group, 
-                            init_layer_keys=init_layer_keys, trainable=False)
+                            init_layer_keys=init_layer_keys, trainable=True)
                     if do_pool:
                         new_encode_node_current = net.pool(pfs, ps, \
                                 in_layer = new_encode_node_current, pfunc = pool_type)
@@ -161,7 +161,7 @@ def actionPredictionModelBase(inputs,
                 new_encode_node_future = net.conv(nf, cfs, cs, \
                         in_layer = encode_nodes_future[i - 1], batch_normalize=False,
                         init='from_file', init_file=init_file, group=group,
-                        init_layer_keys=init_layer_keys, trainable=False)
+                        init_layer_keys=init_layer_keys, trainable=True)
                 if do_pool:
                     new_encode_node_future = net.pool(pfs, ps, \
                             in_layer = new_encode_node_future, pfunc = pool_type)
@@ -237,7 +237,7 @@ def actionPredictionModelBase(inputs,
                     new_encode_node_current = net.fc(nf, bias = 0.01, \
                             in_layer = encode_node_current, dropout = None, \
                             init='from_file', init_file=init_file, 
-                            init_layer_keys=init_layer_keys, trainable=False)
+                            init_layer_keys=init_layer_keys, trainable=True)
 
                     new_encode_nodes_current.append(new_encode_node_current)
                     #share the variables between current and future encoding
@@ -249,7 +249,7 @@ def actionPredictionModelBase(inputs,
                 new_encode_node_future = net.fc(nf, bias = 0.01, \
                         in_layer = encode_nodes_future[i - 1], dropout=None, \
                         init='from_file', init_file=init_file, 
-                        init_layer_keys=init_layer_keys, trainable=False)
+                        init_layer_keys=init_layer_keys, trainable=True)
 
                 #store layers
                 encode_nodes_current.append(new_encode_nodes_current)
@@ -276,6 +276,8 @@ def actionPredictionModelBase(inputs,
 
             #concat current and future
             encode_flat = tf.concat(1, [flat_node_current, flat_node_future])
+
+            nf0 = np.prod(encode_flat.get_shape().as_list()[1:])
 
         #match the shape of the action vector
         #by using another hidden layer if necessary
