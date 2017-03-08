@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test94'
+exp_id = 'test96'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -58,20 +58,48 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
     norm = shape[0] * shape[1]
     #TODO loss = tf.nn.l2_loss(predictions - norm_actions) / norm
 
+    #accuracy = get_accuracy(outputs['pred'], outputs['theta_labels'])
+
     retval = {'pred' : predictions, 'fut' : futures, \
               'cur': currents, 'act' : actions, \
-              'norm': norm_actions, #'val_loss': loss
+              'norm': norm_actions, #'val_loss': loss,
+              'predictions': outputs['pred'],
+              'ground_truth': outputs['theta_labels'],
              }
     return retval
 
+def get_accuracy(preds, labels):
+    accuracy = []
+    for pred in preds:
+        s = np.exp(pred)
+        s /= np.sum(s, axis=0)
+        accuracy.append(labels[np.argmax(s)])
+    return np.mean(np.array(accuracy))
+        
 
 def mean_losses_keep_rest(step_results):
     retval = {}
+
     keys = step_results[0].keys()
+
+    preds = []
+    labels = []
+    for step in step_results:
+        for pred, label in zip(step['predictions'], step['ground_truth']):
+            preds.append(pred)
+            labels.append(label)
+
+    accuracy = get_accuracy(preds, labels)
+    retval['accuracy'] = accuracy
+
+    print("Current Accuracy: %f" % accuracy) 
+
     for k in keys:
         plucked = [d[k] for d in step_results]
         if 'loss' in k:
             retval[k] = np.mean(plucked)
+        elif 'predictions' in k or 'ground_truth' in k:
+            continue
         else:
             retval[k] = plucked
     return retval
@@ -88,7 +116,7 @@ params = {
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'val_loss'],
+        'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'accuracy'],
         'cache_dir': '/media/data/mrowca/tfutils'
     },
 
@@ -137,7 +165,7 @@ params = {
             'shuffle': True,
             'shuffle_seed': 0,
             'use_poses': True,
-            'n_threads': 4,
+            'n_threads': 3,
             'filters': ['rotating'],
         },
 
@@ -190,7 +218,7 @@ params = {
                 'batch_size': INPUT_BATCH_SIZE,
                 'shuffle': True,
                 'shuffle_seed': 0,
-                'n_threads': 4,
+                'n_threads': 2,
                 'use_poses': True,
                 'filters': ['rotating'],
             },

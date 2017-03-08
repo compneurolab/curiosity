@@ -148,8 +148,9 @@ def actionPredictionModelBase(inputs,
                     group = groups[(i-1)]
                     new_encode_node_current = net.conv(nf, cfs, cs, \
                             in_layer = encode_node_current, batch_normalize=False,
-                            init='from_file', init_file=init_file, group=group, 
-                            init_layer_keys=init_layer_keys, trainable=True)
+                            #init='from_file', init_file=init_file, group=group, 
+                            #init_layer_keys=init_layer_keys, 
+                            trainable=True)
                     if do_pool:
                         new_encode_node_current = net.pool(pfs, ps, \
                                 in_layer = new_encode_node_current, pfunc = pool_type)
@@ -160,8 +161,9 @@ def actionPredictionModelBase(inputs,
                 #encode future images (conv + pool)
                 new_encode_node_future = net.conv(nf, cfs, cs, \
                         in_layer = encode_nodes_future[i - 1], batch_normalize=False,
-                        init='from_file', init_file=init_file, group=group,
-                        init_layer_keys=init_layer_keys, trainable=True)
+                        #init='from_file', init_file=init_file, group=group,
+                        #init_layer_keys=init_layer_keys, 
+                        trainable=True)
                 if do_pool:
                     new_encode_node_future = net.pool(pfs, ps, \
                             in_layer = new_encode_node_future, pfunc = pool_type)
@@ -220,7 +222,7 @@ def actionPredictionModelBase(inputs,
             print('Hidden depth: %d' % hidden_depth)
 
         #fully connected hidden layers
-        for i in range(1, hidden_depth): # + 1):
+        for i in range(1, hidden_depth + 1):
             with tf.variable_scope('hidden' + str(i)) as hidden_scope:
 
                 nf = gp.getHiddenNumFeatures(i, hidden_depth, rng, \
@@ -236,8 +238,9 @@ def actionPredictionModelBase(inputs,
 
                     new_encode_node_current = net.fc(nf, bias = 0.01, \
                             in_layer = encode_node_current, dropout = None, \
-                            init='from_file', init_file=init_file, 
-                            init_layer_keys=init_layer_keys, trainable=True)
+                            #init='from_file', init_file=init_file, 
+                            #init_layer_keys=init_layer_keys, 
+                            trainable=True)
 
                     new_encode_nodes_current.append(new_encode_node_current)
                     #share the variables between current and future encoding
@@ -248,8 +251,9 @@ def actionPredictionModelBase(inputs,
                 #encode future images (conv + pool)
                 new_encode_node_future = net.fc(nf, bias = 0.01, \
                         in_layer = encode_nodes_future[i - 1], dropout=None, \
-                        init='from_file', init_file=init_file, 
-                        init_layer_keys=init_layer_keys, trainable=True)
+                        #init='from_file', init_file=init_file, 
+                        #init_layer_keys=init_layer_keys, 
+                        trainable=True)
 
                 #store layers
                 encode_nodes_current.append(new_encode_nodes_current)
