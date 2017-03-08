@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test96'
+exp_id = 'test97'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -112,7 +112,7 @@ params = {
         'dbname': 'acion_pred',
         'collname': 'action_pred_symmetric',
         'exp_id': exp_id,
-        'save_valid_freq': 1000,
+        'save_valid_freq': 500,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
