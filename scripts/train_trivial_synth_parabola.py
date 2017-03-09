@@ -74,7 +74,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'synth_pos',
-        'exp_id': 'triv_test',
+        'exp_id': 'triv_test3',
         'save_valid_freq': 2000,
         'save_filters_freq': 1000000,
         'cache_filters_freq': 50000,
@@ -84,7 +84,7 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.not_quite_identity_net,
+		'func' : modelsource.linear_net,
         't_in' : T_in,
         't_out' : T_out,
         'skip' : SKIP,
@@ -122,7 +122,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.05,
+        'learning_rate': 0.001,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
