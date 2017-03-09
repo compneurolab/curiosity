@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test97'
+exp_id = 'test98'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -70,10 +70,10 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
 
 def get_accuracy(preds, labels):
     accuracy = []
-    for pred in preds:
+    for pred, label in zip(preds, labels):
         s = np.exp(pred)
         s /= np.sum(s, axis=0)
-        accuracy.append(labels[np.argmax(s)])
+        accuracy.append(label[np.argmax(s)])
     return np.mean(np.array(accuracy))
         
 
