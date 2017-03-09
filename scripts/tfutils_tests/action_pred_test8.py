@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test99'
+exp_id = 'test103'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -115,6 +115,7 @@ params = {
         'save_valid_freq': 500,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
+        'save_metrics_freq': 50,
         'save_initial_filters' : False,
         'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'accuracy'],
         'cache_dir': '/media/data/mrowca/tfutils'
