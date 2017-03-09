@@ -80,6 +80,9 @@ class ConvNetwithBypasses(model.ConvNet):
 			out = tf.nn.relu(in_layer, name='relu')
 		elif kind == 'tanh':
 			out = tf.tanh(in_layer, name = 'tanh')
+		elif kind == 'concat_square':
+			print('using concat square')
+			out = tf.concat(1, [in_layer, in_layer * in_layer])
 		else:
 			raise ValueError("Activation '{}' not defined".format(kind))
 		self.output = out
