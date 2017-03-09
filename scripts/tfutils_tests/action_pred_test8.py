@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test98'
+exp_id = 'test99'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -150,6 +150,10 @@ params = {
 
     'train_params': {
         'validate_first': True, #False,
+        'targets': {
+            'func': modelsource.get_accuracy
+        },
+
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,

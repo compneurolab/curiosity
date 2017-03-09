@@ -544,3 +544,14 @@ def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
     #labels = tf.reshape(labels, [-1,5])
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
     return loss
+
+def get_accuracy(inputs, outputs, **kwargs):
+    labels = outputs['theta_labels']
+    pred = tf.argmax(tf.nn.softmax(outputs['pred'], dim=1), 1)
+
+    pred = tf.cast(pred, tf.int32)
+    batch_size = inputs['images'].get_shape().as_list()[0]
+    accuracy = tf.gather_nd(labels, 
+            tf.stack([tf.range(batch_size), pred], axis=1))
+    accuracy = tf.reduce_mean(accuracy, 0)
+    return {'accuracy': accuracy}
