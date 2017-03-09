@@ -16,9 +16,9 @@ import tfutils.data as d
 import tfutils.base as b
 import tensorflow as tf
 import json
-from curiosity.data.explicit_positions import PositionPredictionData, RandomParabolaGenerator
+from curiosity.data.explicit_positions import PositionPredictionData, RandomParabolaGenerator, SqueezedPositionPrediction
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 
 
@@ -126,10 +126,45 @@ def test_random_parabolas():
 		print(res['Y'][0])
 		print(res['Z'][0])
 
+def test_squeezed():
+	dp = SqueezedPositionPrediction(DATA_PATH, filters = ['mask_squeezed'])
+	sess = tf.Session()
+	ops = dp.init_ops()
+	queue = b.get_queue(ops[0], queue_type='random')
+	enqueue_ops = []
+	for op in ops:
+	    enqueue_ops.append(queue.enqueue_many(op))
+	tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
+	tf.train.start_queue_runners(sess=sess)
+	inputs = queue.dequeue_many(256)
+
+	for i in range(10):
+	    res = sess.run(inputs)
+	    # assert res['images'].shape == (20, 32, 32, 3)
+	    # assert_equal(res['ids'], res['ids1'])
+	    # assert_allclose(res['images'].mean(1).mean(1).mean(1), res['means'], rtol=1e-05)
+	    print(res.keys())
+	    print(res['pos_in'].shape)
+	    print(res['pos_out'].shape)
+	    print(res['pos_squeezed'].shape)
+	    print(res['corresponding_actions'].shape)
+	    print(res['pos_in'][0])
+	    print(res['pos_out'][0])
+	    print(res['pos_squeezed'][0])
+	    print(res['corresponding_actions'][0])
+	    print(res['skip'][0])
+
+	    # print(res['positions_parsed'].shape)
+	    # print(res['corresponding_actions'].shape)
+	    # print(np.linalg.norm(res['positions_parsed']))
+	    # print(np.linalg.norm(res['corresponding_actions']))
+	    # print(np.linalg.norm(res['positions_parsed'][:, -30:]))
+
+
 
 
 if __name__ == '__main__':
-	test_random_parabolas()
+	test_squeezed()
 
 
 

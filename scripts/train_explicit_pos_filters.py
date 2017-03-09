@@ -16,6 +16,10 @@ cfg_50pts = {
 	}
 }
 
+cfg_linear = {
+    'hidden_depth' : 0
+}
+
 big_uniform_width = 2000
 
 cfg_big = {
@@ -105,7 +109,7 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'positions',
-        'exp_id': 'big_filt_tanh1',
+        'exp_id': 'lin_scale5',
         'save_valid_freq': 2000,
         'save_filters_freq': 1000000,
         'cache_filters_freq': 50000,
@@ -116,12 +120,11 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.position_only_mlp,
-		'cfg' : cfg_big,
+		'cfg' : cfg_linear,
         'T_in' : T_in,
         'T_out' : T_out,
         'num_points' : OUTPUT_NUM_OBJ,
-        'stddev' : .1,
-        'activation' : 'tanh'
+        'stddev' : .01,
 	},
 
 	'train_params': {
@@ -137,7 +140,8 @@ params = {
             'random' : True,
             'random_seed' : 0,
             'positions_only' : True,
-            'filters' : ['act_mask_1']
+            'filters' : ['act_mask_1'],
+            'manual_coord_scaling' : [10., 1., 10.]
         },
         'queue_params': {
             'queue_type': 'random',
@@ -164,7 +168,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.05,
+        'learning_rate': 1e-3,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -184,7 +188,8 @@ params = {
 	            'random' : True,
 	            'random_seed' : 0,
 	            'positions_only' : True,
-                'filters' : ['act_mask_1']
+                'filters' : ['act_mask_1'],
+                'manual_coord_scaling' : [10., 1., 10.]
             },
             'queue_params': {
                 'queue_type': 'fifo',

@@ -1,6 +1,19 @@
 '''
-A simple parabola training test.
+Now, time to do things with random skips
 '''
+
+cfg_naive = {
+    'hidden_depth' : 2,
+    'hidden' : {
+        1 : {'num_features' : 100},
+        2 : {'num_features' : 100},
+        # 3 : {'num_features' : 10}
+    }
+}
+
+cfg_lin = {
+    'first_lin' : 27
+}
 
 
 import numpy as np
@@ -11,12 +24,11 @@ sys.path.append('tfutils')
 sys.path.append('curiosity')
 
 from tfutils import base, data, model, optimizer, utils
-from curiosity.data.explicit_positions import RandomParabolaGenerator 
+from curiosity.data.explicit_positions import RandomParabolaRandomFutureTimeGenerator 
 import curiosity.models.synthetic_explicit_position_models as modelsource
 
 DATA_PATH = '/media/data2/one_world_dataset/tfdata'
 VALIDATION_DATA_PATH = '/media/data2/one_world_dataset/tfvaldata'
-STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 N = 2048000
@@ -24,8 +36,9 @@ NUM_BATCHES_PER_EPOCH = N // MODEL_BATCH_SIZE
 seed = 0
 T_in = 3
 T_out = 3
-SKIP = 4
-SEQ_LEN = T_in + T_out + SKIP
+# SKIP = 4
+# SEQ_LEN = T_in + T_out + SKIP
+
 
 #TODO should keep loss for all!
 def append_every_kth(x, y, step, k):
@@ -37,7 +50,7 @@ def append_every_kth(x, y, step, k):
 
 
 
-def get_ins_and_outs(inputs, outputs, num_to_save = 1, seq_len = 6, t_out = 3, **loss_params):
+def get_ins_and_outs(inputs, outputs, num_to_save = 1, **loss_params):
     '''
     Gives you input tensors and output tensors.
 
@@ -47,7 +60,8 @@ def get_ins_and_outs(inputs, outputs, num_to_save = 1, seq_len = 6, t_out = 3, *
     # all_but_outputs = inputs['positions'][:num_to_save, : - num_points * 3 * t_out]
     output_pos = outputs['tv'][:num_to_save]
     pred = outputs['pred'][:num_to_save]
-    retval = {'inpos' : input_pos, 'outpos' : output_pos, 'pred' : pred}
+    skip = outputs['skip'][:num_to_save]
+    retval = {'inpos' : input_pos, 'outpos' : output_pos, 'pred' : pred, 'skip' : skip}
     retval.update(get_loss_for_val(inputs, outputs, ** loss_params))
     return retval
 
@@ -74,28 +88,31 @@ params = {
         'port': 27017,
         'dbname': 'future_pred_test',
         'collname': 'synth_pos',
-        'exp_id': 'triv_test3',
+        'exp_id': 'rs_lsl',
         'save_valid_freq': 2000,
         'save_filters_freq': 1000000,
         'cache_filters_freq': 50000,
         'save_initial_filters' : False,
-        'save_to_gfs': ['inpos', 'outpos', 'pred'],
+        'save_to_gfs': ['inpos', 'outpos', 'pred', 'skip'],
         'cache_dir' : '/media/data/nhaber',
 	},
 
 	'model_params' : {
-		'func' : modelsource.linear_net,
-        't_in' : T_in,
-        't_out' : T_out,
-        'skip' : SKIP,
+		'func' : modelsource.lin_square_lin,
+        'cfg' : cfg_lin
+        # 't_in' : T_in,
+        # 't_out' : T_out,
 	},
 
 	'train_params': {
         'data_params': {
-            'func': RandomParabolaGenerator,
-            'seq_len' : SEQ_LEN,
+            'func': RandomParabolaRandomFutureTimeGenerator,
+            't_in' : T_in,
+            't_out' : T_out,
             'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
+            'time_bounds' : 10.,
+            'accel' : [0., -1., 0.]
         },
         'queue_params': {
             'queue_type': 'random',
@@ -109,7 +126,7 @@ params = {
 
 
     'loss_params': {
-        'targets': ['X'],
+        'targets': ['in'],
         'agg_func': tf.reduce_mean,
         'loss_per_case_func': modelsource.l2_diff_loss_fn_w_skip,
 		# 'loss_func_kwargs' : {
@@ -131,10 +148,13 @@ params = {
     'validation_params': {
         'valid0': {
             'data_params': {
-                'func': RandomParabolaGenerator,
-                'seq_len' : SEQ_LEN,
+                'func': RandomParabolaRandomFutureTimeGenerator,
+                't_in' : T_in,
+                't_out' : T_out,
                 'n_threads' : 1,
                 'batch_size' : DATA_BATCH_SIZE,
+                'time_bounds' : 10.,
+                'accel' : [0., -1., 0.]
             },
             'queue_params': {
                 'queue_type': 'fifo',
@@ -148,8 +168,6 @@ params = {
                 'func': get_ins_and_outs,
                 'targets' : [],
                 'num_to_save' : 1,
-                't_out' : T_out,
-                'seq_len' : SEQ_LEN
             },
         'agg_func' : mean_losses_keep_rest,
         'online_agg_func' : lambda x, y, step : append_every_kth(x, y, step, 10),

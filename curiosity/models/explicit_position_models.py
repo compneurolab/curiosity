@@ -78,6 +78,47 @@ def positions_and_actions(inputs, cfg = None, T_in = 3, T_out = 3, skip = 0, num
 	print(m.output)
 	return {'pred' : m.output, 'tv' : future_node, 'in_pos' : current_node}, m.params
 
+def variable_skip_mlp(inputs, cfg = None, stddev = .01, activation ='relu', **kwargs):
+	current_node = inputs['pos_in']
+	future_node = inputs['pos_out']
+	actions_node = inputs['corresponding_actions']
+	skip_node = tf.cast(inputs['skip'], tf.float32)
+
+	concat_node = tf.concat(1, [current_node, actions_node, skip_node])
+	m = ConvNetwithBypasses(**kwargs)
+	hidden_loop_with_bypasses(concat_node, m, cfg, activation = activation, stddev = stddev)
+	with tf.variable_scope('out'):
+		num_end_features = future_node.get_shape().as_list()[-1]
+		m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, stddev = stddev, dropout = None)
+	return {'pred' : m.output, 'tv' : future_node, 'in_pos' : current_node, 'skip' : skip_node}, m.params
+
+def variable_skip_square(inputs, cfg = None, stddev = .01, **kwargs):
+	current_node = inputs['pos_in']
+	future_node = inputs['pos_out']
+	actions_node = inputs['corresponding_actions']
+	skip_node = tf.cast(inputs['skip'], tf.float32)
+
+	concat_node = tf.concat(1, [current_node, actions_node, skip_node])
+	m = ConvNetwithBypasses(**kwargs)
+	m.output = concat_node
+
+
+	num_first_layer = cfg['first_lin']
+	with tf.variable_scope('first_lin'):
+		m.fc(num_first_layer, init = 'trunc_norm', activation = None, bias = .01, dropout = None, stddev = stddev)
+
+	#now square it!
+	m.output = tf.concat(1, [m.output, m.output * m.output])
+	print(m.output)
+
+	num_end_features = future_node.get_shape().as_list()[1]
+	with tf.variable_scope('out'):
+		m.fc(num_end_features, init = 'trunc_norm', activation = None, bias = .01, dropout = None, stddev = stddev)
+
+	print(m.output)
+	return {'pred' : m.output, 'tv' : future_node, 'in_pos' : current_node, 'skip' : skip_node}, m.params
+
+
 def l2_loss_fn(outputs, images, **kwargs):
 	pred = outputs['pred']
 	tv = outputs['tv']
