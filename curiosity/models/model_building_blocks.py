@@ -88,7 +88,66 @@ class ConvNetwithBypasses(model.ConvNet):
 		self.output = out
 		return out
 
+        @tf.contrib.framework.add_arg_scope
+        def fc(self,
+               out_shape,
+               init='xavier',
+               stddev=.01,
+               bias=1,
+               activation='relu',
+               dropout=.5,
+               in_layer=None,
+               init_file=None,
+               init_layer_keys=None,
+               trainable=True):
 
+            if in_layer is None:
+                in_layer = self.output
+            resh = tf.reshape(in_layer,
+                              [in_layer.get_shape().as_list()[0], -1],
+                              name='reshape')
+            in_shape = resh.get_shape().as_list()[-1]
+            if init != 'from_file':
+                kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+                                         shape=[in_shape, out_shape],
+                                         dtype=tf.float32,
+                                         name='weights',
+                                         trainable=trainable)
+                biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+                                         shape=[out_shape],
+                                         dtype=tf.float32,
+                                         name='bias',
+                                         trainable=trainable)
+            else:
+                init_dict = self.initializer(init,
+                                             init_file=init_file,
+                                             init_keys=init_layer_keys)
+                kernel = tf.get_variable(initializer=init_dict['weight'],
+                                         dtype=tf.float32,
+                                         name='weights',
+                                         trainable=trainable)
+                biases = tf.get_variable(initializer=init_dict['bias'],
+                                         dtype=tf.float32,
+                                         name='bias',
+                                         trainable=trainable)
+
+            fcm = tf.matmul(resh, kernel)
+            self.output = tf.nn.bias_add(fcm, biases, name='fc')
+            if activation is not None:
+                self.activation(kind=activation)
+            if dropout is not None:
+                self.dropout(dropout=dropout)
+
+            self.params = {'input': in_layer.name,
+                           'type': 'fc',
+                           'num_filters': out_shape,
+                           'init': init,
+                           'bias': bias,
+                           'stddev': stddev,
+                           'activation': activation,
+                           'dropout': dropout,
+                           'seed': self.seed}
+            return self.output
 
 
 

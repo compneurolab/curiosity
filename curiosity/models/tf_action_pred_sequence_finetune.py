@@ -201,7 +201,7 @@ def actionPredictionModelBase(inputs,
                                        'weight': init_keys[2*(i-1)+1]}
                     group = groups[(i-1)]
                     new_encode_node_current = net.conv(nf, cfs, cs, \
-                            in_layer = encode_node_current, batch_normalize=True,
+                            in_layer = encode_node_current, batch_normalize=False,
                             init='from_file', init_file=init_file, group=group, 
                             init_layer_keys=init_layer_keys, trainable=False)
                     if do_pool:
@@ -213,7 +213,7 @@ def actionPredictionModelBase(inputs,
             
                 #encode future images (conv + pool)
                 new_encode_node_future = net.conv(nf, cfs, cs, \
-                        in_layer = encode_nodes_future[i - 1], batch_normalize=True,
+                        in_layer = encode_nodes_future[i - 1], batch_normalize=False,
                         init='from_file', init_file=init_file, group=group,
                         init_layer_keys=init_layer_keys, trainable=False)
                 if do_pool:
