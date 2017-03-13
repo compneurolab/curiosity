@@ -272,10 +272,10 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 
         for f in self.filters:
             # decode filter
-            data[f] = tf.decode_raw(data[f], tf.int32)
-            data[f] = tf.reshape(data[f], [self.batch_size, 1])
-            # set the correct shape
             shape = data[f].get_shape().as_list()
+            data[f] = tf.decode_raw(data[f], tf.int32)
+            data[f] = tf.reshape(data[f], shape)
+            # set the correct shape
             if len(shape) < 2:
                 # make sure filter has second dimension (important when pair output)
                 data[f] = tf.expand_dims(data[f], -1)
