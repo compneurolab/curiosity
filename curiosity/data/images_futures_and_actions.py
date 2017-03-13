@@ -121,6 +121,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
     def postproc_parsed_actions(self, actions):
         if self.use_poses:
             actions = tf.decode_raw(actions, tf.float32)
+            actions = tf.squeeze(actions)
             actions = tf.slice(actions, [0,0], [-1, 4])
             act_shape = actions.get_shape().as_list()
             act_shape[1] = 4
@@ -163,7 +164,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             for i in range(25):
                 if i not in [0, 1, 10, 12, 13, 17, 19, 21, 22]:
                     actions.append(features[i])
-            actions = tf.concat(1, actions)
+            actions = tf.concat(actions, 1)
 
         elif self.normalize_actions is 'toss_zeros':
             features = []
@@ -174,7 +175,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             for i in range(25):
                 if i not in [0, 1, 10, 12, 13, 17, 19, 21, 22]:
                     actions.append(features[i])
-            actions = tf.concat(1, actions)
+            actions = tf.concat(actions, 1)
 
         elif self.normalize_actions is not None:
             raise TypeError('Unknown normalization type for actions')
@@ -184,7 +185,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             if self.normalize_actions not in ['custom', 'toss_zeros']:
                 raise TypeError('use_object_ids = False only allowed for \
                                  normalize_actions = \'custom\'/\'toss_zeros\'')
-            actions = tf.concat(1, [
+            actions = tf.concat([
 # EGO MOTION
 #                  tf.slice(actions, [0,  1], [-1, 6]),
 
@@ -201,7 +202,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 #                tf.slice(actions, [0,  0], [-1, 13]),
 #                tf.slice(actions, [0, 14], [-1, 8]),
 #                tf.slice(actions, [0, 23], [-1, -1]),
-            ])
+            ], 1)
             # now shape is 23 instead 25 since object ids were removed
         return actions
 
@@ -272,6 +273,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
         for f in self.filters:
             # decode filter
             data[f] = tf.decode_raw(data[f], tf.int32)
+            data[f] = tf.reshape(data[f], [self.batch_size, 1])
             # set the correct shape
             shape = data[f].get_shape().as_list()
             if len(shape) < 2:
@@ -349,7 +351,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
 
         gauss_img = self.create_gaussian_kernel(image_shape[0:3], \
                 action_pos, self.action_matrix_radius)
-        data[self.images] = tf.concat(3, [data[self.images], gauss_img])
+        data[self.images] = tf.concat([data[self.images], gauss_img], 3)
 
         data[self.actions] = tf.slice(data[self.actions], [0, 0], [-1, 4])
 
@@ -398,7 +400,7 @@ class FuturePredictionData(TFRecordsParallelByFileProvider):
             begin = [i] + [0] * (len(size) - 1)
             shifts.append(tf.slice(data[current_key], begin, size))
 
-        data[current_key] = tf.concat((len(size) - 1), shifts)
+        data[current_key] = tf.concat(shifts, (len(size) - 1))
 
         return data
 

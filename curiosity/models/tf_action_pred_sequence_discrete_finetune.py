@@ -122,8 +122,25 @@ def actionPredictionModelBase(inputs,
 
     #TODO Center crop current nodes to fit AlexNet
     for d in range(dim):
-        current_nodes[d] = tf.image.resize_images(current_nodes[d], [192,192])
-    future_node = tf.image.resize_images(future_node, [192,192])
+        current_nodes[d] = tf.image.resize_images(current_nodes[d], [256,256])
+    future_node = tf.image.resize_images(future_node, [256,256])
+
+    for d in range(dim):
+        images = tf.unstack(current_nodes[d])
+        for i, image in enumerate(images):
+            images[i] = tf.image.random_brightness(images[i], 
+                                   max_delta=32, seed=rng.randint(1000))
+            images[i] = tf.image.random_saturation(images[i], 
+                                   lower=0.5, upper=1.5, seed=rng.randint(1000))
+        current_nodes[d] = tf.stack(images)
+
+    images = tf.unstack(future_node)
+    for i, image in enumerate(images): 
+        images[i] = tf.image.random_brightness(images[i], 
+                               max_delta=32, seed=rng.randint(1000))
+        images[i] = tf.image.random_saturation(images[i], 
+                               lower=0.5, upper=1.5, seed=rng.randint(1000))
+    future_node = tf.stack(images)
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
@@ -274,12 +291,12 @@ def actionPredictionModelBase(inputs,
 
         with tf.variable_scope('concat'):
             #flatten
-            flat_node_current = tf.concat(1, encode_nodes_current[-1])
+            flat_node_current = tf.concat(encode_nodes_current[-1], 1)
             flat_node_current = flatten(net, flat_node_current)
             flat_node_future = flatten(net, encode_nodes_future[-1])
 
             #concat current and future
-            encode_flat = tf.concat(1, [flat_node_current, flat_node_future])
+            encode_flat = tf.concat([flat_node_current, flat_node_future], 1)
 
             nf0 = np.prod(encode_flat.get_shape().as_list()[1:])
 
@@ -378,7 +395,7 @@ def binary_cross_entropy_action_loss(labels, logits, **kwargs):
         act_sp = tf.ceil(act_sp)        
 #        act_sp = tf.reshape(act_sp, [-1, 1])
         actions_split.append(act_sp)
-    norm_labels = tf.concat(1, actions_split)
+    norm_labels = tf.concat(actions_split, 1)
 
     loss = -tf.reduce_sum(norm_labels * tf.log(pred) \
                           + (1 - norm_labels) * tf.log(1 - pred), 1)
@@ -411,11 +428,11 @@ def get_quaternion_labels(inputs, seq_len, buckets_dim):
     quat_norm = []
     for i in range(len(quats)):
         quat_norm.append(tf.multiply(quats[i], quats[i]))
-    quat_norm = tf.concat(1, quat_norm)
+    quat_norm = tf.concat(quat_norm, 1)
     quat_norm = tf.reduce_sum(quat_norm, 1)
     quat_norm = tf.reshape(quat_norm, [-1, 1])
 
-    quats = tf.concat(1, quats)
+    quats = tf.concat(quats, 1)
 
     inv_quat_start = tf.divide(quats, quat_norm)
 
@@ -436,7 +453,7 @@ def get_quaternion_labels(inputs, seq_len, buckets_dim):
     t.append(r[0]*q[2] + r[1]*q[3] + r[2]*q[0] - r[3]*q[1])
     t.append(r[0]*q[3] - r[1]*q[2] + r[2]*q[1] + r[3]*q[0])
 
-    quat_diff = tf.concat(1, t) 
+    quat_diff = tf.concat(t, 1) 
 
     # convert the quarternion to euler angle
     theta = tf.asin(2*(t[0]*t[2] - t[3]*t[1]))
@@ -451,7 +468,7 @@ def get_quaternion_labels(inputs, seq_len, buckets_dim):
     labels.append(tf.greater(theta, boundary))
 
     # concatenate and cast to labels
-    labels = tf.concat(1, labels)
+    labels = tf.concat(labels, 1)
     labels = tf.cast(labels, tf.int32)
 
     return [theta, labels]
@@ -461,7 +478,8 @@ def softmax_cross_entropy_pose_diff_loss(labels, logits, **kwargs):
     labels = logits['theta_labels']
     # reshape predictions to match labels
     #pred = tf.reshape(pred, [-1,buckets_dim])
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+        logits=pred, labels=labels))
 
     return loss
  
@@ -525,7 +543,7 @@ def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
                                    tf.less(norm_labels, buckets[i]))
         label = tf.reshape(label, new_shape)
         labels.append(label)
-    labels = tf.concat(2, labels)
+    labels = tf.concat(labels, 2)
     labels = tf.cast(labels, tf.int32)
 
     #find all positive indices
@@ -542,7 +560,8 @@ def softmax_cross_entropy_action_loss(labels, logits, **kwargs):
 
     pred = tf.reshape(pred, [-1,buckets_dim])
     #labels = tf.reshape(labels, [-1,5])
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, labels))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+        logtis=pred, labels=labels))
     return loss
 
 def get_accuracy(inputs, outputs, **kwargs):

@@ -8,14 +8,14 @@ import tensorflow as tf
 from collections import OrderedDict
 
 
-from tfutils import model
+from curiosity.models.my_model import ConvNet
 
-class ConvNetwithBypasses(model.ConvNet):
+class ConvNetwithBypasses(ConvNet):
 	'''Right now just borrowing from chengxuz's contribution...will edit if modified
 
 	See https://github.com/neuroailab/barrel/blob/master/normals_relat/normal_pred/normal_encoder_asymmetric_with_bypass.py'''
 	def __init__(self, seed=None, **kwargs):
-		super(ConvNetwithBypasses, self).__init__(seed=seed, **kwargs)
+            super(ConvNetwithBypasses, self).__init__(seed=seed, **kwargs)
 
 	@property
 	def params(self):
