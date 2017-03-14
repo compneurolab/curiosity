@@ -125,11 +125,12 @@ def actionPredictionModelBase(inputs,
         current_nodes[d] = tf.image.resize_images(current_nodes[d], [256,256])
     future_node = tf.image.resize_images(future_node, [256,256])
 
+    
     for d in range(dim):
         images = tf.unstack(current_nodes[d])
         for i, image in enumerate(images):
             images[i] = tf.image.random_brightness(images[i], 
-                                   max_delta=32, seed=rng.randint(1000))
+                                   max_delta=0.125, seed=rng.randint(1000))
             images[i] = tf.image.random_saturation(images[i], 
                                    lower=0.5, upper=1.5, seed=rng.randint(1000))
         current_nodes[d] = tf.stack(images)
@@ -137,10 +138,11 @@ def actionPredictionModelBase(inputs,
     images = tf.unstack(future_node)
     for i, image in enumerate(images): 
         images[i] = tf.image.random_brightness(images[i], 
-                               max_delta=32, seed=rng.randint(1000))
+                               max_delta=0.125, seed=rng.randint(1000))
         images[i] = tf.image.random_saturation(images[i], 
                                lower=0.5, upper=1.5, seed=rng.randint(1000))
     future_node = tf.stack(images)
+    
 
     encode_nodes_current = [current_nodes]
     encode_nodes_future = [future_node]
