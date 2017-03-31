@@ -30,7 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 5
 seed = 0
-exp_id = 'test97'
+exp_id = 'test105'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -70,10 +70,10 @@ def get_current_predicted_future_action(inputs, outputs, num_to_save = 1, **loss
 
 def get_accuracy(preds, labels):
     accuracy = []
-    for pred in preds:
+    for pred, label in zip(preds, labels):
         s = np.exp(pred)
         s /= np.sum(s, axis=0)
-        accuracy.append(labels[np.argmax(s)])
+        accuracy.append(label[np.argmax(s)])
     return np.mean(np.array(accuracy))
         
 
@@ -115,6 +115,7 @@ params = {
         'save_valid_freq': 500,
         'save_filters_freq': 50000,
         'cache_filters_freq': 2000,
+        'save_metrics_freq': 50,
         'save_initial_filters' : False,
         'save_to_gfs': ['act', 'pred', 'fut', 'cur', 'norm', 'accuracy'],
         'cache_dir': '/media/data/mrowca/tfutils'
@@ -150,6 +151,10 @@ params = {
 
     'train_params': {
         'validate_first': True, #False,
+        'targets': {
+            'func': modelsource.get_accuracy
+        },
+
         'data_params': {
             'func': FuturePredictionData,
             'data_path': DATA_PATH,
