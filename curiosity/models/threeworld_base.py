@@ -58,6 +58,7 @@ class Normalizer:
 
 class ThreeWorldBaseModel:
     def __init__(self,
+                 inputs,
                  gaussian=None,
                  normalization=None,
                  *args,
@@ -65,48 +66,76 @@ class ThreeWorldBaseModel:
         self.gaussian = gaussian
         self.normalization = normalization
         
-        for inp in inputs:
-            if inp in self.normalization.method:
-                data = self.normalization.normalize(data, inp)
+        if normalization is not None:
+            for inp in inputs:
+                if inp in self.normalization.method:
+                    data = self.normalization.normalize(data, inp)
 
-    def create_gaussian_kernel(self, size, center=None, fwhm = 10.0):
+    def create_gaussian_channel(self, size, center=None, fwhm = 10.0):
         '''
         size: kernel size
         fwhm: full-width-half-maximum (effective radius)
         center: kernel_center
         '''
         batch_size = size[0]
-        x = tf.range(0, size[1], 1, dtype=tf.float32)
-        x = tf.tile(x, [batch_size])
-        x = tf.reshape(x, [batch_size, 1, size[1]]) #column vector
-        y = tf.range(0, size[2], 1, dtype=tf.float32)
-        y = tf.tile(y, [batch_size])
-        y = tf.reshape(y, [batch_size, size[2], 1]) #row vector
+        sequence_len = size[1]
+        width = size[2]
+        height = size[3]
+        channels = size[4]
 
+        x = tf.range(0, width, 1, dtype=tf.float32)
+        x = tf.tile(x, [batch_size * sequence_len])
+        x = tf.reshape(x, [batch_size, sequence_len, width, 1, 1]) #column vector
+        y = tf.range(0, height, 1, dtype=tf.float32)
+        y = tf.tile(y, [batch_size * sequence_len])
+        y = tf.reshape(y, [batch_size, sequence_len, 1, height, 1]) #row vector
+
+        x0s = []
+        y0s = []
         if center is None:
-            x0 = tf.constant(size[1] // 2)
-            y0 = tf.constant(size[2] // 2)
+            x0s.append(tf.constant(width // 2))
+            y0s.append(tf.constant(height // 2))
+        elif isinstance(center, list):
+            for c in center:
+                x0s.append(tf.slice(c, [0, 0, 0], [-1, -1, 1]))
+                y0s.append(tf.slice(c, [0, 0, 1], [-1, -1, 1]))
         else:
-            x0 = tf.slice(center, [0, 0], [-1, 1])
-            y0 = tf.slice(center, [0, 1], [-1, 1])
+            x0s.append(tf.slice(center, [0, 0, 0], [-1, -1, 1]))
+            y0s.append(tf.slice(center, [0, 0, 1], [-1, -1, 1]))
 
-        x0 = tf.reshape(x0, [batch_size, 1, 1])
-        y0 = tf.reshape(y0, [batch_size, 1, 1])
-        gauss = tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
-        y0 = tf.reshape(y0, [batch_size, 1, 1])
-        gauss = tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
-        size.append(1) # append channel dimension
-        gauss = tf.reshape(gauss*255, size) # scale to whole uint8 range
+        # create one dimensional channel with gaussians at [x0s, y0s]
+        gauss = tf.zeros(size[0:4] + [1])
+        for x0, y0 in zip(x0s, y0s):
+            x0 = tf.reshape(x0, [batch_size, sequence_len, 1, 1, 1])
+            y0 = tf.reshape(y0, [batch_size, sequence_len, 1, 1, 1])
+            gauss += tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
+        gauss = tf.maximum(gauss, 1.0)
+        gauss *= 255 # scale to whole uint8 range
         return tf.cast(gauss, tf.uint8)
-
-    def convert_to_2d_gaussian(self, data, source):
-        raise NotImplementedError()
 
 def example_model(inputs,
                   batch_size=256,
+                  gaussian=False,
                   **kwargs):
+
+    net = ThreeWorldBaseModel(inputs, gaussian=True);
     images = inputs['images']
     actions = inputs['actions']
+
+    if gaussian:
+        image_shape = images.get_shape().as_list()
+        #object blobs
+        object_data = inputs['object_data']
+        print(object_data)
+        centroids = tf.slice(object_data, [0,0,0,8], [-1,-1,-1,2])
+        centroids = tf.unstack(centroids, axis=2)
+        object_gaussian = net.create_gaussian_channel(image_shape, centroids)
+        images = tf.concat([images, object_gaussian], 4)
+        #action blobs
+        centroid = tf.slice(actions, [0,0,6], [-1,-1,2])
+        action_gaussian = net.create_gaussian_channel(image_shape, centroid)
+        images = tf.concat([images, action_gaussian], 4)
+
 
     images = tf.slice(images, [0,0,0,0,0], [1,-1,-1,-1,-1])
     actions = tf.slice(actions, [0,0,0], [1,-1,-1])

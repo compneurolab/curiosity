@@ -37,6 +37,13 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                 ("batch size has to be at least equal to sequence length times \
                 delta time")
 
+        # load actions and positions from tfrecords for gaussian blob
+        if self.gaussian is True:
+            if 'actions' not in sources:
+                sources.append('actions')
+            if 'object_data' not in sources:
+                sources.append('object_data')
+
         # load sources from tfrecords
         self.source_paths = []
         for source in sources:
@@ -46,16 +53,6 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         if self.filters is not None:
             for f in self.filters:
                 self.source_paths.append(os.path.join(self.data_path, f))
-
-        # load actions and positions from tfrecords for gaussian blob
-        if self.gaussian is True:
-            actions_path = os.path.join(self.data_path, 'actions')
-            if actions_path not in self.source_paths:
-                self.source_paths.append(actions_path)
-
-            object_data_path = os.path.join(self.data_path, 'object_data')
-            if object_data_path not in self.source_paths:
-                self.source_paths.append(object_data_path)
 
         #TODO load ids from tfrecords
         # ids_path = os.path.join(self.data_path, 'ids')

@@ -91,6 +91,7 @@ params = {
     'model_params' : {
 	'func' : modelsource.example_model,
         'batch_size': OUTPUT_BATCH_SIZE,
+        'gaussian': True
         #'min_time_difference': TIME_DIFFERENCE,
     },
 
