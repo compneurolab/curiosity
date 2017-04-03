@@ -37,8 +37,9 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                 ("delta time has to be at least 1")
         assert self.sequence_len >= 1,\
                 ("sequence length has to be at least 1")
-        assert self.batch_size >= self.sequence_len,\
-                ("batch size has to be at least equal to sequence length")
+        assert self.batch_size >= self.sequence_len * self.delta_time,\
+                ("batch size has to be at least equal to sequence length times \
+                delta time")
 
         # load sources from tfrecords
         self.source_paths = []
