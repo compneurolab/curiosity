@@ -111,7 +111,7 @@ params = {
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
             'filters': ['is_not_teleporting'],
-            'gaussian': False,
+            'gaussian': True,
         },
 
         'queue_params': {
@@ -160,7 +160,7 @@ params = {
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
                 'filters': ['is_not_teleporting'],
-                'gaussian': False,
+                'gaussian': True,
             },
             'queue_params': {
                 'queue_type': 'fifo',

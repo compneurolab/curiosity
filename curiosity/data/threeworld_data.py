@@ -6,10 +6,6 @@ import os
 from tfutils.data import TFRecordsParallelByFileProvider
 
 class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
-    # image height and width
-    image_height = 256
-    image_width  = 256
-
     def __init__(self,
                  data_path,
                  sources,
