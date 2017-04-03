@@ -63,15 +63,56 @@ class ThreeWorldBaseModel:
                  normalization=None,
                  *args,
                  **kwargs):
+        self.inputs = inputs
         self.gaussian = gaussian
         self.normalization = normalization
-        
-        if normalization is not None:
-            for inp in inputs:
+
+        if self.gaussian is not None:
+            # get image shape
+            for image_data in ['images', 'normals', 'objects', \
+                            'images2', 'normals2', 'objects2']:
+                if image_data in self.inputs:
+                    image_shape = self.inputs[image_data].get_shape().as_list()
+                    break
+            # transform to 2d gaussian
+            if 'poses' in self.gaussian:
+                #object blobs
+                gaussians = []
+                object_data = inputs['object_data']
+                centroids = tf.slice(object_data, [0, 0, 0, 8], [-1, -1, -1, 2])
+                centroids = tf.unstack(centroids, axis=2)
+                poses = tf.slice(object_data, [0, 0, 0, 1], [-1, -1, -1, 4])
+                poses = tf.unstack(poses, axis=3)
+                for pose in poses:
+                    pose = tf.unstack(pose, axis=2)
+                    gaussians.append(\
+                        self.create_gaussian_channel(image_shape, centroids, pose))
+                self.inputs['object_data'] = tf.concat(gaussians, 4)
+
+            if 'actions' in self.gaussian:
+                # action blobs
+                gaussians = []
+                actions = inputs['actions']
+                centroid = tf.slice(actions, [0, 0, 6], [-1, -1, 2])
+                forces = tf.slice(actions, [0, 0, 0], [-1, -1, 6])
+                forces = tf.unstack(forces, axis=2)
+                for force in forces:
+                    gaussians.append(\
+                        self.create_gaussian_channel(image_shape, centroid, force))
+                self.inputs['actions'] = tf.concat(gaussians, 4)
+
+        if self.normalization is not None:
+            for inp in self.inputs:
                 if inp in self.normalization.method:
                     data = self.normalization.normalize(data, inp)
 
-    def create_gaussian_channel(self, size, center=None, fwhm = 10.0):
+
+    def create_gaussian_channel(self, 
+                                size, 
+                                center=None, 
+                                magnitude=None,
+                                dtype = tf.float32,
+                                fwhm = 10.0):
         '''
         size: kernel size
         fwhm: full-width-half-maximum (effective radius)
@@ -103,46 +144,43 @@ class ThreeWorldBaseModel:
             x0s.append(tf.slice(center, [0, 0, 0], [-1, -1, 1]))
             y0s.append(tf.slice(center, [0, 0, 1], [-1, -1, 1]))
 
+        mags = []
+        if magnitude is None:
+            mags.append(tf.ones([1, 1, 1]))
+        elif isinstance(magnitude, list):
+            mags = magnitude
+        else:
+            mags.append(magnitude)
+
         # create one dimensional channel with gaussians at [x0s, y0s]
         gauss = tf.zeros(size[0:4] + [1])
-        for x0, y0 in zip(x0s, y0s):
+        for x0, y0, mag in zip(x0s, y0s, mags):
             x0 = tf.reshape(x0, [batch_size, sequence_len, 1, 1, 1])
             y0 = tf.reshape(y0, [batch_size, sequence_len, 1, 1, 1])
-            gauss += tf.exp(-4.0*tf.log(2.0) * ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0)
-        gauss = tf.maximum(gauss, 1.0)
-        gauss *= 255 # scale to whole uint8 range
-        return tf.cast(gauss, tf.uint8)
+            mag = tf.reshape(mag, [batch_size, sequence_len, 1, 1, 1])
+            gauss += tf.exp(-4.0*tf.log(2.0) * \
+                    ((x-x0)**2.0 + (y-y0)**2.0) / fwhm**2.0) * mag
+        return tf.cast(gauss, dtype)
 
 def example_model(inputs,
                   batch_size=256,
-                  gaussian=False,
+                  gaussian=None,
                   **kwargs):
 
-    net = ThreeWorldBaseModel(inputs, gaussian=True);
-    images = inputs['images']
     actions = inputs['actions']
+    net = ThreeWorldBaseModel(inputs, gaussian=gaussian);
+    images = net.inputs['images']
+    images = tf.cast(images, tf.float32)
 
-    if gaussian:
-        image_shape = images.get_shape().as_list()
-        #object blobs
-        object_data = inputs['object_data']
-        print(object_data)
-        centroids = tf.slice(object_data, [0,0,0,8], [-1,-1,-1,2])
-        centroids = tf.unstack(centroids, axis=2)
-        object_gaussian = net.create_gaussian_channel(image_shape, centroids)
-        images = tf.concat([images, object_gaussian], 4)
-        #action blobs
-        centroid = tf.slice(actions, [0,0,6], [-1,-1,2])
-        action_gaussian = net.create_gaussian_channel(image_shape, centroid)
-        images = tf.concat([images, action_gaussian], 4)
-
+    if gaussian is not None:
+        images = tf.concat([images, net.inputs['object_data']], 4)
+        images = tf.concat([images, net.inputs['actions']], 4)
 
     images = tf.slice(images, [0,0,0,0,0], [1,-1,-1,-1,-1])
     actions = tf.slice(actions, [0,0,0], [1,-1,-1])
 
     actions = tf.reshape(actions, [1, -1])
     images = tf.reshape(images, [1, -1])
-    images = tf.cast(images, tf.float32)
     W = tf.get_variable('W', [images.get_shape().as_list()[-1], 
                               actions.get_shape().as_list()[-1]])
     images = tf.matmul(images,W)

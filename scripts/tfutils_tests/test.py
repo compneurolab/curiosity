@@ -30,6 +30,7 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 5
+GAUSSIAN = ['actions', 'poses']
 seed = 0
 exp_id = 'test1'
 
@@ -91,7 +92,7 @@ params = {
     'model_params' : {
 	'func' : modelsource.example_model,
         'batch_size': OUTPUT_BATCH_SIZE,
-        'gaussian': True
+        'gaussian': GAUSSIAN
         #'min_time_difference': TIME_DIFFERENCE,
     },
 
@@ -112,7 +113,7 @@ params = {
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
             'filters': ['is_not_teleporting'],
-            'gaussian': True,
+            'gaussian': GAUSSIAN,
         },
 
         'queue_params': {
@@ -161,7 +162,7 @@ params = {
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
                 'filters': ['is_not_teleporting'],
-                'gaussian': True,
+                'gaussian': GAUSSIAN,
             },
             'queue_params': {
                 'queue_type': 'fifo',

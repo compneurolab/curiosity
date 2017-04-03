@@ -15,7 +15,7 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                  sequence_len=1,
                  output_format='sequence', # 'pairs'
                  filters=None,
-                 gaussian=False,
+                 gaussian=None,
                  *args,
                  **kwargs):
 
@@ -38,15 +38,23 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                 delta time")
 
         # load actions and positions from tfrecords for gaussian blob
-        if self.gaussian is True:
+        if self.gaussian is not None:
             if 'actions' not in sources:
-                sources.append('actions')
+                self.sources.append('actions')
             if 'object_data' not in sources:
-                sources.append('object_data')
+                self.sources.append('object_data')
+            has_image = False
+            for image_data in ['images', 'normals', 'objects', \
+                          'images2', 'normals2', 'objects2']:
+                if image_data in self.sources:
+                    has_image = True
+                    break
+            if not has_image:
+                self.sources.append('images')
 
         # load sources from tfrecords
         self.source_paths = []
-        for source in sources:
+        for source in self.sources:
             self.source_paths.append(os.path.join(self.data_path, source))
 
         # load filters from tfrecords
