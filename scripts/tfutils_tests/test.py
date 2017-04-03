@@ -23,8 +23,8 @@ DATA_PATH = '/media/data3/new_dataset/new_tfdata'
 VALIDATION_DATA_PATH = '/media/data3/new_dataset/new_tfdata'
 #STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
 
-INPUT_BATCH_SIZE = 10
-OUTPUT_BATCH_SIZE = 10
+INPUT_BATCH_SIZE = 256
+OUTPUT_BATCH_SIZE = 128
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -105,12 +105,12 @@ params = {
             #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
             'data_path': DATA_PATH,
             'sources': ['images', 'actions'],
-            'n_threads': 4,
+            'n_threads': 1,
             'batch_size': INPUT_BATCH_SIZE,
             'delta_time': TIME_DIFFERENCE,
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
-            #'filters': ['rotating'],
+            'filters': ['is_not_teleporting'],
             'gaussian': False,
         },
 
@@ -154,12 +154,12 @@ params = {
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
                 'sources': ['images', 'actions'],
-                'n_threads': 4,
+                'n_threads': 1,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                #'filters': ['rotating'],
+                'filters': ['is_not_teleporting'],
                 'gaussian': False,
             },
             'queue_params': {

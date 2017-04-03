@@ -128,11 +128,13 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         return tf.concat(shifts, 1)
 
     def apply_filters(self, data):
-        delta_time = tf.constant(self.delta_time, dtype=tf.int32)
+        seq_len = tf.constant(self.sequence_len, dtype=tf.int32)
         for f in self.filters:
+            data[f] = tf.cast(data[f], tf.int32)
+            data[f] = tf.squeeze(data[f])
             # check if ALL binary labels within sequence are not zero
             filter_sum = tf.reduce_sum(data[f], 1)
-            pos_idx = tf.equal(filter_sum, delta_time)
+            pos_idx = tf.equal(filter_sum, seq_len)
             # gather positive examples for each data entry
             for k in data:
                 shape = data[k].get_shape().as_list()
