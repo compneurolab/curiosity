@@ -4,19 +4,82 @@ import json
 import os
 import tensorflow as tf
 from PIL import Image
+import time
+import sys
+import cPickle
 
 DATASET_LOC = '/media/data3/new_dataset/new_dataset.hdf5'
-NEW_TFRECORD_TRAIN_LOC = '/media/data3/new_dataset/tfdata'
+SECOND_DATASET_LOC = '/media/data3/new_dataset/new_dataset1.hdf5'
+NEW_TFRECORD_TRAIN_LOC = '/media/data2/one_world_dataset/new_tfdata'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting']
-NEW_HEIGHT = 256
-NEW_WIDTH = 256
+NEW_HEIGHT = 160
+NEW_WIDTH = 375
 
-f = h5py.File(DATASET_LOC, 'r')
+my_files = [h5py.File(DATASET_LOC, 'r')]#, h5py.File(SECOND_DATASET_LOC, 'r')]
+DISCARD_FINAL_BATCH_IN_FIRST = True
+WRITE_ONLY_FULL_FILES = True
 BATCH_SIZE = 256
-
+big_buckets = ['ROLLY_THROW_OBJ:THROW_AT_OBJECT:0', 'ROLLY_WALL_THROW:THROW_BEHIND:0', 'OBJ_THROW_OBJ:THROW_AT_OBJECT:0', 'WALL_THROW:THROW_BEHIND:0']
+PREFIX_DIVISIONS = ['ONE_OBJ:', 'TABLE:', 'TABLE_CONTROLLED:', 'ROLLY_THROW_OBJ', 'ROLLY_WALL_THROW', 'OBJ_THROW_OBJ', 'WALL_THROW:']
+pfx_fns = [fn + '.p' for fn in PREFIX_DIVISIONS]
+TYPES_DIVIDER_LOC = '/media/data3/new_dataset/first_sets.p'
 
 all_those_last_names = set()
 name_change_dict = {'LIFT' : 'FAST_LIFT', 'PUSH_ROT_NOSHAKE' : 'PUSH_ROT', 'PUSH_NOSHAKE' : 'LONG_PUSH', 'PUSH_DOWN' : 'DOWN_PUSH', 'FAST_LIFT_PUSH_ROT_NOSHAKE' : 'FAST_LIFT_PUSH_ROT', 'FAST_LIFT_NOSHAKE' : 'FAST_LIFT', 'PUSH_DOWN_NOSHAKE' : 'DOWN_PUSH'}
+
+def rot_to_quaternion(rot_mat):
+	tr = np.trace(rot_mat)
+	if tr > 0:
+		S = np.sqrt(tr + 1.) * 2.
+		qw = .25 * S
+		qx = (rot_mat[2,1] - rot_mat[1,2]) / S
+		qy = (rot_mat[0,2] - rot_mat[2,0]) / S
+		qz = (rot_mat[1,0] - rot_mat[0,1]) / S
+	elif rot_mat[0,0] > rot_mat[1,1] and rot_mat[0,0] > rot_mat[2,2]:
+		S = np.sqrt(1. + rot_mat[0,0] - rot_mat[1,1] - rot_mat[2,2]) * 2.
+		qw = (rot_mat[2,1] - rot_mat[1,2]) / S
+		qx = .25 * S
+		qy = (rot_mat[0,1] + rot_mat[1,0]) / S
+		qz = (rot_mat[0,2] + rot_mat[2,0]) / S
+	elif rot_mat[1,1] > rot_mat[2,2]:
+		S = np.sqrt(1. + rot_mat[1,1] - rot_mat[0,0] - rot_mat[2,2]) * 2.
+		qw = (rot_mat[0,2] - rot_mat[2,0]) / S
+		qx = (rot_mat[0,1] + rot_mat[1,0]) / S
+		qy = .25 * S
+		qz = (rot_mat[1,2] + rot_mat[2,1]) / S
+	else:
+		S = np.sqrt(1. + rot_mat[2,2] - rot_mat[0,0] - rot_mat[1,1]) * 2.
+		qw = (rot_mat[1,0] - rot_mat[0,1]) / S
+		qx = (rot_mat[0,2] + rot_mat[2,0]) / S
+		qy = (rot_mat[1,2] + rot_mat[2,1]) / S
+		qz = .25 * S
+	return np.array([qw, qx, qy, qz])
+
+def quat_mult(q1, q2):
+	w1, x1, y1, z1 = q1
+	w2, x2, y2, z2 = q2
+	w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+	x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+	y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
+	z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
+	return w, x, y, z
+
+def check_num_valid(my_hdf5):
+	bn = 0
+	valid = my_hdf5['valid']
+	N = int(valid.shape[0] / BATCH_SIZE)
+	for bn in range(0, N):
+		if not valid[bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE].all():
+			return bn
+	return N
+
+
+def get_transformation_params(world_info):
+	return np.array([world_info['avatar_right'], world_info['avatar_up'], world_info['avatar_forward']]), np.array(world_info['avatar_position'])
+
+def transform_to_local(position, rot_mat, origin_pos = np.zeros(3, dtype = np.float32)):
+	position = np.array(position)
+	return np.dot(rot_mat, (position - origin_pos))
 
 def _bytes_feature(value):
 	return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
@@ -31,6 +94,15 @@ def remind_me_structure():
 	for act in actions:
 		print act
 
+def print_agent_deets(bn):
+	worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
+	for info in worldinfos:
+		print 'new frame'
+		print info['avatar_position']
+		print info['avatar_rotation']
+		print info['avatar_right']
+		print info['avatar_up']
+		print info['avatar_forward']	
 
 def get_action_descriptors(start_bn, end_bn):
 	descriptors = set()
@@ -108,13 +180,28 @@ def get_centers_of_mass(obj_array, ids):
 			cms[idx] = np.round(np.array(zip(xs, ys)).mean(0))
 	return cms
 
+def get_most_pix_objects(frame_obj_array, frame_observed_objects, max_num_obj = 10):
+	obj_array = frame_obj_array
+	oarray1 = 256**2 * obj_array[:, :, 0] + 256 * obj_array[:, :, 1] + obj_array[:, :, 2]
+	observed_objects = np.unique(oarray1)
+	valid_o = [(idx, (oarray1 == idx).sum()) for idx in observed_objects if idx in frame_observed_objects and not frame_observed_objects[idx][4]]
+	valid_o = sorted(valid_o, key = lambda (idx, amt) : amt)
+	to_ret = []
+	for _ in range(max_num_obj):
+		if valid_o:
+			to_ret.append(valid_o.pop(-1)[0])
+		else:
+			to_ret.append(None)
+	return to_ret
 
 def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators):
-	#TODO add other objects
-	retval = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
+	action_ids = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
+	retval = []
+	for (obj_array, frame_observed_objects, frame_act_ids) in zip(obj_arrays, observed_objects, action_ids):
+		retval.append(frame_act_ids + get_most_pix_objects(obj_array, frame_observed_objects))
 	return retval
 
-def get_object_data(worldinfos, obj_arrays, actions, subset_indicators):
+def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordinate_transformations):
 	'''returns num_frames x num_objects x dim_data
 	Object order: object acted on, second most important object, other objects in view ordered by distance, up to 10 objects.
 	Data: id, pose, position, center of mass in image frame
@@ -123,21 +210,22 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators):
 	observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
 	ids_to_include = get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
 	ret_list = []
-	for (frame_obs_objects, obj_array, frame_ids_to_include) in zip(observed_objects, obj_arrays, ids_to_include):
+	for (frame_obs_objects, obj_array, frame_ids_to_include, (rot_mat, agent_pos)) in zip(observed_objects, obj_arrays, ids_to_include, coordinate_transformations):
+		q_rot = rot_to_quaternion(rot_mat)
 		centers_of_mass = get_centers_of_mass(obj_array, frame_ids_to_include)
 		frame_data = []
 		for idx in frame_ids_to_include:
 			obj_data = [np.array([idx])]
-			if idx is None:
+			if idx is None or idx not in frame_obs_objects:
 				obj_data.append(np.zeros(9))
 			else:
 				o = frame_obs_objects[idx]
-				obj_data.append(np.array(o[3])) #pose
-				obj_data.append(np.array(o[2])) #3d position
+				obj_data.append(quat_mult(q_rot, np.array(o[3]))) #pose
+				obj_data.append(transform_to_local(o[2], rot_mat, agent_pos)) #3d position
 				obj_data.append(np.array(centers_of_mass[idx]))
 			obj_data = np.concatenate(obj_data)
 			frame_data.append(obj_data)
-		frame_data = np.array(frame_data).astype('float32')
+		frame_data = np.array(frame_data).astype(np.float32)
 		ret_list.append(frame_data)
 	return ret_list
 				
@@ -147,22 +235,25 @@ def get_agent_data(worldinfos):
 	'''returns num_frames x dim_data
 	agent position, rotation...what are these other things?
 	'''
-	return [np.concatenate([np.array(info['avatar_position']), np.array(info['avatar_rotation'])]).astype('float32') 
+	return [np.concatenate([np.array(info['avatar_position']), np.array(info['avatar_rotation'])]).astype(np.float32) 
 for info in worldinfos]
 
-def get_actions(actions):
+def get_actions(actions, coordinate_transformations):
 	'''returns num_frames x dim_data
 	force, torque, position, id_acted_on (3d position?)
 	'''
 	ret_list = []
-	for act in actions:
+	for (act, (rot_mat, agent_pos)) in zip(actions, coordinate_transformations):
 		if 'actions' in act and len(act['actions']) and 'teleport_to' not in act['actions'][0]:
 			act_data = act['actions'][0]
-			force = act_data['force']
-			torque = act_data['torque']
-			pos = act_data['action_pos']
-			idx = [float(act_data['id'])]
-			ret_list.append(np.concatenate([force, torque, pos, idx]).astype('float32'))
+			force = transform_to_local(act_data['force'], rot_mat)
+			torque = transform_to_local(act_data['torque'], rot_mat)
+			pos = np.array(act_data['action_pos'])
+			if len(pos) != 2:
+				pos = np.array([-100., -100.])
+			idx = np.array([float(act_data['id'])])
+			assert len(force) == 3 and len(torque) == 3 and len(pos) == 2 and len(idx) == 1, (len(force), len(torque), len(pos), len(idx))
+			ret_list.append(np.concatenate([force, torque, pos, idx]).astype(np.float32))
 		else:
 			ret_list.append(np.zeros(9, dtype = np.float32)) 
 	return ret_list
@@ -202,55 +293,133 @@ def figure_out_which_batches_go_where(start_bn, end_bn):
 			return_dict[action_type] = [bn]
 	return return_dict
 
-def get_batch_data(bn):
+def divide_by_types():
+	valid_num_1 = check_num_valid(my_files[0])
+#	valid_num_2 = check_num_valid(my_files[1])
+	valid_num_2 = 0
+	if DISCARD_FINAL_BATCH_IN_FIRST:
+		print('discarding last in first!')
+		valid_num_1 -= 1
+	print('reading from first and second datasets: ' + str((valid_num_1, valid_num_2)))
+	return_dict = {}
+	for bn in range(valid_num_1):
+		actions = [json.loads(act) for act in my_files[0]['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
+		action_type = process_action_type(actions)
+		if action_type in return_dict:
+			return_dict[action_type].append((0, bn))
+		else:
+			return_dict[action_type] = [(0, bn)]
+#        for bn in range(valid_num_2):
+#                actions = [json.loads(act) for act in my_files[1]['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
+#                action_type = process_action_type(actions)
+#                if action_type in return_dict:
+#                        return_dict[action_type].append((1, bn))
+#                else:
+#                        return_dict[action_type] = [(1, bn)]
+	return return_dict
+
+def get_batch_data((file_num, bn)):
+	f = my_files[file_num]
+	start = time.time()
+	print('reading images')
 	images = f['images'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing images')
 	images = resize_images(images)
+	print(time.time() - start)
+	print('reading objects')
 	objects = f['objects'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing objects')
 	objects = resize_images(objects)
+	print(time.time() - start)
+	print('reading normals')
 	normals = f['normals'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing normals')
 	normals = resize_images(normals)
+	print(time.time() - start)
+	print('reading images2')
 	images2 = f['images2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing images2')
 	images2 = resize_images(images2)
+	print(time.time() - start)
+	print('reading objects2')
 	objects2 = f['objects2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing images2')
 	objects2 = resize_images(objects2)
+	print(time.time() - start)
+	print('reading normals2')
 	normals2 = f['normals2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+	print(time.time() - start)
+	print('resizing normals2')
 	normals2 = resize_images(normals2)
+	print(time.time() - start)
+	print('little processing')
 	actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	actions_raw = [json.loads(act) for act in actions_raw]
-	actions = get_actions(actions_raw)
 	indicators = get_subset_indicators(actions_raw)
 	worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
-	object_data = get_object_data(worldinfos, objects, actions_raw, indicators)
+	coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
+	actions = get_actions(actions_raw, coordinate_transformations)
+	object_data = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
 	agent_data = get_agent_data(worldinfos)
 	to_ret = {'images' : images, 'objects' : objects, 'normals' : normals,
 		'images2' : images2, 'objects2': objects2, 'normals2' : normals2,
 		'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data}
 	to_ret.update(indicators)
+	print(time.time() - start)
 	return to_ret
 
 def write_stuff(batch_data, writers):
+	start = time.time()
 	for k, writer in writers.iteritems():
+		print(time.time() - start)
+		print('writing ' + k)
 		for i in range(BATCH_SIZE):
 			datum = tf.train.Example(features = tf.train.Features(feature = {k : _bytes_feature(batch_data[k][i].tostring())}))
 			writer.write(datum.SerializeToString())
 
-def do_write(start_bn, end_bn):
+def safe_dict_append(my_dict, my_key, my_val):
+	if my_key in my_dict:
+		my_dict[my_key].append(my_val)
+	else:
+		my_dict[my_key] = [my_val]
+
+def do_write(action_type_prefixes, done_fn):
 	if not os.path.exists(NEW_TFRECORD_TRAIN_LOC):
 		os.mkdir(NEW_TFRECORD_TRAIN_LOC)
 
+	done_fn = os.path.join(NEW_TFRECORD_TRAIN_LOC, done_fn)
+
+	if os.path.exists(done_fn):
+		with open(done_fn) as stream:
+			done_dict = cPickle.load(stream)
+	else:
+		done_dict = {}
+	
 	for nm in ATTRIBUTE_NAMES:
 		write_dir = os.path.join(NEW_TFRECORD_TRAIN_LOC, nm)
 		if not os.path.exists(write_dir):
 			os.mkdir(write_dir)
-
-	batch_type_dict = figure_out_which_batches_go_where(start_bn, end_bn) # might want to do this once ahead of time, if there are multiple runs planned
+	with open(TYPES_DIVIDER_LOC) as stream:
+		batch_type_dict = cPickle.load(stream) # might want to do this once ahead of time, if there are multiple runs planned
 	file_count = 0
 	for batch_type, bns in batch_type_dict.iteritems():
+		pfx_is_not_in = [pfx not in batch_type for pfx in action_type_prefixes]
+		if all(pfx_is_not_in):
+			print('skipping ' + batch_type)
+			continue
 		print 'Writing type ' + batch_type
 		writers = None
 		for (num_written, bn) in enumerate(bns):
+			if WRITE_ONLY_FULL_FILES and len(bns) - num_written < 4:
+				break
 			print 'writing bn ' + str(bn)		
 			if num_written % 4 == 0:
+				print('getting writers')
 				if writers is not None:
 					for writer in writers.values():
 						writer.close()
@@ -260,13 +429,23 @@ def do_write(start_bn, end_bn):
 				file_count += 1
 			batch_data_dict = get_batch_data(bn)
 			write_stuff(batch_data_dict, writers)
-		for writer in writers.values():
-			writer.close()
+			safe_dict_append(done_dict, batch_type, bn)
+			with open(done_fn, 'w') as stream:
+				cPickle.dump(done_dict, stream)
+		if writers is not None:
+			for writer in writers.values():
+				writer.close()
 			
+
+#remind_me_deets()
 
 #which_go_where =  figure_out_which_batches_go_where(0, 1000)
 
 #print all_those_last_names
 
+#print_agent_deets(1)
 
-do_write(0, 200)
+#my_dict = divide_by_types()
+arg_num = int(sys.argv[1])
+
+do_write([PREFIX_DIVISIONS[arg_num]], pfx_fns[arg_num])

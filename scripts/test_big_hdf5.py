@@ -56,6 +56,12 @@ print get_num_valid_batches()
 #write_images(13, 14, 'lucky_13')
 
 
+write_images(5000,5001, 'later')
+print('first written')
+write_images(6000,6001, 'data1sample')
+print('second written')
+write_images(1234, 1235, 'earlier')
+
 f.close()
 
 
