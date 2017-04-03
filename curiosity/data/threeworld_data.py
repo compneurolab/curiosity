@@ -112,9 +112,9 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         shape = data.get_shape().as_list()
         shape[0] -= self.delta_time
         begin = [self.delta_time] + [0] * (len(shape) - 1)
-        future = tf.slice(data, begin, size)
+        future = tf.slice(data, begin, shape)
         begin = [0] * len(shape)
-        current = tf.slice(data, begin, size)
+        current = tf.slice(data, begin, shape)
         return tf.concat([current, future], 1)
 
     def create_sequence(self, data):
@@ -134,7 +134,12 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
             data[f] = tf.squeeze(data[f])
             # check if ALL binary labels within sequence are not zero
             filter_sum = tf.reduce_sum(data[f], 1)
-            pos_idx = tf.equal(filter_sum, seq_len)
+            if self.output_format is 'sequence':
+                pos_idx = tf.equal(filter_sum, seq_len)
+            elif self.output_format is 'pairs':
+                pos_idx = tf.equal(filter_sum, tf.constant(2, dtype=tf.int32))
+            else:
+                raise ValueError('Unknown output format')
             # gather positive examples for each data entry
             for k in data:
                 shape = data[k].get_shape().as_list()
