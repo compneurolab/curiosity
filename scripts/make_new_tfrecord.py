@@ -9,20 +9,27 @@ import sys
 import cPickle
 
 DATASET_LOC = '/media/data3/new_dataset/new_dataset.hdf5'
-SECOND_DATASET_LOC = '/media/data3/new_dataset/new_dataset1.hdf5'
-NEW_TFRECORD_TRAIN_LOC = '/media/data2/one_world_dataset/new_tfdata'
-ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting']
+SECOND_DATASET_LOCS = ['dataset1', 'dataset2', 'dataset3', 'dataset5', 'dataset7']
+SECOND_DATASET_LOCS = [os.path.join('/media/data/two_world_dataset', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
+NEW_TFRECORD_TRAIN_LOC = '/media/data2/two_world_dataset/new_tfdata'
+NEW_TFRECORD_VAL_LOC = '/media/data2/two_world_dataset/new_tfvaldata'
+ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view']
 NEW_HEIGHT = 160
 NEW_WIDTH = 375
+OLD_HEIGHT = 256
+OLD_WIDTH = 600
 
-my_files = [h5py.File(DATASET_LOC, 'r')]#, h5py.File(SECOND_DATASET_LOC, 'r')]
-DISCARD_FINAL_BATCH_IN_FIRST = True
-WRITE_ONLY_FULL_FILES = True
+JOBS_DIVISION = '/media/data2/one_world_dataset/job_division.p'
+NUM_OBJECTS_EXPLICIT = 11
+datum_shapes = [(NEW_HEIGHT, NEW_WIDTH, 3)] * 6 + [(9,), (NUM_OBJECTS_EXPLICIT, 10), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
+ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
+
+my_files = [h5py.File(DATASET_LOC, 'r')] + [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
 BATCH_SIZE = 256
-big_buckets = ['ROLLY_THROW_OBJ:THROW_AT_OBJECT:0', 'ROLLY_WALL_THROW:THROW_BEHIND:0', 'OBJ_THROW_OBJ:THROW_AT_OBJECT:0', 'WALL_THROW:THROW_BEHIND:0']
-PREFIX_DIVISIONS = ['ONE_OBJ:', 'TABLE:', 'TABLE_CONTROLLED:', 'ROLLY_THROW_OBJ', 'ROLLY_WALL_THROW', 'OBJ_THROW_OBJ', 'WALL_THROW:']
-pfx_fns = [fn + '.p' for fn in PREFIX_DIVISIONS]
-TYPES_DIVIDER_LOC = '/media/data3/new_dataset/first_sets.p'
+#big_buckets = ['ROLLY_THROW_OBJ:THROW_AT_OBJECT:0', 'ROLLY_WALL_THROW:THROW_BEHIND:0', 'OBJ_THROW_OBJ:THROW_AT_OBJECT:0', 'WALL_THROW:THROW_BEHIND:0']
+#PREFIX_DIVISIONS = ['ONE_OBJ:', 'TABLE:', 'TABLE_CONTROLLED:', 'ROLLY_THROW_OBJ', 'ROLLY_WALL_THROW', 'OBJ_THROW_OBJ', 'WALL_THROW:', 'OBJ_ON_OBJ:', 'ONE_ROLLY:', 'ROLLY_ON_TABLE', 'ROLLY_ON_TABLE_CONTROLLED', 'ROLLY_ON_OBJ:', 'OBJ_ON_ROLLY:', 'ROLLY_ON_ROLLY:', ]
+#pfx_fns = [fn + '.p' for fn in PREFIX_DIVISIONS]
+#TYPES_DIVIDER_LOC = '/media/data3/new_dataset/first_sets.p'
 
 all_those_last_names = set()
 name_change_dict = {'LIFT' : 'FAST_LIFT', 'PUSH_ROT_NOSHAKE' : 'PUSH_ROT', 'PUSH_NOSHAKE' : 'LONG_PUSH', 'PUSH_DOWN' : 'DOWN_PUSH', 'FAST_LIFT_PUSH_ROT_NOSHAKE' : 'FAST_LIFT_PUSH_ROT', 'FAST_LIFT_NOSHAKE' : 'FAST_LIFT', 'PUSH_DOWN_NOSHAKE' : 'DOWN_PUSH'}
@@ -85,7 +92,7 @@ def _bytes_feature(value):
 	return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 def resize_images(images):
-	return [np.array(Image.fromarray(image).resize((NEW_HEIGHT, NEW_WIDTH), Image.BICUBIC))
+	return [np.array(Image.fromarray(image).resize((NEW_WIDTH, NEW_HEIGHT), Image.ANTIALIAS))
 		for image in images]
 
 def remind_me_structure():
@@ -175,7 +182,7 @@ def get_centers_of_mass(obj_array, ids):
 			continue
 		xs, ys = (oarray1 == idx).nonzero()
 		if len(xs) == 0:
-			cms[idx] = np.array([-100., -100.])
+			cms[idx] = None
 		else:
 			cms[idx] = np.round(np.array(zip(xs, ys)).mean(0))
 	return cms
@@ -198,7 +205,7 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
 	action_ids = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
 	retval = []
 	for (obj_array, frame_observed_objects, frame_act_ids) in zip(obj_arrays, observed_objects, action_ids):
-		retval.append(frame_act_ids + get_most_pix_objects(obj_array, frame_observed_objects))
+		retval.append(frame_act_ids + get_most_pix_objects(obj_array, frame_observed_objects, max_num_obj = NUM_OBJECTS_EXPLICIT - 1))
 	return retval
 
 def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordinate_transformations):
@@ -210,24 +217,41 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
 	observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
 	ids_to_include = get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
 	ret_list = []
+	is_object_there = []
+	is_object_in_view = []
 	for (frame_obs_objects, obj_array, frame_ids_to_include, (rot_mat, agent_pos)) in zip(observed_objects, obj_arrays, ids_to_include, coordinate_transformations):
 		q_rot = rot_to_quaternion(rot_mat)
 		centers_of_mass = get_centers_of_mass(obj_array, frame_ids_to_include)
 		frame_data = []
+		frame_obj_there_data = []
+		frame_obj_in_view_data = []
 		for idx in frame_ids_to_include:
-			obj_data = [np.array([idx])]
+			if idx is None:
+				obj_data = [np.array([-1.]).astype(np.float32)]
+			else:
+				obj_data = [np.array([idx])]
 			if idx is None or idx not in frame_obs_objects:
 				obj_data.append(np.zeros(9))
+				frame_obj_there_data.append(0)
+				frame_obj_in_view_data.append(0)
 			else:
 				o = frame_obs_objects[idx]
 				obj_data.append(quat_mult(q_rot, np.array(o[3]))) #pose
 				obj_data.append(transform_to_local(o[2], rot_mat, agent_pos)) #3d position
-				obj_data.append(np.array(centers_of_mass[idx]))
+				if centers_of_mass[idx] is None:
+					frame_obj_in_view_data.append(0)
+					obj_data.append(np.array([-100, -100.]).astype(np.float32))
+				else:
+					frame_obj_in_view_data.append(1)
+					obj_data.append(np.array(centers_of_mass[idx]))
+				frame_obj_there_data.append(1)
 			obj_data = np.concatenate(obj_data)
 			frame_data.append(obj_data)
+		is_object_there.append(np.array(frame_obj_there_data).astype(np.int32))
+		is_object_in_view.append(np.array(frame_obj_in_view_data).astype(np.int32))
 		frame_data = np.array(frame_data).astype(np.float32)
 		ret_list.append(frame_data)
-	return ret_list
+	return ret_list, is_object_there, is_object_in_view
 				
 	
 
@@ -293,30 +317,60 @@ def figure_out_which_batches_go_where(start_bn, end_bn):
 			return_dict[action_type] = [bn]
 	return return_dict
 
-def divide_by_types():
-	valid_num_1 = check_num_valid(my_files[0])
-#	valid_num_2 = check_num_valid(my_files[1])
-	valid_num_2 = 0
-	if DISCARD_FINAL_BATCH_IN_FIRST:
-		print('discarding last in first!')
-		valid_num_1 -= 1
-	print('reading from first and second datasets: ' + str((valid_num_1, valid_num_2)))
+
+def safe_dict_append(my_dict, my_key, my_val):
+        if my_key in my_dict:
+                my_dict[my_key].append(my_val)
+        else:
+                my_dict[my_key] = [my_val]
+
+def index_types():
+	valid_num_1 = 5810
+	valid_num_rest = [int(check_num_valid(my_files[i]) / 70) * 70 for i in range(1, len(my_files))]
+	valid_nums = [valid_num_1] + valid_num_rest
+	print('total number of batches ' + str(sum(valid_nums)))
+	print('per file: ')
+	print(valid_nums)
 	return_dict = {}
-	for bn in range(valid_num_1):
-		actions = [json.loads(act) for act in my_files[0]['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
-		action_type = process_action_type(actions)
-		if action_type in return_dict:
-			return_dict[action_type].append((0, bn))
-		else:
-			return_dict[action_type] = [(0, bn)]
-#        for bn in range(valid_num_2):
-#                actions = [json.loads(act) for act in my_files[1]['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
-#                action_type = process_action_type(actions)
-#                if action_type in return_dict:
-#                        return_dict[action_type].append((1, bn))
-#                else:
-#                        return_dict[action_type] = [(1, bn)]
+	for i in range(len(my_files)):
+		for bn in range(valid_nums[i]):
+			actions = [json.loads(act) for act in my_files[i]['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
+			action_type = process_action_type(actions)
+			safe_dict_append(return_dict, action_type, (i, bn))
 	return return_dict
+
+def get_job_buckets(num_buckets):
+	print('indexing types')
+	types_dict = index_types()
+	print('placing types')
+	type_and_num = [(k, len(v)) for (k, v) in types_dict.iteritems()]
+	type_and_num = sorted(type_and_num, key = lambda (arg_1, arg_2) : - arg_2)
+	buckets = [[] for _ in range(num_buckets)]
+	bucket_weights = [0 for _ in range(num_buckets)]
+	for (my_type, weight) in type_and_num:
+		i = bucket_weights.index(min(bucket_weights))
+		buckets[i].append(my_type)
+		bucket_weights[i] += weight
+	type_and_num_dict = dict(x for x in type_and_num)
+	for i in range(num_buckets):
+		should_be_total_weight = sum([type_and_num_dict[k] for k in buckets[i]])
+		assert should_be_total_weight == bucket_weights[i]
+		print('Bucket ' + str(i))
+		print(bucket_weights[i])
+	with open(JOBS_DIVISION, 'w') as stream:
+		cPickle.dump((buckets, types_dict), stream)
+	return types_dict, buckets, type_and_num, bucket_weights
+
+def make_train_val_splits():
+	with open(JOBS_DIVISION) as stream:
+		buckets, types_dict = cPickle.load(stream)
+	keys_shortened = list(set([':'.join(k.split(':')[:-1]) for k in types_dict]))
+	shortened_summary = dict((k_start, sum([len(v) for k, v in types_dict.iteritems() if k.startswith(k_start)])) for k_start in keys_shortened)
+	return shortened_summary
+
+
+def get_reference_ids((file_num, bn)):
+	return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
 def get_batch_data((file_num, bn)):
 	f = my_files[file_num]
@@ -364,12 +418,17 @@ def get_batch_data((file_num, bn)):
 	worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
 	coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
 	actions = get_actions(actions_raw, coordinate_transformations)
-	object_data = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
+	object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
 	agent_data = get_agent_data(worldinfos)
+	reference_ids = get_reference_ids((file_num, bn))
 	to_ret = {'images' : images, 'objects' : objects, 'normals' : normals,
 		'images2' : images2, 'objects2': objects2, 'normals2' : normals2,
-		'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data}
+		'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids,
+		'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view}
 	to_ret.update(indicators)
+	for i in range(BATCH_SIZE):
+		for k in to_ret:
+			assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
 	print(time.time() - start)
 	return to_ret
 
@@ -382,17 +441,15 @@ def write_stuff(batch_data, writers):
 			datum = tf.train.Example(features = tf.train.Features(feature = {k : _bytes_feature(batch_data[k][i].tostring())}))
 			writer.write(datum.SerializeToString())
 
-def safe_dict_append(my_dict, my_key, my_val):
-	if my_key in my_dict:
-		my_dict[my_key].append(my_val)
-	else:
-		my_dict[my_key] = [my_val]
-
-def do_write(action_type_prefixes, done_fn):
+def do_write(job_bucket_num, done_fn):
 	if not os.path.exists(NEW_TFRECORD_TRAIN_LOC):
 		os.mkdir(NEW_TFRECORD_TRAIN_LOC)
+	if not os.path.exists(NEW_TFRECORD_VAL_LOC):
+		os.mkdir(NEW_TFRECORD_VAL_LOC)
 
 	done_fn = os.path.join(NEW_TFRECORD_TRAIN_LOC, done_fn)
+
+	my_rng = np.random.RandomState(seed = job_bucket_num)
 
 	if os.path.exists(done_fn):
 		with open(done_fn) as stream:
@@ -401,30 +458,33 @@ def do_write(action_type_prefixes, done_fn):
 		done_dict = {}
 	
 	for nm in ATTRIBUTE_NAMES:
-		write_dir = os.path.join(NEW_TFRECORD_TRAIN_LOC, nm)
-		if not os.path.exists(write_dir):
-			os.mkdir(write_dir)
-	with open(TYPES_DIVIDER_LOC) as stream:
-		batch_type_dict = cPickle.load(stream) # might want to do this once ahead of time, if there are multiple runs planned
+		write_dir_train = os.path.join(NEW_TFRECORD_TRAIN_LOC, nm)
+		write_dir_val = os.path.join(NEW_TFRECORD_VAL_LOC, nm)
+		if not os.path.exists(write_dir_train):
+			os.mkdir(write_dir_train)
+		if not os.path.exists(write_dir_val):
+			os.mkdir(write_dir_val)
+		
+	with open(JOBS_DIVISION) as stream:
+		buckets, types_dict = cPickle.load(stream)
+	my_bucket = buckets[job_bucket_num]
 	file_count = 0
-	for batch_type, bns in batch_type_dict.iteritems():
-		pfx_is_not_in = [pfx not in batch_type for pfx in action_type_prefixes]
-		if all(pfx_is_not_in):
-			print('skipping ' + batch_type)
-			continue
+	for batch_type in my_bucket:
 		print 'Writing type ' + batch_type
 		writers = None
-		for (num_written, bn) in enumerate(bns):
-			if WRITE_ONLY_FULL_FILES and len(bns) - num_written < 4:
-				break
-			print 'writing bn ' + str(bn)		
+		for (num_written, bn) in enumerate(types_dict[batch_type]):
+			print 'writing bn ' + str(bn)
 			if num_written % 4 == 0:
 				print('getting writers')
 				if writers is not None:
 					for writer in writers.values():
 						writer.close()
-				output_files = [os.path.join(NEW_TFRECORD_TRAIN_LOC, attr_name, batch_type + ':' + str(file_count) + '.tfrecords') 
-					for attr_name in ATTRIBUTE_NAMES]
+				for_training = my_rng.rand()
+				if for_training > .1:
+					write_path = NEW_TFRECORD_TRAIN_LOC
+				else:
+					write_path = NEW_TFRECORD_VAL_LOC
+				output_files = [os.path.join(write_path, attr_name, batch_type + ':' + str(file_count) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
 				writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
 				file_count += 1
 			batch_data_dict = get_batch_data(bn)
@@ -437,6 +497,7 @@ def do_write(action_type_prefixes, done_fn):
 				writer.close()
 			
 
+
 #remind_me_deets()
 
 #which_go_where =  figure_out_which_batches_go_where(0, 1000)
@@ -446,6 +507,16 @@ def do_write(action_type_prefixes, done_fn):
 #print_agent_deets(1)
 
 #my_dict = divide_by_types()
-arg_num = int(sys.argv[1])
+#arg_num = int(sys.argv[1])
 
-do_write([PREFIX_DIVISIONS[arg_num]], pfx_fns[arg_num])
+#do_write(arg_num, 'done_bucket_' + str(arg_num) + '.p')
+
+#types_dict, buckets, type_and_num, bucket_weights = get_job_buckets(8)
+
+#summary_dict = make_train_val_splits()
+
+if __name__ == '__main__':
+	arg_num = int(sys.argv[1])
+	do_write(arg_num, 'done_bucket_' + str(arg_num) + '.p')
+	for f in my_files:
+		f.close()
