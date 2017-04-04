@@ -13,6 +13,8 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                  batch_size=256,
                  delta_time=1,
                  sequence_len=1,
+                 max_random_skip=None,
+                 seed=0,
                  output_format='sequence', # 'pairs'
                  filters=None,
                  gaussian=None,
@@ -25,9 +27,11 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         self.batch_size = batch_size
         self.delta_time = delta_time
         self.sequence_len = sequence_len
+        self.max_skip = max_random_skip
         self.output_format = output_format
         self.filters = filters
         self.gaussian = gaussian
+        self.seed = seed
         
         assert self.delta_time >= 1,\
                 ("delta time has to be at least 1")
@@ -36,6 +40,12 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         assert self.batch_size >= self.sequence_len * self.delta_time,\
                 ("batch size has to be at least equal to sequence length times \
                 delta time")
+
+        # total sequence length equals the requested sequence plus max_skip
+        if self.max_skip is not None:
+            assert self.max_skip >= 1,\
+                ("max skip has to be at least 1")
+            self.sequence_len += self.max_skip
 
         # load actions and positions from tfrecords for gaussian blob
         if self.gaussian is not None:
@@ -152,10 +162,44 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
             data.pop(f)
         return data
 
+    def random_skip(self, data):
+        # get the current batch size
+        batch_size = None
+        for k in data:
+            batch_size = tf.shape(data[k])[0]
+            break
+        if batch_size is None:
+            raise ValueError('No batch size could be derived')
+
+        # randomly skip after the requested sequence length to get the last frame
+        rskip = tf.random_uniform([batch_size],\
+                minval=1, maxval=self.max_skip, dtype=tf.int32, seed=self.seed)
+        seq_len = self.sequence_len - self.max_skip
+        for k in data:
+            shape = data[k].get_shape().as_list()
+            seq = tf.slice(data[k], [0]*len(shape), [-1,seq_len]+[-1]*(len(shape)-2))
+            indices = tf.stack([tf.range(batch_size), self.sequence_len - rskip], axis=1)
+            last_frame = tf.gather_nd(data[k], indices)
+            last_frame = tf.expand_dims(last_frame, 1)
+            data[k] = tf.concat([seq, last_frame], 1)
+        return data
+
+    def check_lengths(self, data):
+        for k in data:
+            if self.output_format is 'sequence':
+                assert data[k].get_shape().as_list()[1] == self.sequence_len
+            elif self.output_format is 'pairs':
+                assert data[k].get_shape().as_list()[1] == 2
+
     def init_ops(self):
         self.input_ops = super(ThreeWorldDataProvider, self).init_ops()
         for i in range(len(self.input_ops)):
             if self.filters is not None:
-                self.input_ops[i] = self.apply_filters(self.input_ops[i]) 
+                self.input_ops[i] = self.apply_filters(self.input_ops[i])
+            if self.max_skip is not None:
+                self.input_ops[i] = self.random_skip(self.input_ops[i])
+        if self.max_skip is not None:
+            self.sequence_len = self.sequence_len - self.max_skip + 1
+        for i in range(len(self.input_ops)):
+            self.check_lengths(self.input_ops[i])
         return self.input_ops
-#TODO Add random skip

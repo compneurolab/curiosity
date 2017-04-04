@@ -114,6 +114,7 @@ params = {
             'output_format': 'sequence',
             'filters': ['is_not_teleporting'],
             'gaussian': GAUSSIAN,
+            'max_random_skip': 5,
         },
 
         'queue_params': {
@@ -163,6 +164,7 @@ params = {
                 'output_format': 'sequence',
                 'filters': ['is_not_teleporting'],
                 'gaussian': GAUSSIAN,
+                'max_random_skip': 5,
             },
             'queue_params': {
                 'queue_type': 'fifo',
