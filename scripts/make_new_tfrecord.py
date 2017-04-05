@@ -372,45 +372,46 @@ def make_train_val_splits():
 def get_reference_ids((file_num, bn)):
 	return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
-def get_batch_data((file_num, bn)):
+def get_batch_data((file_num, bn), with_non_object_images = True):
 	f = my_files[file_num]
 	start = time.time()
-	print('reading images')
-	images = f['images'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-	print(time.time() - start)
-	print('resizing images')
-	images = resize_images(images)
-	print(time.time() - start)
 	print('reading objects')
 	objects = f['objects'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	print(time.time() - start)
 	print('resizing objects')
 	objects = resize_images(objects)
 	print(time.time() - start)
-	print('reading normals')
-	normals = f['normals'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-	print(time.time() - start)
-	print('resizing normals')
-	normals = resize_images(normals)
-	print(time.time() - start)
-	print('reading images2')
-	images2 = f['images2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-	print(time.time() - start)
-	print('resizing images2')
-	images2 = resize_images(images2)
-	print(time.time() - start)
 	print('reading objects2')
 	objects2 = f['objects2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	print(time.time() - start)
-	print('resizing images2')
+	print('resizing objects2')
 	objects2 = resize_images(objects2)
 	print(time.time() - start)
-	print('reading normals2')
-	normals2 = f['normals2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-	print(time.time() - start)
-	print('resizing normals2')
-	normals2 = resize_images(normals2)
-	print(time.time() - start)
+	if with_non_object_images:
+		print('reading images')
+		images = f['images'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+		print(time.time() - start)
+		print('resizing images')
+		images = resize_images(images)
+		print(time.time() - start)
+		print('reading normals')
+		normals = f['normals'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+		print(time.time() - start)
+		print('resizing normals')
+		normals = resize_images(normals)
+		print(time.time() - start)
+		print('reading images2')
+		images2 = f['images2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+		print(time.time() - start)
+		print('resizing images2')
+		images2 = resize_images(images2)
+		print(time.time() - start)	
+		print('reading normals2')
+		normals2 = f['normals2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+		print(time.time() - start)
+		print('resizing normals2')
+		normals2 = resize_images(normals2)
+		print(time.time() - start)
 	print('little processing')
 	actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	actions_raw = [json.loads(act) for act in actions_raw]
@@ -421,10 +422,12 @@ def get_batch_data((file_num, bn)):
 	object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
 	agent_data = get_agent_data(worldinfos)
 	reference_ids = get_reference_ids((file_num, bn))
-	to_ret = {'images' : images, 'objects' : objects, 'normals' : normals,
-		'images2' : images2, 'objects2': objects2, 'normals2' : normals2,
+	to_ret = {'objects' : objects,
+		'objects2': objects2,
 		'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids,
 		'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view}
+	if with_non_object_images:
+		to_ret.update({'images' : images, 'normals' : normals, 'images2' : images2, 'normals2' : normals2})
 	to_ret.update(indicators)
 	for i in range(BATCH_SIZE):
 		for k in to_ret:
