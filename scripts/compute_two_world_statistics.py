@@ -9,7 +9,7 @@ import numpy as np
 BATCH_SIZE = mnt.BATCH_SIZE
 IS_IMAGE = [True, True, True, True, True, True] + [False for _ in range(len(mnt.ATTRIBUTE_NAMES) - 6)]
 IS_IMAGE = dict(x for x in zip(mnt.ATTRIBUTE_NAMES, IS_IMAGE))
-SAVE_DIR = '/media/data2/two_world_dataset/statistics'
+SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics'
 
 
 def online_mean(X_so_far, X_new, num_seen_so_far):
@@ -69,11 +69,9 @@ def do_calculation(job_num):
 
 
 if __name__ == '__main__':
-	job_num_seed = int(sys.argv[2])
-	job_nums = [job_num_seed + i for i in range(4)]
+	job_num = int(sys.argv[2])
 	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-	for job_num in job_nums:
-		do_calculation(job_num)
+	do_calculation(job_num)
 
 
 

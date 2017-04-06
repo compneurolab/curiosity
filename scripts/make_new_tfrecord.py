@@ -8,9 +8,9 @@ import time
 import sys
 import cPickle
 
-DATASET_LOC = '/media/data3/new_dataset/new_dataset.hdf5'
+DATASET_LOC = '/mnt/fs0/datasets/two_world_dataset/new_dataset.hdf5'
 SECOND_DATASET_LOCS = ['dataset1', 'dataset2', 'dataset3', 'dataset5', 'dataset7']
-SECOND_DATASET_LOCS = [os.path.join('/media/data/two_world_dataset', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
+SECOND_DATASET_LOCS = [os.path.join('/mnt/fs0/datasets/two_world_dataset/hdf5s', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
 NEW_TFRECORD_TRAIN_LOC = '/media/data2/two_world_dataset/new_tfdata'
 NEW_TFRECORD_VAL_LOC = '/media/data2/two_world_dataset/new_tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view']
@@ -19,7 +19,7 @@ NEW_WIDTH = 375
 OLD_HEIGHT = 256
 OLD_WIDTH = 600
 
-JOBS_DIVISION = '/media/data2/one_world_dataset/job_division.p'
+JOBS_DIVISION = '/mnt/fs0/datasets/two_world_dataset/job_division.p'
 NUM_OBJECTS_EXPLICIT = 11
 datum_shapes = [(NEW_HEIGHT, NEW_WIDTH, 3)] * 6 + [(9,), (NUM_OBJECTS_EXPLICIT, 10), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
