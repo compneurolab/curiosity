@@ -5,6 +5,7 @@ import cPickle
 import os
 import sys
 import numpy as np
+from PIL import Image
 
 BATCH_SIZE = mnt.BATCH_SIZE
 IS_IMAGE = [True, True, True, True, True, True] + [False for _ in range(len(mnt.ATTRIBUTE_NAMES) - 6)]
@@ -68,10 +69,53 @@ def do_calculation(job_num):
 					cPickle.dump((results_so_far, num_seen_so_far), stream)
 
 
-if __name__ == '__main__':
-	job_num = int(sys.argv[2])
-	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-	do_calculation(job_num)
+def collate_job_statistics():
+	job_statistics = []
+	for i in range(8):
+		fn = os.path.join(SAVE_DIR, 'partition_' + str(i) + '.p')
+		with open(fn) as stream:
+			job_statistics.append(cPickle.load(stream))
+	retval = {}
+	for attribute in job_statistics[0][0]:
+		tot_num_seen = sum([num_seen for (stat, num_seen) in job_statistics])
+		my_mean = sum([num_seen  * stat[attribute][0] for (stat, num_seen) in job_statistics]) / float(tot_num_seen)
+		my_square_mean = sum([num_seen * stat[attribute][1] for (stat, num_seen) in job_statistics]) / float(tot_num_seen)
+		std_dev = np.sqrt(my_square_mean) #I know we are not correcting for bias but N is huge here
+		my_min = job_statistics[0][0][attribute][2]
+		my_max = job_statistics[0][0][attribute][3]
+		for i in range(1, 8):
+			my_min = np.minimum(job_statistics[i][0][attribute][2], my_min)
+			my_max = np.maximum(job_statistics[i][0][attribute][3], my_max)
+		retval[attribute] = {'mean' : my_mean, 'std' : std_dev, 'min' : my_min, 'max' : my_max}
+	with open(os.path.join(SAVE_DIR, 'stats.p'), 'w') as stream:
+		cPickle.dump(retval, stream)
+	return retval
 
+def write_images_for_job_stats():
+	image_save_dir = os.path.join(SAVE_DIR, 'visualization')
+	if not os.path.exists(image_save_dir):
+		os.mkdir(image_save_dir)
+	stat_names = ['mean', 'std', 'min', 'max']
+	with open(os.path.join(SAVE_DIR, 'stats.p')) as stream:
+		stats = cPickle.load(stream)
+	for attr, should_write in IS_IMAGE.iteritems():
+		if should_write:
+			attr_dir = os.path.join(image_save_dir, attr)
+			if not os.path.exists(attr_dir):
+				os.mkdir(attr_dir)
+			for nm in stat_names:
+				img = Image.fromarray(stats[attr][nm].astype(np.uint8))
+				fn = os.path.join(attr_dir, nm + '.png')
+				img.save(fn)
+				
+
+
+
+
+if __name__ == '__main__':
+#	job_num = int(sys.argv[2])
+#	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+#	do_calculation(job_num)
+	write_images_for_job_stats()
 
 
