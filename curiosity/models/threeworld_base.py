@@ -211,11 +211,11 @@ def example_model(inputs,
         images = tf.concat([images, net.inputs['object_data']], 4)
         images = tf.concat([images, net.inputs['actions']], 4)
 
-    images = tf.slice(images, [0,0,0,0,0], [1,-1,-1,-1,-1])
+    flat_images = tf.slice(images, [0,0,0,0,0], [1,-1,-1,-1,-1])
     actions = tf.slice(actions, [0,0,0], [1,-1,-1])
 
     actions = tf.reshape(actions, [1, -1])
-    flat_images = tf.reshape(images, [1, -1])
+    flat_images = tf.reshape(flat_images, [1, -1])
     W = tf.get_variable('W', [flat_images.get_shape().as_list()[-1], 
                               actions.get_shape().as_list()[-1]])
     out = tf.matmul(flat_images,W)

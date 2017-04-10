@@ -25,7 +25,7 @@ VALIDATION_DATA_PATH = '/media/data2/new_dataset/new_tfdata'
 NORM_PATH = '/media/data2/new_dataset/stats.pkl'
 
 INPUT_BATCH_SIZE = 256
-OUTPUT_BATCH_SIZE = 64
+OUTPUT_BATCH_SIZE = 16
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -33,7 +33,7 @@ TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 5
 GAUSSIAN = ['actions', 'poses']
 seed = 0
-exp_id = 'test2'
+exp_id = 'test3'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -94,7 +94,7 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'normalization_method': {'images': 'standard', 'actions': 'minmax'},
+        #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },
 
     'train_params': {
@@ -177,7 +177,7 @@ params = {
             'targets': {
                 'func': get_debug_info,
                 'targets' : [],
-                'num_to_save' : 1
+                'num_to_save' : 5
             },
         'agg_func' : keep_all,
         #'agg_func': utils.mean_dict,
