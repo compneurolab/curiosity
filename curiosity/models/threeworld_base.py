@@ -86,6 +86,9 @@ class ThreeWorldBaseModel:
         self.gaussian = gaussian
         self.normalization = normalization
 
+        # store reference to not normed inputs for not normed pixel positions
+        inputs_not_normed = inputs
+
         if self.normalization is not None:
             self.inputs = self.normalization.normalize(self.inputs)
 
@@ -100,10 +103,11 @@ class ThreeWorldBaseModel:
             if 'poses' in self.gaussian:
                 #object blobs
                 gaussians = []
-                object_data = inputs['object_data']
-                centroids = tf.slice(object_data, [0, 0, 0, 8], [-1, -1, -1, 2])
+                centroids = tf.slice(inputs_not_normed['object_data'],\
+                        [0, 0, 0, 8], [-1, -1, -1, 2])
                 centroids = tf.unstack(centroids, axis=2)
-                poses = tf.slice(object_data, [0, 0, 0, 1], [-1, -1, -1, 4])
+                poses = tf.slice(self.inputs['object_data'],\
+                        [0, 0, 0, 1], [-1, -1, -1, 4])
                 poses = tf.unstack(poses, axis=3)
                 for pose in poses:
                     pose = tf.unstack(pose, axis=2)
@@ -114,9 +118,8 @@ class ThreeWorldBaseModel:
             if 'actions' in self.gaussian:
                 # action blobs
                 gaussians = []
-                actions = inputs['actions']
-                centroid = tf.slice(actions, [0, 0, 6], [-1, -1, 2])
-                forces = tf.slice(actions, [0, 0, 0], [-1, -1, 6])
+                centroid = tf.slice(inputs_not_normed['actions'], [0, 0, 6], [-1, -1, 2])
+                forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
                 forces = tf.unstack(forces, axis=2)
                 for force in forces:
                     gaussians.append(\
