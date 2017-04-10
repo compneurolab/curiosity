@@ -182,11 +182,14 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
             last_frame = tf.gather_nd(data[k], indices)
             last_frame = tf.expand_dims(last_frame, 1)
             data[k] = tf.concat([seq, last_frame], 1)
+        data['random_skip'] = rskip
         return data
 
     def check_lengths(self, data):
         for k in data:
-            if self.output_format is 'sequence':
+            if k is 'random_skip':
+                assert len(data[k].get_shape().as_list()) == 1
+            elif self.output_format is 'sequence':
                 assert data[k].get_shape().as_list()[1] == self.sequence_len
             elif self.output_format is 'pairs':
                 assert data[k].get_shape().as_list()[1] == 2

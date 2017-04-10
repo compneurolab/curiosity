@@ -19,12 +19,12 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 #                       'curiosity/curiosity/configs/action_config2.cfg')
 #cfg = postprocess_config(json.load(open(cfgfile)))
 
-DATA_PATH = '/media/data3/new_dataset/new_tfdata'
-VALIDATION_DATA_PATH = '/media/data3/new_dataset/new_tfdata'
+DATA_PATH = '/media/data2/new_dataset/new_tfdata'
+VALIDATION_DATA_PATH = '/media/data2/new_dataset/new_tfdata'
 #STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
 
 INPUT_BATCH_SIZE = 256
-OUTPUT_BATCH_SIZE = 128
+OUTPUT_BATCH_SIZE = 64
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -32,7 +32,7 @@ TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 5
 GAUSSIAN = ['actions', 'poses']
 seed = 0
-exp_id = 'test1'
+exp_id = 'test2'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -45,7 +45,7 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     and outputs field (with pairs of arguments -- assuming outputs 
     is a dict of dicts)
     '''
-    images = inputs['images'][:num_to_save]
+    images = outputs['concat_images'][:num_to_save]
     images = tf.cast(images, tf.uint8)
 
     actions = outputs['actions'][:num_to_save]

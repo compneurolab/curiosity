@@ -180,12 +180,12 @@ def example_model(inputs,
     actions = tf.slice(actions, [0,0,0], [1,-1,-1])
 
     actions = tf.reshape(actions, [1, -1])
-    images = tf.reshape(images, [1, -1])
-    W = tf.get_variable('W', [images.get_shape().as_list()[-1], 
+    flat_images = tf.reshape(images, [1, -1])
+    W = tf.get_variable('W', [flat_images.get_shape().as_list()[-1], 
                               actions.get_shape().as_list()[-1]])
-    images = tf.matmul(images,W)
+    out = tf.matmul(flat_images,W)
 
-    outputs = {'images': images, 'actions': actions}
+    outputs = {'images': out, 'actions': actions, 'concat_images': images}
     return [outputs, {}]
 
 def dummy_loss(labels, logits, **kwargs):
