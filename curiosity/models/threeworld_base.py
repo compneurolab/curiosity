@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import os
+import cPickle
 
 class Normalizer:
     # epsilon used during normalization to avoid division by zero
@@ -19,6 +20,7 @@ class Normalizer:
         assert stats_file.endswith('.pkl'), ('stats file must be a .pkl file')
         with open(stats_file) as f:
             self.stats = cPickle.load(f)
+            print("Data statistics loaded.")
         assert isinstance(self.stats, dict), ('stats must be a dictionary')
 
         # check if normalization methods available in stats file and convert to float32
@@ -44,17 +46,34 @@ class Normalizer:
                     _max = self.stats[source]['max']
                     _max[(idx[0][_max[idx] == 0], idx[1][_max[idx] == 0])] = 1.0
 
-    def normalize(self, data, source):
-        method = self.methods(source)
-        if method is 'standard':
-            data = (data - self.stats[source]['mean']) / \
-                      (self.stats[source]['std'] + self.epsilon)
-        elif method is 'minmax':
-            data = (data - self.stats[source]['min']) / \
-                      (self.stats[source]['max'] - self.stats[source]['min'])
-        else:
-            raise ValueError('Unknown normalization method for %s' % source)
-        return data
+    def normalize(self, inputs):
+        for source in self.methods:
+            data = tf.cast(inputs[source], tf.float32)
+            method = self.methods[source]
+
+            #match dims for broadcasting
+            while(len(self.stats[source]['mean'].shape) <
+                    len(data.get_shape().as_list())):
+                self.stats[source]['mean'] = \
+                        np.expand_dims(self.stats[source]['mean'], 0)
+                self.stats[source]['std'] = \
+                        np.expand_dims(self.stats[source]['std'], 0)
+                self.stats[source]['max'] = \
+                        np.expand_dims(self.stats[source]['max'], 0)
+                self.stats[source]['min'] = \
+                        np.expand_dims(self.stats[source]['min'], 0)
+
+            if method is 'standard':
+                data = (data - self.stats[source]['mean']) / \
+                          (self.stats[source]['std'] + self.epsilon)
+            elif method is 'minmax':
+                data = (data - self.stats[source]['min']) / \
+                          (self.stats[source]['max'] - self.stats[source]['min'])
+            else:
+                raise ValueError('Unknown normalization method for %s' % source)
+
+            inputs[source] = data
+        return inputs
 
 class ThreeWorldBaseModel:
     def __init__(self,
@@ -66,6 +85,9 @@ class ThreeWorldBaseModel:
         self.inputs = inputs
         self.gaussian = gaussian
         self.normalization = normalization
+
+        if self.normalization is not None:
+            self.inputs = self.normalization.normalize(self.inputs)
 
         if self.gaussian is not None:
             # get image shape
@@ -100,12 +122,6 @@ class ThreeWorldBaseModel:
                     gaussians.append(\
                         self.create_gaussian_channel(image_shape, centroid, force))
                 self.inputs['actions'] = tf.concat(gaussians, 4)
-
-        if self.normalization is not None:
-            for inp in self.inputs:
-                if inp in self.normalization.method:
-                    data = self.normalization.normalize(data, inp)
-
 
     def create_gaussian_channel(self, 
                                 size, 
@@ -165,10 +181,19 @@ class ThreeWorldBaseModel:
 def example_model(inputs,
                   batch_size=256,
                   gaussian=None,
+                  stats_file=None,
+                  normalization_method=None,
                   **kwargs):
 
+    if normalization_method is not None:
+        assert stats_file is not None, ('stats file has to be provided\
+                to use normalization')
+        normalization=Normalizer(stats_file, normalization_method)
+    else:
+        normalization=None
+
     actions = inputs['actions']
-    net = ThreeWorldBaseModel(inputs, gaussian=gaussian);
+    net = ThreeWorldBaseModel(inputs, gaussian=gaussian, normalization=normalization);
     images = net.inputs['images']
     images = tf.cast(images, tf.float32)
 

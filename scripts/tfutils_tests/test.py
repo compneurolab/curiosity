@@ -22,6 +22,7 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 DATA_PATH = '/media/data2/new_dataset/new_tfdata'
 VALIDATION_DATA_PATH = '/media/data2/new_dataset/new_tfdata'
 #STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
+NORM_PATH = '/media/data2/new_dataset/stats.pkl'
 
 INPUT_BATCH_SIZE = 256
 OUTPUT_BATCH_SIZE = 64
@@ -35,7 +36,6 @@ seed = 0
 exp_id = 'test2'
 
 rng = np.random.RandomState(seed=seed)
-
 
 def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     '''
@@ -92,8 +92,9 @@ params = {
     'model_params' : {
 	'func' : modelsource.example_model,
         'batch_size': OUTPUT_BATCH_SIZE,
-        'gaussian': GAUSSIAN
-        #'min_time_difference': TIME_DIFFERENCE,
+        'gaussian': GAUSSIAN,
+        'stats_file': NORM_PATH,
+        'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },
 
     'train_params': {
