@@ -11,11 +11,13 @@ import cPickle
 DATASET_LOC = '/mnt/fs0/datasets/two_world_dataset/new_dataset.hdf5'
 SECOND_DATASET_LOCS = ['dataset1', 'dataset2', 'dataset3', 'dataset5', 'dataset7']
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs0/datasets/two_world_dataset/hdf5s', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/media/data2/two_world_dataset/new_tfdata'
-NEW_TFRECORD_VAL_LOC = '/media/data2/two_world_dataset/new_tfvaldata'
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata_objfix'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata_objfix'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view']
 NEW_HEIGHT = 160
 NEW_WIDTH = 375
+# NEW_HEIGHT = 256
+# NEW_WIDTH = 600
 OLD_HEIGHT = 256
 OLD_WIDTH = 600
 
@@ -91,7 +93,10 @@ def transform_to_local(position, rot_mat, origin_pos = np.zeros(3, dtype = np.fl
 def _bytes_feature(value):
 	return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
-def resize_images(images):
+def resize_images(images, use_nearest = False):
+	if use_nearest:
+		return [np.array(Image.fromarray(image).resize((NEW_WIDTH, NEW_HEIGHT), Image.NEAREST))
+			for image in images]
 	return [np.array(Image.fromarray(image).resize((NEW_WIDTH, NEW_HEIGHT), Image.ANTIALIAS))
 		for image in images]
 
@@ -275,13 +280,14 @@ def get_actions(actions, coordinate_transformations):
 			pos = np.array(act_data['action_pos'])
 			if len(pos) != 2:
 				pos = np.array([-100., -100.])
+			pos[0] = float(NEW_HEIGHT) / float(OLD_HEIGHT) * pos[0]
+			pos[1] = float(NEW_WIDTH) / float(OLD_WIDTH) * pos[1]
 			idx = np.array([float(act_data['id'])])
 			assert len(force) == 3 and len(torque) == 3 and len(pos) == 2 and len(idx) == 1, (len(force), len(torque), len(pos), len(idx))
 			ret_list.append(np.concatenate([force, torque, pos, idx]).astype(np.float32))
 		else:
 			ret_list.append(np.zeros(9, dtype = np.float32)) 
 	return ret_list
-			
 
 def get_subset_indicators(actions):
 	'''returns num_frames x 4 np array
@@ -379,13 +385,13 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
 	objects = f['objects'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	print(time.time() - start)
 	print('resizing objects')
-	objects = resize_images(objects)
+	objects = resize_images(objects, use_nearest = True)
 	print(time.time() - start)
 	print('reading objects2')
 	objects2 = f['objects2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
 	print(time.time() - start)
 	print('resizing objects2')
-	objects2 = resize_images(objects2)
+	objects2 = resize_images(objects2, use_nearest = True)
 	print(time.time() - start)
 	if with_non_object_images:
 		print('reading images')
@@ -439,12 +445,15 @@ def write_stuff(batch_data, writers):
 	start = time.time()
 	for k, writer in writers.iteritems():
 		print(time.time() - start)
+		if k not in batch_data:
+			print('skipping ' + k)
+			continue
 		print('writing ' + k)
 		for i in range(BATCH_SIZE):
 			datum = tf.train.Example(features = tf.train.Features(feature = {k : _bytes_feature(batch_data[k][i].tostring())}))
 			writer.write(datum.SerializeToString())
 
-def do_write(job_bucket_num, done_fn):
+def do_write(job_bucket_num, done_fn, all_images = True):
 	if not os.path.exists(NEW_TFRECORD_TRAIN_LOC):
 		os.mkdir(NEW_TFRECORD_TRAIN_LOC)
 	if not os.path.exists(NEW_TFRECORD_VAL_LOC):
@@ -490,7 +499,7 @@ def do_write(job_bucket_num, done_fn):
 				output_files = [os.path.join(write_path, attr_name, batch_type + ':' + str(file_count) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
 				writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
 				file_count += 1
-			batch_data_dict = get_batch_data(bn)
+			batch_data_dict = get_batch_data(bn, with_non_object_images = all_images)
 			write_stuff(batch_data_dict, writers)
 			safe_dict_append(done_dict, batch_type, bn)
 			with open(done_fn, 'w') as stream:
@@ -520,6 +529,6 @@ def do_write(job_bucket_num, done_fn):
 
 if __name__ == '__main__':
 	arg_num = int(sys.argv[1])
-	do_write(arg_num, 'done_bucket_' + str(arg_num) + '.p')
+	do_write(arg_num, 'done_bucket_' + str(arg_num) + '.p', all_images = False)
 	for f in my_files:
 		f.close()
