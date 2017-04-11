@@ -24,8 +24,8 @@ def get_some_positions_and_centroids(num_batches):
 	cms = np.array([frame_obj_dat[0, 8:] for batch_obj_dat in batches_of_data for frame_obj_dat in batch_obj_dat['object_data']])
 	return positions, cms
 
-def get_interesting_positions_and_centroids(num_batches):
-	batches_of_data = [mnt.get_batch_data((0, bn), with_non_object_images = False) for bn in range(num_batches)]
+def get_interesting_positions_and_centroids(begin_bn, end_bn):
+	batches_of_data = [mnt.get_batch_data((0, bn), with_non_object_images = False) for bn in range(begin_bn, end_bn)]
 	positions = []
 	cms = []
 	for batch_data in batches_of_data:
@@ -212,6 +212,6 @@ def save_a_centroid():
 	write_img(new_img, 'test22')
 
 
-pos, cms = get_interesting_positions_and_centroids(100)
+pos, cms = get_interesting_positions_and_centroids(500, 1000)
 solve_try_2(pos, cms)
 # objects, objects1 = write_weird_images()
