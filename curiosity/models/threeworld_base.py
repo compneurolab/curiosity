@@ -121,10 +121,10 @@ class ThreeWorldBaseModel:
                 centroid = tf.slice(inputs_not_normed['actions'], [0, 0, 6], [-1, -1, 2])
 
                 # TODO centroid scaled here because not done yet
-                print('\033[91mWARNING: Actions are being scaled!\033[0m')
-                centroid /= tf.reshape(tf.constant(
-                    np.array([256.0 / 160.0, 600.0 / 375.0], dtype=np.float32)), 
-                    [1,1,-1])
+                #print('\033[91mWARNING: Actions are being scaled!\033[0m')
+                #centroid /= tf.reshape(tf.constant(
+                #    np.array([256.0 / 160.0, 600.0 / 375.0], dtype=np.float32)), 
+                #    [1,1,-1])
 
                 forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
                 forces = tf.unstack(forces, axis=2)
