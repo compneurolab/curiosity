@@ -11,12 +11,31 @@ from sklearn.linear_model import LinearRegression
 BATCH_SIZE = 256
 SAVE_DIR = '/home/nhaber/temp/test_imgs'
 
+IM_HEIGHT = 160.
+IM_WIDTH = 375.
+MY_CM_CENTER = np.array([IM_HEIGHT / 2., IM_WIDTH / 2.])
+MY_F = np.diag([-134., 136.])
+
+def transform_to_other_camera(pos):
+	rot = np.array([[1., 0., 0.], [0., np.cos(np.pi / 6.), np.sin(np.pi / 6.)], [0., - np.sin(np.pi / 6.), np.cos(np.pi / 6.)]])
+	trans = np.array([0., -.5, 0.])
+	return np.dot(rot, pos + trans)
+
+
+
 def write_img(np_arr, filename_short):
 	if not os.path.exists(SAVE_DIR):
 		os.mkdir(SAVE_DIR)
 	img = Image.fromarray(np_arr)
-	print('got here')
 	img.save(os.path.join(SAVE_DIR, filename_short + '.png'))
+
+def pos_to_screen_pos(pos, f, dist, cm_center):
+	small_pos_array = np.array([pos[1], pos[0]])
+	return np.dot(f, small_pos_array) / (pos[2] + dist) + cm_center
+
+def std_pos_to_screen_pos(pos):
+	return pos_to_screen_pos(pos, MY_F, 0.001, MY_CM_CENTER)
+
 
 def get_some_positions_and_centroids(num_batches):
 	batches_of_data = [mnt.get_batch_data((0, bn), with_non_object_images = False) for bn in range(num_batches)]
@@ -144,16 +163,11 @@ def solve_try_2(positions, cms):
 	Y0 = np.array([c[0] * p[2] for (c, p) in zip(cms_centered, positions)])
 	X1 = np.array([[p[0], -c[1]] for (c, p) in zip(cms_centered, positions)])
 	Y1 = np.array([c[1] * p[2] for (c, p) in zip(cms_centered, positions)])
-	my_lr = LinearRegression(fit_intercept = False)
-	my_lr.fit(X0, Y0)
-	print my_lr.coef_
-	print my_lr.intercept_
-	print my_lr.residues_
-	my_lr.fit(X1, Y1)
-	print my_lr.coef_
-	print my_lr.intercept_
-	print my_lr.residues_
-
+	my_lr0 = LinearRegression(fit_intercept = False)
+	my_lr0.fit(X0, Y0)
+	my_lr1 = LinearRegression(fit_intercept = False)
+	my_lr1.fit(X1, Y1)
+	return (my_lr0, my_lr1)
 
 
 def test_nearest_is_ok(num_batches):
@@ -194,11 +208,10 @@ def test_nearest_is_ok(num_batches):
 	return objects, objects1
 
 
-def draw_exp(np_arr_img, pos, sigma = 1.):
+def draw_exp(np_arr_img, pos, sigma = 1., channel = 0):
 	for i in range(np_arr_img.shape[0]):
 			for j in range(np_arr_img.shape[1]):
-				for k in range(np_arr_img.shape[2]):
-					np_arr_img[i, j, k] = min(1., np.exp(- np.linalg.norm(pos - np.array([i, j], dtype = np.float32))**2 / sigma) + np_arr_img[i, j, k])
+				np_arr_img[i, j, channel] = min(1., np.exp(- np.linalg.norm(pos - np.array([i, j], dtype = np.float32))**2 / sigma) + np_arr_img[i, j, channel])
 	return np_arr_img
 
 def make_viz_ready(np_arr_img):
@@ -212,6 +225,85 @@ def save_a_centroid():
 	write_img(new_img, 'test22')
 
 
-pos, cms = get_interesting_positions_and_centroids(500, 1000)
-solve_try_2(pos, cms)
+def test_to_screen(num_rand_batches, num_to_show_per_batch):
+	my_rng = np.random.RandomState(seed = 0)
+	batches_to_use = my_rng.permutation(range(5000))[:num_rand_batches]
+	for bn in batches_to_use:
+		print 'batch ' + str(bn)
+		batch_data = mnt.get_batch_data((0, bn), with_non_object_images = True)
+		positions = []
+		cms = []
+		images = []
+		objects = []
+		objects1 = []
+		ids = []
+		images2 = []
+		for i in range(BATCH_SIZE):
+			if batch_data['is_object_in_view'][i][0]:
+				positions.append(batch_data['object_data'][i][0,5:8])
+				ids.append(batch_data['object_data'][i][0,0])
+				cms.append(batch_data['object_data'][i][0,8:])
+				images.append(batch_data['images'][i])
+				images2.append(batch_data['images2'][i])
+				oarray = batch_data['objects'][i]
+				objects.append(oarray)
+				oarray1 = 256**2 * oarray[:, :, 0] + 256 * oarray[:, :, 1] + oarray[:, :, 2]
+				objects1.append(oarray1)
+		imgs_to_use = my_rng.permutation(range(len(positions)))[:num_to_show_per_batch]
+		for idx in imgs_to_use:
+			screen_pos = std_pos_to_screen_pos(positions[idx])
+			other_cam_pos = transform_to_other_camera(positions[idx])
+			screen_pos2 = std_pos_to_screen_pos(other_cam_pos)
+			print idx
+			print screen_pos
+			print screen_pos2
+			print cms[idx]
+			my_img = images[idx].astype(np.float32)
+			my_img = my_img / 255.
+			draw_exp(my_img, cms[idx], sigma = 5., channel = 0)
+			draw_exp(my_img, screen_pos, sigma = 5., channel = 1)
+			my_img = make_viz_ready(my_img)
+			write_img(my_img, str(bn) + '_' + str(idx) + 'img' )
+			oarray1 = objects1[idx]
+			highlighted_obj = (oarray1 == ids[idx]).astype(np.float32)
+			highlighted_obj = make_viz_ready(highlighted_obj)
+			write_img(highlighted_obj, str(bn) + '_' + str(idx) + 'highlight')
+			img2 = images2[idx].astype(np.float32)
+			img2 = img2 / 255.
+			draw_exp(img2, screen_pos2, sigma = 5., channel = 1)
+			img2 = make_viz_ready(img2)
+			write_img(img2, str(bn) + '_' + str(idx) + 'othercam')
+
+
+# results = []
+
+# print('getting results!')
+
+# for i in range(10):
+# 	pos, cms = get_interesting_positions_and_centroids(i * 100 + 10, i * 100 + 20)
+# 	results.append(solve_try_2(pos, cms))
+
+# coefs = []
+# intercepts = []
+# residues = []
+
+
+# for (ctr, res) in enumerate(results):
+# 	print(ctr)
+# 	for i in range(2):
+# 		print(i)
+# 		my_res = res[i]
+# 		print(my_res.coef_)
+# 		print(my_res.intercept_)
+# 		print(my_res.residues_)
+# 		coefs.append(my_res.coef_)
+# 		intercepts.append(my_res.intercept_)
+# 		residues.append(my_res.residues_)
+
+# print coefs
+# print intercepts
+# print residues
+
+test_to_screen(10, 10)
+
 # objects, objects1 = write_weird_images()

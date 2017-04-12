@@ -11,9 +11,10 @@ import cPickle
 DATASET_LOC = '/mnt/fs0/datasets/two_world_dataset/new_dataset.hdf5'
 SECOND_DATASET_LOCS = ['dataset1', 'dataset2', 'dataset3', 'dataset5', 'dataset7']
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs0/datasets/two_world_dataset/hdf5s', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata_objfix'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata_objfix'
-ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view']
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata_newobj'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata_newobj'
+ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'images2', 'normals2', 'objects2', 'actions', 'actions2', 'object_data', 'object_data2', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'is_object_in_view2']
+WRITING_NOW = ['objects', 'objects2', 'actions', 'actions2', 'object_data', 'object_data2', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'is_object_in_view2']
 NEW_HEIGHT = 160
 NEW_WIDTH = 375
 # NEW_HEIGHT = 256
@@ -21,9 +22,13 @@ NEW_WIDTH = 375
 OLD_HEIGHT = 256
 OLD_WIDTH = 600
 
+for k in ATTRIBUTE_NAMES:
+	if k not in WRITING_NOW:
+		print('not writing ' + k)
+
 JOBS_DIVISION = '/mnt/fs0/datasets/two_world_dataset/job_division.p'
 NUM_OBJECTS_EXPLICIT = 11
-datum_shapes = [(NEW_HEIGHT, NEW_WIDTH, 3)] * 6 + [(9,), (NUM_OBJECTS_EXPLICIT, 10), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
+datum_shapes = [(NEW_HEIGHT, NEW_WIDTH, 3)] * 6 + [(9,), (7,), (NUM_OBJECTS_EXPLICIT, 12), (NUM_OBJECTS_EXPLICIT, 12), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
 my_files = [h5py.File(DATASET_LOC, 'r')] + [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
@@ -35,6 +40,22 @@ BATCH_SIZE = 256
 
 all_those_last_names = set()
 name_change_dict = {'LIFT' : 'FAST_LIFT', 'PUSH_ROT_NOSHAKE' : 'PUSH_ROT', 'PUSH_NOSHAKE' : 'LONG_PUSH', 'PUSH_DOWN' : 'DOWN_PUSH', 'FAST_LIFT_PUSH_ROT_NOSHAKE' : 'FAST_LIFT_PUSH_ROT', 'FAST_LIFT_NOSHAKE' : 'FAST_LIFT', 'PUSH_DOWN_NOSHAKE' : 'DOWN_PUSH'}
+
+
+OTHER_CAM_ROT = np.array([[1., 0., 0.], [0., np.cos(np.pi / 6.), np.sin(np.pi / 6.)], [0., - np.sin(np.pi / 6.), np.cos(np.pi / 6.)]])
+OTHER_CAM_POS = np.array([0., .5, 0.])
+IM_HEIGHT = 160.
+IM_WIDTH = 375.
+MY_CM_CENTER = np.array([IM_HEIGHT / 2., IM_WIDTH / 2.])
+MY_F = np.diag([-134., 136.])
+
+def pos_to_screen_pos(pos, f, dist, cm_center):
+	small_pos_array = np.array([pos[1], pos[0]])
+	return np.dot(f, small_pos_array) / (pos[2] + dist) + cm_center
+
+def std_pos_to_screen_pos(pos):
+	return pos_to_screen_pos(pos, MY_F, 0.001, MY_CM_CENTER)
+
 
 def rot_to_quaternion(rot_mat):
 	tr = np.trace(rot_mat)
@@ -63,6 +84,8 @@ def rot_to_quaternion(rot_mat):
 		qy = (rot_mat[1,2] + rot_mat[2,1]) / S
 		qz = .25 * S
 	return np.array([qw, qx, qy, qz])
+
+OTHER_CAM_QUAT = rot_to_quaternion(OTHER_CAM_ROT)
 
 def quat_mult(q1, q2):
 	w1, x1, y1, z1 = q1
@@ -213,7 +236,7 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
 		retval.append(frame_act_ids + get_most_pix_objects(obj_array, frame_observed_objects, max_num_obj = NUM_OBJECTS_EXPLICIT - 1))
 	return retval
 
-def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordinate_transformations):
+def get_object_data(worldinfos, obj_arrays, obj_arrays2, actions, subset_indicators, coordinate_transformations):
 	'''returns num_frames x num_objects x dim_data
 	Object order: object acted on, second most important object, other objects in view ordered by distance, up to 10 objects.
 	Data: id, pose, position, center of mass in image frame
@@ -224,39 +247,69 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
 	ret_list = []
 	is_object_there = []
 	is_object_in_view = []
-	for (frame_obs_objects, obj_array, frame_ids_to_include, (rot_mat, agent_pos)) in zip(observed_objects, obj_arrays, ids_to_include, coordinate_transformations):
+	ret_list2 = []
+	is_object_in_view2 = []
+	for (frame_obs_objects, obj_array, obj_array2, frame_ids_to_include, (rot_mat, agent_pos)) in zip(observed_objects, obj_arrays, obj_arrays2, ids_to_include, coordinate_transformations):
 		q_rot = rot_to_quaternion(rot_mat)
 		centers_of_mass = get_centers_of_mass(obj_array, frame_ids_to_include)
+		centers_of_mass2 = get_centers_of_mass(obj_array2, frame_ids_to_include)
 		frame_data = []
+		frame_data2 = []
 		frame_obj_there_data = []
 		frame_obj_in_view_data = []
+		frame_obj_in_view_data2 = []
 		for idx in frame_ids_to_include:
 			if idx is None:
 				obj_data = [np.array([-1.]).astype(np.float32)]
+				obj_data2 = [np.array([-1.]).astype(np.float32)]
 			else:
 				obj_data = [np.array([idx])]
+				obj_data2 = [np.array([idx])]
 			if idx is None or idx not in frame_obs_objects:
-				obj_data.append(np.zeros(9))
+				obj_data.append(np.zeros(11))
+				obj_data2.append(np.zeros(11))
 				frame_obj_there_data.append(0)
 				frame_obj_in_view_data.append(0)
+				frame_obj_in_view_data2.append(0)
 			else:
 				o = frame_obs_objects[idx]
-				obj_data.append(quat_mult(q_rot, np.array(o[3]))) #pose
-				obj_data.append(transform_to_local(o[2], rot_mat, agent_pos)) #3d position
+				pose = quat_mult(q_rot, np.array(o[3]))
+				obj_data.append(pose) #pose
+				pose2 = quat_mult(OTHER_CAM_QUAT, pose)
+				obj_data2.append(pose2)
+				position = transform_to_local(o[2], rot_mat, agent_pos)
+				position2 = transform_to_local(position, OTHER_CAM_ROT, OTHER_CAM_POS)
+				obj_data.append(position) #3d position
+				obj_data2.append(position2)
+				screen_pos = std_pos_to_screen_pos(position) #screen position
+				screen_pos2 = std_pos_to_screen_pos(position2)
+				obj_data.append(screen_pos)
+				obj_data2.append(screen_pos2)
 				if centers_of_mass[idx] is None:
 					frame_obj_in_view_data.append(0)
 					obj_data.append(np.array([-100, -100.]).astype(np.float32))
 				else:
 					frame_obj_in_view_data.append(1)
 					obj_data.append(np.array(centers_of_mass[idx]))
+				if centers_of_mass2[idx] is None:
+					frame_obj_in_view_data2.append(0)
+					obj_data2.append(np.array([-100, -100.]).astype(np.float32))
+				else:
+					frame_obj_in_view_data2.append(1)
+					obj_data2.append(np.array(centers_of_mass2[idx]))
 				frame_obj_there_data.append(1)
 			obj_data = np.concatenate(obj_data)
+			obj_data2 = np.concatenate(obj_data2)
 			frame_data.append(obj_data)
+			frame_data2.append(obj_data2)
 		is_object_there.append(np.array(frame_obj_there_data).astype(np.int32))
 		is_object_in_view.append(np.array(frame_obj_in_view_data).astype(np.int32))
+		is_object_in_view2.append(np.array(frame_obj_in_view_data2).astype(np.int32))
 		frame_data = np.array(frame_data).astype(np.float32)
+		frame_data2 = np.array(frame_data2).astype(np.float32)
 		ret_list.append(frame_data)
-	return ret_list, is_object_there, is_object_in_view
+		ret_list2.append(frame_data2)
+	return ret_list, is_object_there, is_object_in_view, ret_list2, is_object_in_view2
 				
 	
 
@@ -272,11 +325,14 @@ def get_actions(actions, coordinate_transformations):
 	force, torque, position, id_acted_on (3d position?)
 	'''
 	ret_list = []
+	ret_list2 = []
 	for (act, (rot_mat, agent_pos)) in zip(actions, coordinate_transformations):
 		if 'actions' in act and len(act['actions']) and 'teleport_to' not in act['actions'][0]:
 			act_data = act['actions'][0]
 			force = transform_to_local(act_data['force'], rot_mat)
 			torque = transform_to_local(act_data['torque'], rot_mat)
+			force2 = transform_to_local(force, OTHER_CAM_ROT)
+			torque2 = transform_to_local(torque, OTHER_CAM_ROT)
 			pos = np.array(act_data['action_pos'])
 			if len(pos) != 2:
 				pos = np.array([-100., -100.])
@@ -285,9 +341,11 @@ def get_actions(actions, coordinate_transformations):
 			idx = np.array([float(act_data['id'])])
 			assert len(force) == 3 and len(torque) == 3 and len(pos) == 2 and len(idx) == 1, (len(force), len(torque), len(pos), len(idx))
 			ret_list.append(np.concatenate([force, torque, pos, idx]).astype(np.float32))
+			ret_list2.append(np.concatenate([force2, torque2, idx]).astype(np.float32))
 		else:
 			ret_list.append(np.zeros(9, dtype = np.float32)) 
-	return ret_list
+			ret_list2.append(np.zeros(7, dtype = np.float32))
+	return ret_list, ret_list2
 
 def get_subset_indicators(actions):
 	'''returns num_frames x 4 np array
@@ -424,14 +482,14 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
 	indicators = get_subset_indicators(actions_raw)
 	worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
 	coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
-	actions = get_actions(actions_raw, coordinate_transformations)
-	object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
+	actions, actions2 = get_actions(actions_raw, coordinate_transformations)
+	object_data, is_object_there, is_object_in_view, object_data2, is_object_in_view2 = get_object_data(worldinfos, objects, objects2, actions_raw, indicators, coordinate_transformations)
 	agent_data = get_agent_data(worldinfos)
 	reference_ids = get_reference_ids((file_num, bn))
 	to_ret = {'objects' : objects,
 		'objects2': objects2,
-		'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids,
-		'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view}
+		'actions' : actions, 'actions2' : actions2, 'object_data' : object_data, 'object_data2' : object_data2, 'agent_data' : agent_data, 'reference_ids' : reference_ids,
+		'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'is_object_in_view2' : is_object_in_view2}
 	if with_non_object_images:
 		to_ret.update({'images' : images, 'normals' : normals, 'images2' : images2, 'normals2' : normals2})
 	to_ret.update(indicators)
@@ -445,9 +503,6 @@ def write_stuff(batch_data, writers):
 	start = time.time()
 	for k, writer in writers.iteritems():
 		print(time.time() - start)
-		if k not in batch_data:
-			print('skipping ' + k)
-			continue
 		print('writing ' + k)
 		for i in range(BATCH_SIZE):
 			datum = tf.train.Example(features = tf.train.Features(feature = {k : _bytes_feature(batch_data[k][i].tostring())}))
@@ -496,8 +551,8 @@ def do_write(job_bucket_num, done_fn, all_images = True):
 					write_path = NEW_TFRECORD_TRAIN_LOC
 				else:
 					write_path = NEW_TFRECORD_VAL_LOC
-				output_files = [os.path.join(write_path, attr_name, batch_type + ':' + str(file_count) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
-				writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
+				output_files = [os.path.join(write_path, attr_name, batch_type + ':' + str(file_count) + '.tfrecords') for attr_name in WRITING_NOW]
+				writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) for (attr_name, file_name) in zip(WRITING_NOW, output_files))
 				file_count += 1
 			batch_data_dict = get_batch_data(bn, with_non_object_images = all_images)
 			write_stuff(batch_data_dict, writers)
