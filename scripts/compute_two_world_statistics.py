@@ -10,7 +10,7 @@ from PIL import Image
 BATCH_SIZE = mnt.BATCH_SIZE
 IS_IMAGE = [True, True, True, True, True, True] + [False for _ in range(len(mnt.ATTRIBUTE_NAMES) - 6)]
 IS_IMAGE = dict(x for x in zip(mnt.ATTRIBUTE_NAMES, IS_IMAGE))
-SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics'
+SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics_newobj'
 
 
 def online_mean(X_so_far, X_new, num_seen_so_far):
@@ -59,7 +59,7 @@ def do_calculation(job_num):
 			for bn in types_dict[batch_type]:
 				print('batch num ' + str(bn))
 				print('num seen so far: ' + str(num_seen_so_far))
-				batch_data_dict = mnt.get_batch_data(bn)
+				batch_data_dict = mnt.get_batch_data(bn, with_non_object_images = False)
 				my_feed_dict = dict((my_batch_data[k],batch_data_dict[k]) for k in my_batch_data)
 				my_feed_dict.update(dict((current_results[k][i], results_so_far[k][i]) for k in current_results for i in range(4)))
 				my_feed_dict.update({current_count : num_seen_so_far})
@@ -113,9 +113,9 @@ def write_images_for_job_stats():
 
 
 if __name__ == '__main__':
-#	job_num = int(sys.argv[2])
-#	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-#	do_calculation(job_num)
-	write_images_for_job_stats()
+	job_num = int(sys.argv[2])
+	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+	do_calculation(job_num)
+	# write_images_for_job_stats()
 
 
