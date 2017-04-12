@@ -29,10 +29,10 @@ def update_statistics(mean_so_far, square_so_far, min_so_far, max_so_far, batch_
 	return [mean_res, square_res, min_res, max_res]
 
 
-my_batch_data = dict((k, tf.placeholder(tf.uint8 if IS_IMAGE[k] else tf.float32, [BATCH_SIZE] + list(shp))) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
-current_results = dict((k, [tf.placeholder(tf.float32, shp) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
+my_batch_data = dict((k, tf.placeholder(tf.uint8 if IS_IMAGE[k] else tf.float32, [BATCH_SIZE] + list(shp))) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
+current_results = dict((k, [tf.placeholder(tf.float32, shp) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
 
-initial_results = dict((k, [np.zeros(shp, dtype = np.uint8 if IS_IMAGE[k] else np.float32) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
+initial_results = dict((k, [np.zeros(shp, dtype = np.uint8 if IS_IMAGE[k] else np.float32) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
 current_count = tf.placeholder(tf.int32)
 
 def update_batch_data(so_far_dict, batch_data, num_seen_so_far):
