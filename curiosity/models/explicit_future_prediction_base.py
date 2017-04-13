@@ -39,7 +39,7 @@ class FuturePredictionBaseModel:
     	if objects_to_include is None:
     		#sets only the acted-on object and the biggest other object for object of interest
 	    	centroids = [inputs_not_normed['object_data'][:,:time_seen,obj_num, 8:10] for obj_num in [0,1]]
-	    	poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 5:8] for obj_num in [0,1]]
+	    	poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in [0,1]]
 	    else:
 	    	raise NotImplementedError('Need to make fancier slicing for general case')
 	    	for (centroid, pose) in zip(centroids, poses):
@@ -58,7 +58,10 @@ class FuturePredictionBaseModel:
 	    force = inputs_not_normed['actions'][:, time_seen:, :6]
 	    gaussians.append(self.create_gaussian_channel(time_after_shape, centroid, force))
 
-	    
+	    fut_pose = self.inputs['object_data'][:, time_seen : , 0:2, 1:4]
+	    fut_pos = self.inputs['object_data'][:, time_seen : , 0:2, 8:10]
+	    fut_dat = tf.concat([fut_pose, fut_pos], axis = 3)
+	    fut_dat = tf.reshape(fut_dat, [image_shape[0], -1])
 
 
 
