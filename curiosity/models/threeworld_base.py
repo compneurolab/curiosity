@@ -87,7 +87,7 @@ class ThreeWorldBaseModel:
         self.normalization = normalization
 
         # store reference to not normed inputs for not normed pixel positions
-        inputs_not_normed = inputs
+        self.inputs_raw = inputs
 
         if self.normalization is not None:
             self.inputs = self.normalization.normalize(self.inputs)
@@ -103,7 +103,7 @@ class ThreeWorldBaseModel:
             if 'poses' in self.gaussian:
                 #object blobs
                 gaussians = []
-                centroids = tf.slice(inputs_not_normed['object_data'],\
+                centroids = tf.slice(self.inputs_raw['object_data'],\
                         [0, 0, 0, 8], [-1, -1, -1, 2])
                 centroids = tf.unstack(centroids, axis=2)
                 poses = tf.slice(self.inputs['object_data'],\
@@ -118,7 +118,7 @@ class ThreeWorldBaseModel:
             if 'actions' in self.gaussian:
                 # action blobs
                 gaussians = []
-                centroid = tf.slice(inputs_not_normed['actions'], [0, 0, 6], [-1, -1, 2])
+                centroid = tf.slice(self.inputs_raw['actions'], [0, 0, 6], [-1, -1, 2])
 
                 # TODO centroid scaled here because not done yet
                 #print('\033[91mWARNING: Actions are being scaled!\033[0m')
@@ -203,7 +203,7 @@ def example_model(inputs,
         normalization=None
 
     actions = inputs['actions']
-    net = ThreeWorldBaseModel(inputs, gaussian=gaussian, normalization=normalization);
+    net = ThreeWorldBaseModel(inputs, gaussian=gaussian, normalization=normalization)
     images = net.inputs['images']
     images = tf.cast(images, tf.float32)
 
