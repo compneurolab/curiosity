@@ -37,7 +37,7 @@ GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [14, 32]}
 RANDOM_SKIP = None
 seed = 0
-exp_id = 'test5'
+exp_id = 'test6'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -52,9 +52,17 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     images = inputs['images'][:num_to_save]
     images = tf.cast(images, tf.uint8)
 
+    preds = outputs['rgb'][:num_to_save]
+    preds = tf.nn.softmax(preds)
+    # maximum dimension that tf.argmax can handle is 5, so unstack here
+    preds = tf.unstack(preds)
+    for i, pred in enumerate(preds):
+        preds[i] = tf.argmax(pred, axis=tf.rank(pred) - 1)
+    preds = tf.stack(preds)
+    preds = tf.cast(preds, tf.uint8)
     #actions = outputs['actions'][:num_to_save]
     
-    retval = {'img' : images}
+    retval = {'img': images, 'pred': preds}
     return retval
 
 def keep_all(step_results):
@@ -72,7 +80,7 @@ params = {
         'cache_filters_freq': 2000,
         'save_metrics_freq': 50,
         'save_initial_filters' : False,
-        'save_to_gfs': ['act', 'img'],
+        'save_to_gfs': ['pred', 'img'],
         'cache_dir': CACHE_DIR,
     },
 
