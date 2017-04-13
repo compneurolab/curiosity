@@ -12,6 +12,8 @@ IS_IMAGE = [True, True, True, True, True, True] + [False for _ in range(len(mnt.
 IS_IMAGE = dict(x for x in zip(mnt.ATTRIBUTE_NAMES, IS_IMAGE))
 SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics_newobj'
 
+OLD_SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics'
+
 
 def online_mean(X_so_far, X_new, num_seen_so_far):
 	num_seen_so_far = tf.cast(num_seen_so_far, tf.float32)
@@ -91,12 +93,23 @@ def collate_job_statistics():
 		cPickle.dump(retval, stream)
 	return retval
 
+def merge_with_old_stats():
+	with open(os.path.join(SAVE_DIR, 'stats.p')) as stream:
+		new_stats = cPickle.load(stream)
+	with open(os.path.join(OLD_SAVE_DIR, 'stats.p')) as stream:
+		old_stats = cPickle.load(stream)
+	for k, new_data in new_stats.iteritems():
+		print('updating ' + k)
+		old_stats[k] = new_data
+	with open(os.path.join(OLD_SAVE_DIR, 'stats_updated.p'), 'w') as stream:
+		cPickle.dump(old_stats, stream)
+
 def write_images_for_job_stats():
 	image_save_dir = os.path.join(SAVE_DIR, 'visualization')
 	if not os.path.exists(image_save_dir):
 		os.mkdir(image_save_dir)
 	stat_names = ['mean', 'std', 'min', 'max']
-	with open(os.path.join(SAVE_DIR, 'stats.p')) as stream:
+	with open(os.path.join(OLD_SAVE_DIR, 'stats_updated.p')) as stream:
 		stats = cPickle.load(stream)
 	for attr, should_write in IS_IMAGE.iteritems():
 		if should_write:
@@ -113,9 +126,10 @@ def write_images_for_job_stats():
 
 
 if __name__ == '__main__':
-	job_num = int(sys.argv[2])
-	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-	do_calculation(job_num)
-	# write_images_for_job_stats()
-
+	# job_num = int(sys.argv[2])
+	# os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+	# do_calculation(job_num)
+	collate_job_statistics()
+	merge_with_old_stats()
+	write_images_for_job_stats()
 
