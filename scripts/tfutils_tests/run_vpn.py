@@ -16,7 +16,7 @@ conf = 'cluster'
 if conf is 'cluster':
     BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
-    HOST = 'node1-neuroaicluster'
+    HOST = 'localhost'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
     CACHE_DIR = '/media/data/mrowca/tfutils'
@@ -27,7 +27,7 @@ VALIDATION_DATA_PATH = os.path.join(BASE_DIR, 'new_tfvaldata')
 NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
-OUTPUT_BATCH_SIZE = 16
+OUTPUT_BATCH_SIZE = 32
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -128,7 +128,7 @@ params = {
             'queue_type': 'random',
             'batch_size': OUTPUT_BATCH_SIZE,
             'seed': seed,
-    	    'capacity': None,
+    	    'capacity': 11*INPUT_BATCH_SIZE,
             'min_after_dequeue': 10*INPUT_BATCH_SIZE,
         },
         
@@ -178,7 +178,7 @@ params = {
                 'queue_type': 'random',
                 'batch_size': OUTPUT_BATCH_SIZE,
                 'seed': seed,
-                'capacity': None,
+                'capacity': 11*INPUT_BATCH_SIZE,
                 'min_after_dequeue': 10*INPUT_BATCH_SIZE,
             },
             'targets': {
