@@ -10,7 +10,9 @@ from PIL import Image
 BATCH_SIZE = mnt.BATCH_SIZE
 IS_IMAGE = [True, True, True, True, True, True] + [False for _ in range(len(mnt.ATTRIBUTE_NAMES) - 6)]
 IS_IMAGE = dict(x for x in zip(mnt.ATTRIBUTE_NAMES, IS_IMAGE))
-SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics'
+SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics_newobj'
+
+OLD_SAVE_DIR = '/mnt/fs0/datasets/two_world_dataset/statistics'
 
 
 def online_mean(X_so_far, X_new, num_seen_so_far):
@@ -29,10 +31,10 @@ def update_statistics(mean_so_far, square_so_far, min_so_far, max_so_far, batch_
 	return [mean_res, square_res, min_res, max_res]
 
 
-my_batch_data = dict((k, tf.placeholder(tf.uint8 if IS_IMAGE[k] else tf.float32, [BATCH_SIZE] + list(shp))) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
-current_results = dict((k, [tf.placeholder(tf.float32, shp) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
+my_batch_data = dict((k, tf.placeholder(tf.uint8 if IS_IMAGE[k] else tf.float32, [BATCH_SIZE] + list(shp))) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
+current_results = dict((k, [tf.placeholder(tf.float32, shp) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
 
-initial_results = dict((k, [np.zeros(shp, dtype = np.uint8 if IS_IMAGE[k] else np.float32) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems())
+initial_results = dict((k, [np.zeros(shp, dtype = np.uint8 if IS_IMAGE[k] else np.float32) for _ in range(4)]) for k, shp in mnt.ATTRIBUTE_SHAPES.iteritems() if k in mnt.WRITING_NOW)
 current_count = tf.placeholder(tf.int32)
 
 def update_batch_data(so_far_dict, batch_data, num_seen_so_far):
@@ -59,7 +61,7 @@ def do_calculation(job_num):
 			for bn in types_dict[batch_type]:
 				print('batch num ' + str(bn))
 				print('num seen so far: ' + str(num_seen_so_far))
-				batch_data_dict = mnt.get_batch_data(bn)
+				batch_data_dict = mnt.get_batch_data(bn, with_non_object_images = False)
 				my_feed_dict = dict((my_batch_data[k],batch_data_dict[k]) for k in my_batch_data)
 				my_feed_dict.update(dict((current_results[k][i], results_so_far[k][i]) for k in current_results for i in range(4)))
 				my_feed_dict.update({current_count : num_seen_so_far})
@@ -91,12 +93,23 @@ def collate_job_statistics():
 		cPickle.dump(retval, stream)
 	return retval
 
+def merge_with_old_stats():
+	with open(os.path.join(SAVE_DIR, 'stats.p')) as stream:
+		new_stats = cPickle.load(stream)
+	with open(os.path.join(OLD_SAVE_DIR, 'stats.p')) as stream:
+		old_stats = cPickle.load(stream)
+	for k, new_data in new_stats.iteritems():
+		print('updating ' + k)
+		old_stats[k] = new_data
+	with open(os.path.join(OLD_SAVE_DIR, 'stats_updated.p'), 'w') as stream:
+		cPickle.dump(old_stats, stream)
+
 def write_images_for_job_stats():
 	image_save_dir = os.path.join(SAVE_DIR, 'visualization')
 	if not os.path.exists(image_save_dir):
 		os.mkdir(image_save_dir)
 	stat_names = ['mean', 'std', 'min', 'max']
-	with open(os.path.join(SAVE_DIR, 'stats.p')) as stream:
+	with open(os.path.join(OLD_SAVE_DIR, 'stats_updated.p')) as stream:
 		stats = cPickle.load(stream)
 	for attr, should_write in IS_IMAGE.iteritems():
 		if should_write:
@@ -113,9 +126,10 @@ def write_images_for_job_stats():
 
 
 if __name__ == '__main__':
-#	job_num = int(sys.argv[2])
-#	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-#	do_calculation(job_num)
+	# job_num = int(sys.argv[2])
+	# os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+	# do_calculation(job_num)
+	collate_job_statistics()
+	merge_with_old_stats()
 	write_images_for_job_stats()
-
 
