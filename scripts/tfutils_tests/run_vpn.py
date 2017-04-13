@@ -37,7 +37,7 @@ GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [14, 32]}
 RANDOM_SKIP = None
 seed = 0
-exp_id = 'test4'
+exp_id = 'test5'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -113,7 +113,7 @@ params = {
             #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
             'data_path': DATA_PATH,
             'sources': ['images'],
-            'n_threads': 1,
+            'n_threads': 4,
             'batch_size': INPUT_BATCH_SIZE,
             'delta_time': TIME_DIFFERENCE,
             'sequence_len': SEQUENCE_LENGTH,
@@ -125,11 +125,11 @@ params = {
         },
 
         'queue_params': {
-            'queue_type': 'fifo',
+            'queue_type': 'random',
             'batch_size': OUTPUT_BATCH_SIZE,
-            'seed': 0,
+            'seed': seed,
     	    'capacity': None,
-            'min_after_dequeue': None,
+            'min_after_dequeue': 10*INPUT_BATCH_SIZE,
         },
         
         'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
@@ -164,7 +164,7 @@ params = {
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
                 'sources': ['images'],
-                'n_threads': 1,
+                'n_threads': 4,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
@@ -175,11 +175,11 @@ params = {
                 'resize': RESIZE,
             },
             'queue_params': {
-                'queue_type': 'fifo',
+                'queue_type': 'random',
                 'batch_size': OUTPUT_BATCH_SIZE,
-                'seed': 0,
+                'seed': seed,
                 'capacity': None,
-                'min_after_dequeue': None,
+                'min_after_dequeue': 10*INPUT_BATCH_SIZE,
             },
             'targets': {
                 'func': get_debug_info,
