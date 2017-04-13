@@ -17,6 +17,8 @@ import tfutils.base as b
 import tensorflow as tf
 import json
 from curiosity.data.explicit_positions import PositionPredictionData, RandomParabolaGenerator, SqueezedPositionPrediction
+import tensorflow as tf
+
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
