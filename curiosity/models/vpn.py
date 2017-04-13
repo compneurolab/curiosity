@@ -205,6 +205,7 @@ class VPN(ThreeWorldBaseModel):
             return inputs + h4
 
     def encoder(self, inputs, num_rmb=8, scope='encoder'):
+        print('Encoder: %d RMB layers' % num_rmb)
         with tf.variable_scope(scope) as encode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
@@ -237,6 +238,7 @@ class VPN(ThreeWorldBaseModel):
 
     def decoder(self, inputs, conditioning, \
             out_channels=768, num_rmb=12, scope='decoder'):
+        print('Decoder: %d RMB layers' % num_rmb)
         with tf.variable_scope(scope) as decode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)

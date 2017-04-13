@@ -28,6 +28,7 @@ IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 5
 GAUSSIAN = None #['actions', 'poses']
+RESIZE = {'images': [14, 32]}
 seed = 0
 exp_id = 'test4'
 
@@ -89,6 +90,8 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
+        'encoder_depth': 8,
+        'decoder_depth': 12,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },
 
@@ -111,6 +114,7 @@ params = {
             'filters': ['is_not_teleporting'],
             'gaussian': GAUSSIAN,
             'max_random_skip': 5,
+            'resize': RESIZE,
         },
 
         'queue_params': {
@@ -133,7 +137,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.01,
+        'learning_rate': 0.0003,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -161,6 +165,7 @@ params = {
                 'filters': ['is_not_teleporting'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': 5,
+                'resize': RESIZE,
             },
             'queue_params': {
                 'queue_type': 'fifo',
