@@ -11,14 +11,18 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 
-#cfgfile = os.path.join('/home/mrowca/workspace/', 
-#                       'curiosity/curiosity/configs/action_config2.cfg')
-#cfg = postprocess_config(json.load(open(cfgfile)))
+conf = 'cluster'
 
-DATA_PATH = '/media/data2/new_dataset/new_tfdata'
-VALIDATION_DATA_PATH = '/media/data2/new_dataset/new_tfdata'
-#STATS_FILE = '/media/data/one_world_dataset/dataset_stats.pkl'
-NORM_PATH = '/media/data2/new_dataset/stats.pkl'
+if conf is 'cluster':
+    BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
+    CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
+else:
+    BASE_DIR = '/media/data2/new_dataset/'
+    CACHE_DIR = '/media/data/mrowca/tfutils'
+
+DATA_PATH = os.path.join(BASE_DIR, 'new_tfdata')
+VALIDATION_DATA_PATH = os.path.join(BASE_DIR, 'new_tfvaldata')
+NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
 OUTPUT_BATCH_SIZE = 16
@@ -67,7 +71,7 @@ params = {
         'save_metrics_freq': 50,
         'save_initial_filters' : False,
         'save_to_gfs': ['act', 'img'],
-        'cache_dir': '/media/data/mrowca/tfutils'
+        'cache_dir': CACHE_DIR,
     },
 
     'load_params': {
