@@ -16,9 +16,11 @@ conf = 'cluster'
 if conf is 'cluster':
     BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
+    HOST = 'node1-neuroaicluster'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
     CACHE_DIR = '/media/data/mrowca/tfutils'
+    HOST = 'localhost'
 
 DATA_PATH = os.path.join(BASE_DIR, 'new_tfdata')
 VALIDATION_DATA_PATH = os.path.join(BASE_DIR, 'new_tfvaldata')
@@ -60,8 +62,8 @@ def keep_all(step_results):
 
 params = {
     'save_params' : {
-        'host': 'localhost',
-        'port': 29101,
+        'host': HOST,
+        'port': 27017,
         'dbname': 'tests',
         'collname': 'new_data',
         'exp_id': exp_id,
@@ -75,12 +77,12 @@ params = {
     },
 
     'load_params': {
-        'host': 'localhost',
+        'host': HOST,
         # 'port': 31001,
         # 'dbname': 'alexnet-test'
         # 'collname': 'alexnet',
         # 'exp_id': 'trainval0',
-        'port': 29101,
+        'port': 27017,
         'dbname': 'tests',
         'collname': 'new_data',
         #'exp_id': 'trainval0',
