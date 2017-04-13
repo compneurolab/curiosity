@@ -26,9 +26,10 @@ N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
-SEQUENCE_LENGTH = 5
+SEQUENCE_LENGTH = 10
 GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [14, 32]}
+RANDOM_SKIP = None
 seed = 0
 exp_id = 'test4'
 
@@ -90,8 +91,8 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'encoder_depth': 8,
-        'decoder_depth': 12,
+        'encoder_depth': 4,
+        'decoder_depth': 6,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },
 
@@ -113,7 +114,7 @@ params = {
             'output_format': 'sequence',
             'filters': ['is_not_teleporting'],
             'gaussian': GAUSSIAN,
-            'max_random_skip': 5,
+            'max_random_skip': RANDOM_SKIP,
             'resize': RESIZE,
         },
 
@@ -137,7 +138,7 @@ params = {
 
     'learning_rate_params': {
         'func': tf.train.exponential_decay,
-        'learning_rate': 0.0003,
+        'learning_rate': 0.0001,
         'decay_rate': 0.95,
         'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
         'staircase': True
@@ -145,7 +146,7 @@ params = {
 
     'optimizer_params': {
         'func': optimizer.ClipOptimizer,
-        'optimizer_class': tf.train.MomentumOptimizer,
+        'optimizer_class': tf.train.RMSPropOptimizer,
         'clip': True,
         'momentum': .9
     },
@@ -164,7 +165,7 @@ params = {
                 'output_format': 'sequence',
                 'filters': ['is_not_teleporting'],
                 'gaussian': GAUSSIAN,
-                'max_random_skip': 5,
+                'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,
             },
             'queue_params': {
