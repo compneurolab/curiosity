@@ -101,7 +101,7 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
             data = tf.decode_raw(data, self.meta_dict[source]['rawtype'])
             data = tf.reshape(data, [-1] + self.meta_dict[source]['rawshape'])
         data = self.set_data_shape(data)
-        if source in self.resize:
+        if self.resize is not None and source in self.resize:
             data = tf.image.convert_image_dtype(data, dtype=tf.float32)
             data = tf.image.resize_images(data,
                     self.resize[source], method=tf.image.ResizeMethod.BICUBIC)
