@@ -18,7 +18,7 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
                  output_format='sequence', # 'pairs'
                  filters=None,
                  gaussian=None,
-                 resize_size=None,
+                 resize=None,
                  *args,
                  **kwargs):
 
@@ -33,6 +33,7 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         self.filters = filters
         self.gaussian = gaussian
         self.seed = seed
+        self.resize = resize
         
         assert self.delta_time >= 1,\
                 ("delta time has to be at least 1")

@@ -37,7 +37,7 @@ GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [14, 32]}
 RANDOM_SKIP = None
 seed = 0
-exp_id = 'test6'
+exp_id = 'test7'
 
 rng = np.random.RandomState(seed=seed)
 
