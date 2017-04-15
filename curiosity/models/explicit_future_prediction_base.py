@@ -25,6 +25,9 @@ def create_gaussian_channel(size,
     width = size[2]
     height = size[3]
     channels = size[4]
+    print('center and magnitude')
+    print(center)
+    print(magnitude)
 
     x = tf.range(0, width, 1, dtype=tf.float32)
     x = tf.tile(x, [batch_size * sequence_len])
@@ -75,7 +78,6 @@ class FuturePredictionBaseModel:
                  *args,
                  **kwargs):
         self.inputs = inputs
-        self.gaussian = gaussian
         self.normalization = normalization
 
         # store reference to not normed inputs for not normed pixel positions
@@ -100,38 +102,48 @@ class FuturePredictionBaseModel:
 	    	poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in [0,1]]
         else:
 	    	raise NotImplementedError('Need to make fancier slicing for general case')
-	    	for (centroid, pose) in zip(centroids, poses):
-	    		pose = tf.unstack(pose, axis = 2)
-	    		for pose_val in pose:
-	    			gaussians.append(create_gaussian_channel(time_before_shape, centroid, pose))
+    	
+        for (centroid, pose) in zip(centroids, poses):
+    		pose = tf.unstack(pose, axis = 2)
+    		for pose_val in pose:
+    			gaussians.append(create_gaussian_channel(time_before_shape, centroid, pose_val))
 
-        self.inputs['object_data_seen'] = tf.concat(gaussians, channel = 4)
+        self.inputs['object_data_seen'] = tf.concat(gaussians, axis = 4)
+
 
         gaussians = []
 
 	    # add actions up to the time seen
         centroid = inputs_not_normed['object_data'][:, :time_seen, 0, 8:10]
         force = inputs_not_normed['actions'][:, :time_seen, :6]
-        gaussians.append(create_gaussian_channel(time_before_shape, centroid, force))
+        force = tf.unstack(force, axis = 2)
+        for f in force:
+            gaussians.append(create_gaussian_channel(time_before_shape, centroid, f))
 
-        self.inputs['actions_seen'] = tf.concat(gaussians, channel = 4)
+        self.inputs['actions_seen'] = tf.concat(gaussians, axis = 4)
 
         gaussians = []
-
 	    #add actions after time seen, but in last known position of acted-on object (otherwise this would give it away...)
         last_known_centroid = inputs_not_normed['object_data'][:, time_seen - 1 : time_seen, 0, 8:10]
         centroid = tf.concat([last_known_centroid for _ in range(time_seen, image_shape[1])], axis = 1)
         force = inputs_not_normed['actions'][:, time_seen:, :6]
-        gaussians.append(create_gaussian_channel(time_after_shape, centroid, force))
+        force = tf.unstack(force, axis = 2)
+        for f in force:
+            gaussians.append(create_gaussian_channel(time_after_shape, centroid, f))
 
-        self.inputs['actions_future'] = tf.concat(gaussians, channel = 4)
-
-        fut_pose = self.inputs['object_data'][:, time_seen : , 0:2, 1:4]
+        self.inputs['actions_future'] = tf.concat(gaussians, axis = 4)
+        fut_pose = self.inputs['object_data'][:, time_seen : , 0:2, 1:5]
         fut_pos = self.inputs['object_data'][:, time_seen : , 0:2, 8:10]
         fut_dat = tf.concat([fut_pose, fut_pos], axis = 3)
-        fut_dat = tf.reshape(fut_dat, [image_shape[0], -1])
 
         self.inputs['object_data_future'] = fut_dat
+
+        seen_pose = self.inputs['object_data'][:, : time_seen, 0:2, 1:5]
+        seen_pos = self.inputs['object_data'][:, : time_seen, 0:2, 8:10]
+        seen_dat = tf.concat([fut_pose, fut_pos], axis = 3)
+
+        self.inputs['object_data_seen_1d'] = seen_dat
+
 
 
 
