@@ -107,13 +107,15 @@ def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, **kwargs)
 
 	#hidden
 	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
-	return {'pred' : pred, 'tv' : base_net.inputs['object_data_future']}, m.params
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
 
 def l2_loss(outputs):
 	pred =  outputs['pred']
-	tv = outputs['tv']
+	tv = outputs['object_data_future']
 	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
-	n_entries = tv.get_shape().as_list()[1]
+	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return tf.nn.l2_loss(pred - tv) / n_entries
 
 cfg_simple = {
