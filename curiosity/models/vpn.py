@@ -157,12 +157,13 @@ class VPN(ThreeWorldBaseModel):
                         ('mask must be of shape', W.get_shape().as_list())
                 W *= mask
             elif mask in ['a', 'b']:
+                #TODO move to the same different scope 
                 mask = np.ones(W.get_shape().as_list())
                 mask[kernel_h // 2, kernel_w // 2 + 1:, :, :] = 0.0
                 mask[kernel_h // 2 + 1:, :, :, :] = 0.0
                 if mask is 'a':
                     mask[kernel_h // 2, kernel_w // 2, :, :] = 0.0
-                W *= tf.constant(mask, dtype=tf.float32)
+                W *= mask #tf.constant(mask, dtype=tf.float32)
             elif mask is not None:
                 raise ValueError('mask has to be \'a\', \'b\', Tensor, or None')
             # (masked) convolution
@@ -289,7 +290,6 @@ class VPN(ThreeWorldBaseModel):
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
 def model(inputs,
-        batch_size=256,
         gaussian=None,
         stats_file=None,
         normalization_method=None,
@@ -312,3 +312,84 @@ def softmax_cross_entropy_loss(labels, logits, **kwargs):
     logits = logits['rgb']
     return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits))
+
+def parallel_model(inputs, n_gpus=4, **kwargs):
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        assert n_gpus > 0, ('At least one gpu has to be used')
+        outputs = []
+        params = []
+        inputs['images'] = tf.split(inputs['images'], axis=0, num_or_size_splits=n_gpus)
+        for i, inp in enumerate(inputs['images']):
+            with tf.device('/gpu:%d' % i):
+                with tf.name_scope('gpu_' + str(i)) as gpu_scope:
+                    output, param = model({'images': inp}, **kwargs)
+                    outputs.append(output)
+                    params.append(param)
+                    tf.get_variable_scope().reuse_variables()
+        outputs = dict(zip(outputs[0],zip(*[d.values() for d in outputs])))
+        params = params[0]
+        return [outputs, params]
+
+def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        logits = logits['rgb']
+        n_gpus = len(logits)
+        labels = tf.cast(labels, tf.int32)
+        labels = tf.split(labels, axis=0, num_or_size_splits=n_gpus)
+        losses = []
+        for i, (label, logit) in enumerate(zip(labels, logits)):
+            with tf.device('/gpu:%d' % i):
+                with tf.name_scope('gpu_' + str(i)) as gpu_scope:
+                    label = tf.squeeze(label)
+                    losses.append(
+                        tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                                    labels=label, logits=logit)))
+                    tf.get_variable_scope().reuse_variables()
+        return losses
+
+def parallel_reduce_mean(losses, **kwargs):
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        for i, loss in enumerate(losses):
+            losses[i] = tf.reduce_mean(loss)
+        return losses
+
+class ParallelClipOptimizer(object):
+
+    def __init__(self, optimizer_class, clip=True, *optimizer_args, **optimizer_kwargs):
+        self._optimizer = optimizer_class(*optimizer_args, **optimizer_kwargs)
+        self.clip = clip
+
+    def compute_gradients(self, *args, **kwargs):
+        gvs = self._optimizer.compute_gradients(*args, **kwargs)
+        if self.clip:
+            # gradient clipping. Some gradients returned are 'None' because
+            # no relation between the variable and loss; so we skip those.
+            gvs = [(tf.clip_by_value(grad, -1., 1.), var)
+                   for grad, var in gvs if grad is not None]
+        return gvs
+
+    def minimize(self, losses, global_step):
+        with tf.variable_scope(tf.get_variable_scope()) as vscope:
+            grads_and_vars = []
+            for i, loss in enumerate(losses):
+                with tf.device('/gpu:%d' % i):
+                    with tf.name_scope('gpu_' + str(i)) as gpu_scope:
+                        grads_and_vars.append(self.compute_gradients(loss))
+                        #tf.get_variable_scope().reuse_variables()
+            grads_and_vars = self.average_gradients(grads_and_vars)
+            return self._optimizer.apply_gradients(grads_and_vars,
+                                               global_step=global_step)
+
+    def average_gradients(self, all_grads_and_vars):
+        average_grads_and_vars = []
+        for grads_and_vars in zip(*all_grads_and_vars):
+            grads = []
+            for g, _ in grads_and_vars:
+                grads.append(tf.expand_dims(g, axis=0))
+            grad = tf.concat(grads, axis=0)
+            grad = tf.reduce_mean(grad, axis=0)
+            # all variables are the same so we just use the first gpu variables
+            var = grads_and_vars[0][1]
+            grad_and_var = (grad, var)
+            average_grads_and_vars.append(grad_and_var)
+        return average_grads_and_vars
