@@ -16,8 +16,8 @@ import curiosity.models.twoobject_to_oneobject as modelsource
 
 DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-DATA_BATCH_SIZE = 64
-MODEL_BATCH_SIZE = 64
+DATA_BATCH_SIZE = 32
+MODEL_BATCH_SIZE = 32
 TIME_SEEN = 5
 SEQUENCE_LEN = 10
 CACHE_DIR = '/data/nhaber'
