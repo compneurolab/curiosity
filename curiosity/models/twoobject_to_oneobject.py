@@ -52,7 +52,10 @@ def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights
 			    if no_nonlinearity_end and i == encode_depth:
 			    	m.conv(nf, cfs, cs, activation = None)
 			    else:
-			    	m.conv(nf, cfs, cs, activation='relu')
+			    	my_activation = cfg['encode'][i].get('nonlinearity')
+			    	if my_activation is None:
+			    		my_activation = 'relu'
+			    	m.conv(nf, cfs, cs, activation = my_activation)
 			    print(m.output)
 	#TODO add print function
 			pool = cfg['encode'][i].get('pool')
@@ -87,13 +90,10 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 
 
 
-def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, **kwargs):
-	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen)
-	to_concat_attributes_uint8 = ['normals', 'normals2']
-	to_concat_attributes_float32 = ['object_data_seen', 'actions_seen', 'actions_future']
+def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, **kwargs):
+	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
+	to_concat_attributes_float32 = ['normals', 'normals2', 'object_data_seen', 'actions_seen', 'actions_future']
 	to_concat = []
-	for attr in to_concat_attributes_uint8:
-		to_concat.extend(tf.unstack(tf.cast(base_net.inputs[attr], tf.float32), axis = 1))
 	for attr in to_concat_attributes_float32:
 		to_concat.extend(tf.unstack(base_net.inputs[attr], axis = 1))
 	in_concat = tf.concat(to_concat, axis = 3)
@@ -117,6 +117,24 @@ def l2_loss(outputs):
 	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return tf.nn.l2_loss(pred - tv) / n_entries
+
+def compute_diffs(last_seen_data, future_data):
+	diffed_data_list = []
+	for t in range(future_data.get_shape().as_list()[1]):
+		diffed_data_list.append(future_data[:, t] - last_seen_data)
+		last_seen_data = future_data[:, t]
+	return tf.concat(diffed_data_list, axis = 1)
+
+def l2_diff_loss(outputs):
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	last_seen_dat = seen_dat[:, -1]
+	tv = compute_diffs(last_seen_dat, future_dat)
+	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
+	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
+	return tf.nn.l2_loss(pred - tv) / n_entries
+
 
 cfg_simple = {
 	'encode_depth' : 6,

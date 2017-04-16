@@ -73,23 +73,27 @@ class FuturePredictionBaseModel:
     def __init__(self,
                  inputs,
                  time_seen,
-                 normalization=None,
+                 normalization_method = None,
+                 stats_file = None,
                  objects_to_include = None, 
                  *args,
                  **kwargs):
-        self.inputs = inputs
-        self.normalization = normalization
+        self.inputs = {}
+        self.normalization_method = normalization_method
 
         # store reference to not normed inputs for not normed pixel positions
         inputs_not_normed = inputs
 
-        if self.normalization is not None:
-            self.inputs = self.normalization.normalize(self.inputs)
+        if self.normalization_method is not None:
+            assert stats_file is not None
+            normalization = tb.Normalizer(stats_file, normalization_method)
+            normed_inputs = normalization.normalize(self.inputs)
 
         #requiring that normals is in the data
-        image_shape = self.inputs['normals'].get_shape().as_list()
+        image_shape = inputs_not_normed['normals'].get_shape().as_list()
         gaussians = []
 
+        #er could shallow copy here...
         time_before_shape = copy.deepcopy(image_shape)
         time_before_shape[1] = time_seen
         time_after_shape = copy.deepcopy(image_shape)
@@ -99,7 +103,8 @@ class FuturePredictionBaseModel:
     	if objects_to_include is None:
     		#sets only the acted-on object and the biggest other object for object of interest
 	    	centroids = [inputs_not_normed['object_data'][:,:time_seen,obj_num, 8:10] for obj_num in [0,1]]
-	    	poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in [0,1]]
+	    	#Normalize?
+            poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in [0,1]]
         else:
 	    	raise NotImplementedError('Need to make fancier slicing for general case')
     	
@@ -115,7 +120,8 @@ class FuturePredictionBaseModel:
 
 	    # add actions up to the time seen
         centroid = inputs_not_normed['object_data'][:, :time_seen, 0, 8:10]
-        force = inputs_not_normed['actions'][:, :time_seen, :6]
+        #normalize!
+        force = normed_inputs['actions'][:, :time_seen, :6]
         force = tf.unstack(force, axis = 2)
         for f in force:
             gaussians.append(create_gaussian_channel(time_before_shape, centroid, f))
@@ -126,24 +132,29 @@ class FuturePredictionBaseModel:
 	    #add actions after time seen, but in last known position of acted-on object (otherwise this would give it away...)
         last_known_centroid = inputs_not_normed['object_data'][:, time_seen - 1 : time_seen, 0, 8:10]
         centroid = tf.concat([last_known_centroid for _ in range(time_seen, image_shape[1])], axis = 1)
-        force = inputs_not_normed['actions'][:, time_seen:, :6]
+        force = normed_inputs['actions'][:, time_seen:, :6]
         force = tf.unstack(force, axis = 2)
         for f in force:
             gaussians.append(create_gaussian_channel(time_after_shape, centroid, f))
 
         self.inputs['actions_future'] = tf.concat(gaussians, axis = 4)
-        fut_pose = self.inputs['object_data'][:, time_seen : , 0:2, 1:5]
-        fut_pos = self.inputs['object_data'][:, time_seen : , 0:2, 8:10]
+        #normalize?
+        fut_pose = inputs_not_normed['object_data'][:, time_seen : , 0:2, 1:5]
+        #normalize! use std method
+        fut_pos = normed_inputs['object_data'][:, time_seen : , 0:2, 8:10]
         fut_dat = tf.concat([fut_pose, fut_pos], axis = 3)
 
         self.inputs['object_data_future'] = fut_dat
 
-        seen_pose = self.inputs['object_data'][:, : time_seen, 0:2, 1:5]
-        seen_pos = self.inputs['object_data'][:, : time_seen, 0:2, 8:10]
-        seen_dat = tf.concat([fut_pose, fut_pos], axis = 3)
+        seen_pose = inputs_not_normed['object_data'][:, : time_seen, 0:2, 1:5] 
+        seen_pos = normed_inputs['object_data'][:, : time_seen, 0:2, 8:10]
+        seen_dat = tf.concat([fut_pose, fut_pos], axis = 3) #BATCH_SIZE x time_seen x 2 x 6
 
         self.inputs['object_data_seen_1d'] = seen_dat
 
+        #forces us to not manually normalize, should be reasonable, makes for easier viz.
+        self.inputs['normals'] = tf.cast(inputs_not_normed['normals'], tf.float32) / 255.
+        self.inputs['normals2'] = tf.cast(inputs_not_normed['normals2'], tf.float32) / 255.
 
 
 
