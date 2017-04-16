@@ -22,6 +22,7 @@ TIME_SEEN = 5
 SEQUENCE_LEN = 10
 CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
+STATS_FILE = 'mnt/fs0/datasets/two_world_dataset/statistics/stats_merged.p'
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -79,6 +80,8 @@ params = {
 		'func' : modelsource.simple_conv_to_mlp_structure,
 		'cfg' : modelsource.cfg_simple,
 		'time_seen' : TIME_SEEN,
+		'normalization_method' : {'object_data' : 'standard', 'actions' : 'standard'},
+		'stats_file' : STATS_FILE
 	},
 
 	'train_params' : {
