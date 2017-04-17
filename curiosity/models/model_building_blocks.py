@@ -76,17 +76,30 @@ class ConvNetwithBypasses(ConvNet):
 	def activation(self, kind='relu', in_layer=None):
 		if in_layer is None:
 			in_layer = self.output
-		if kind == 'relu':
-			out = tf.nn.relu(in_layer, name='relu')
-		elif kind == 'tanh':
-			out = tf.tanh(in_layer, name = 'tanh')
-		elif kind == 'concat_square':
-			print('using concat square')
-			out = tf.concat(1, [in_layer, in_layer * in_layer])
-		else:
-			raise ValueError("Activation '{}' not defined".format(kind))
-		self.output = out
-		return out
+		last_axis = len(in_layer.get_shape().as_list()) - 1
+		if type(kind) != list:
+			kind = [kind]
+		for_out = []
+		for k in kind:
+			if k == 'relu':
+				for_out.append(tf.nn.relu(in_layer, name='relu'))
+			elif k == 'tanh':
+				for_out.append(tf.tanh(in_layer, name = 'tanh'))
+			elif k == 'concat_square':
+				for_out.append(tf.concat(last_axis, [in_layer, in_layer * in_layer]))
+			elif k == 'square':
+				for_out.append(in_layer * in_layer)
+			elif k == 'safe_square':
+				my_tanh = tf.tanh(in_layer)
+				for_out.append(my_tanh * my_tanh)
+			elif k == 'neg_relu':
+				for_out.append(tf.nn.relu(-in_layer, name = 'neg_relu'))
+			elif k == 'identity':
+				for_out.append(in_layer)
+			else:
+				raise ValueError("Activation '{}' not defined".format(k))
+		self.output = tf.concat(for_out, axis = last_axis)
+		return self.output
 
         @tf.contrib.framework.add_arg_scope
         def fc(self,
