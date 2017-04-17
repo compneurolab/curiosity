@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import copy
 from tensorflow.contrib.rnn import LSTMStateTuple
 from tensorflow.python.framework.ops import Tensor
 
@@ -156,14 +157,19 @@ class VPN(ThreeWorldBaseModel):
                 assert mask.get_shape().as_list() == W.get_shape().as_list(), \
                         ('mask must be of shape', W.get_shape().as_list())
                 W *= mask
+            elif isinstance(mask, np.ndarray):
+                assert list(mask.shape) == W.get_shape().as_list(), \
+                        ('mask must be of shape', W.get_shape().as_list())
+                W *= mask
             elif mask in ['a', 'b']:
-                #TODO move to the same different scope 
+                # Use only for testing as this is not memory efficient
+                # rather create your own mask and reuse it for multiple mus
                 mask = np.ones(W.get_shape().as_list())
                 mask[kernel_h // 2, kernel_w // 2 + 1:, :, :] = 0.0
                 mask[kernel_h // 2 + 1:, :, :, :] = 0.0
                 if mask is 'a':
                     mask[kernel_h // 2, kernel_w // 2, :, :] = 0.0
-                W *= mask #tf.constant(mask, dtype=tf.float32)
+                W *= mask
             elif mask is not None:
                 raise ValueError('mask has to be \'a\', \'b\', Tensor, or None')
             # (masked) convolution
@@ -245,8 +251,20 @@ class VPN(ThreeWorldBaseModel):
             inputs = tf.unstack(inputs, axis=1)
             conditioning = tf.unstack(conditioning, axis=1)
             # construct masking sequence
+            mu_kernel_h = 3
+            mu_kernel_w = 3
+            mu_in_channels = 128
+            mu_out_channels = 128
+            maskB = np.ones([mu_kernel_h, mu_kernel_w, 
+                mu_in_channels, mu_out_channels*4])
+            maskB[mu_kernel_h // 2, mu_kernel_w // 2 + 1:, :, :] = 0.0
+            maskB[mu_kernel_h // 2 + 1:, :, :, :] = 0.0
+            maskA = copy.deepcopy(maskB)
+            maskA[mu_kernel_h // 2, mu_kernel_w // 2, :, :] = 0.0
+            maskA = tf.constant(maskA, dtype=tf.float32)
+            maskB = tf.constant(maskB, dtype=tf.float32)
             # first rmb has mask 'a', subsequent rmbs have mask 'b'
-            masks = ['a'] + ['b'] * (num_rmb - 1)
+            masks = [maskA] + [maskB] * (num_rmb - 1)
             outputs = []
             for i, inp in enumerate(inputs):
                 W_in = self.new_variable('W_in', [1, 1, 3, 256])

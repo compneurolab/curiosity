@@ -37,10 +37,10 @@ SEQUENCE_LENGTH = 10
 GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [28, 64]}
 RANDOM_SKIP = None
-USE_VALIDATION = False
+USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test9'
+exp_id = 'test10'
 
 rng = np.random.RandomState(seed=seed)
 
