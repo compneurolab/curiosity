@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import copy
+from tqdm import trange
 from tensorflow.contrib.rnn import LSTMStateTuple
 from tensorflow.python.framework.ops import Tensor
 
@@ -218,13 +219,17 @@ class VPN(ThreeWorldBaseModel):
         with tf.variable_scope(scope) as encode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
-            if conditioning:
+            if isinstance(conditioning, Tensor):
                 conditioning = tf.unstack(conditioning, axis=1)
                 assert len(conditioning) == len(inputs)
             for i, inp in enumerate(inputs):
                 for r in range(num_rmb):
-                    inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                            conditioning = [conditioning[i]])
+                    if conditioning:
+                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                conditioning = [conditioning[i]])
+                    else:
+                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                conditioning = [])
                 # share variables across frames
                 encode_scope.reuse_variables()
         return tf.stack(inputs, axis=1)
@@ -250,15 +255,16 @@ class VPN(ThreeWorldBaseModel):
         for inp in inputs:
             output, self.lstm_state = self.conv_lstm_cell(inp, self.lstm_state)
             self.lstm_outputs.append(tf.expand_dims(output, axis = 1))
-        return tf.concat(self.outputs, axis = 1)
+        return tf.concat(self.lstm_outputs, axis = 1)
 
-    def decoder(self, inputs, conditioning, \
-            out_channels=768, num_rmb=12, scope='decoder'):
-        print('Decoder: %d RMB layers' % num_rmb)
+    def decoder(self, inputs, conditioning, condition_first_image=False, \
+            out_channels=768, num_rmb=12, scope='decoder', disable_print=False):
+        if not disable_print:
+            print('Decoder: %d RMB layers' % num_rmb)
         with tf.variable_scope(scope) as decode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
-            if conditioning:
+            if isinstance(conditioning, Tensor):
                 conditioning = tf.unstack(conditioning, axis=1)
             # construct masking sequence
             mu_kernel_h = 3
@@ -284,7 +290,7 @@ class VPN(ThreeWorldBaseModel):
                     if i == 0:
                         inp = self.rmb(inp, scope = 'rmb' + str(r), \
                                 conditioning = [conditioning[i]],
-                                use_conditioning = False,
+                                use_conditioning = condition_first_image,
                                 mask=mask)
                     # subesequent frames condition on previous time steps
                     else:
@@ -299,24 +305,94 @@ class VPN(ThreeWorldBaseModel):
             outputs = tf.stack(outputs, axis=1)
         return outputs
 
+    def reshape_rgb(self, inputs, out_channels):
+        # reshape to [batch_size, time_step, height, width, n_channels, intensities]
+        rgb_shape = inputs.get_shape().as_list()
+        rgb_shape[-1] = out_channels / 256
+        rgb_shape.append(256)
+        return tf.reshape(inputs, rgb_shape)
+
+
+    def get_intensities(self, inputs):
+        inputs = tf.nn.softmax(inputs)
+        inputs = tf.unstack(inputs)
+        for i, inp in enumerate(inputs):
+            shape = inp.get_shape().as_list()
+            inputs[i] = tf.cast(tf.argmax(inp, axis=tf.rank(inp)-1), dtype=tf.uint8)
+            inputs[i].set_shape(shape[0:-1])
+            inputs[i] = tf.image.convert_image_dtype(inputs[i], dtype=tf.float32)
+        inputs = tf.stack(inputs)
+        return inputs
+
     def train(self, encoder_depth=8, decoder_depth=12, out_channels=768):
         images = self.inputs['images']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
-        encoded_inputs = self.encoder(images, conditioning = [], num_rmb=encoder_depth)
+        encoded_inputs = self.encoder(images, conditioning=[], num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
-        rgb = self.decoder(images, conditioning = lstm_out, num_rmb=decoder_depth, 
+        rgb = self.decoder(images, conditioning=lstm_out, num_rmb=decoder_depth, 
                 out_channels=out_channels)
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
-        rgb_shape = rgb.get_shape().as_list()
-        rgb_shape[-1] = out_channels / 256
-        rgb_shape.append(256)
-        rgb = tf.reshape(rgb, rgb_shape)
+        rgb = self.reshape_rgb(rgb, out_channels)
         return [{'rgb': rgb}, 
+                {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
+
+    def test(self, encoder_depth=8, decoder_depth=12, out_channels=768, num_context=2):
+        tf.get_variable_scope().reuse_variables()
+        images = self.inputs['images']
+        # convert images to float32 between [0,1) if not normalized
+        if self.normalization is None:
+            images = tf.image.convert_image_dtype(images, dtype=tf.float32)
+        # only use the first num_context images as context and predict the rest
+        images = tf.unstack(images, axis=1)
+        context_images = []
+        for i in range(num_context):
+            context_images.append(images.pop(0))
+        context_images = tf.stack(context_images, axis=1)
+        images_to_predict = images
+        # encode initial context
+        context = self.encoder(context_images, 
+                conditioning=[], num_rmb=encoder_depth)
+        lstm_out = self.lstm(context)
+        rgb = self.decoder(context_images, conditioning=lstm_out,
+                num_rmb=decoder_depth, out_channels=out_channels)
+        rgb = self.reshape_rgb(rgb, out_channels)
+        predicted_images = self.get_intensities(rgb)
+        predicted_images = tf.unstack(predicted_images, axis=1)
+        # recursively predict image and feed back into encoder and lstm
+        for i, inp in enumerate(images_to_predict):
+            # empty image
+            inp_shape = inp.get_shape().as_list()
+            image = tf.zeros(inp.get_shape().as_list(), dtype=tf.float32)
+            image = tf.expand_dims(image, axis=1)
+            cond = tf.expand_dims(tf.unstack(lstm_out, axis=1)[-1], axis=1)
+            # sequentially decode
+            print('Unrolling pixel by pixel:')
+            for i in trange(inp_shape[-3], desc='height'):
+                for j in trange(inp_shape[-2], desc='width'):
+                    for k in xrange(inp_shape[-1]): # channel
+                        rgb = self.decoder(image, \
+                                conditioning=cond, \
+                                condition_first_image=True, \
+                                num_rmb=decoder_depth, \
+                                out_channels=out_channels,
+                                disable_print=True)
+                        rgb = self.reshape_rgb(rgb, out_channels)
+                        predicted_image = self.get_intensities(rgb)
+                        #image[:, i, j, k] = predicted_image[:, i, j, k] #TODO sess.run to avoid unrolling
+                        image = predicted_image
+            # use predicted image as context for subsequent images
+            context = self.encoder(image, 
+                    conditioning=[], num_rmb=encoder_depth)
+            lstm_out = self.lstm(context)
+            predicted_images.append(tf.squeeze(image))
+
+        predicted_images = tf.stack(predicted_images, axis=1)
+        return [{'predicted': predicted_images}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
 def model(inputs,
@@ -325,6 +401,8 @@ def model(inputs,
         normalization_method=None,
         encoder_depth=8,
         decoder_depth=12,
+        num_context=2,
+        train=True,
         **kwargs):
 
     if normalization_method is not None:
@@ -335,7 +413,12 @@ def model(inputs,
         normalization=None
 
     net = VPN(inputs, gaussian=gaussian, normalization=normalization)
-    return net.train(encoder_depth, decoder_depth)
+    if train:
+        return net.train(encoder_depth, decoder_depth)
+    else:
+        return net.train(encoder_depth, decoder_depth)
+        # TODO do not unroll over all pixels
+        #return net.test(encoder_depth, decoder_depth, num_context=num_context)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
     labels = tf.cast(labels, tf.int32)

@@ -38,6 +38,7 @@ GAUSSIAN = None #['actions', 'poses']
 RESIZE = {'images': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
+DO_TRAIN = True
 
 seed = 0
 exp_id = 'test10'
@@ -55,18 +56,25 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     images = inputs['images'][:num_to_save]
     images = tf.cast(images, tf.uint8)
 
-    preds = outputs['rgb'][:num_to_save]
-    preds = tf.nn.softmax(preds)
-    # maximum dimension that tf.argmax can handle is 5, so unstack here
-    shape = preds.get_shape().as_list()
-    preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
-    preds = tf.unstack(preds)
-    for i, pred in enumerate(preds):
-        preds[i] = tf.argmax(pred, axis=tf.rank(pred) - 1)
-    preds = tf.stack(preds)
-    preds = tf.cast(preds, tf.uint8)
-    #actions = outputs['actions'][:num_to_save]
-    
+    if DO_TRAIN:
+        preds = outputs['rgb'][:num_to_save]
+        preds = tf.stack(preds)
+        preds = tf.nn.softmax(preds)
+        # maximum dimension that tf.argmax can handle is 5, so unstack here
+        shape = preds.get_shape().as_list()
+        preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
+        preds = tf.unstack(preds)
+        for i, pred in enumerate(preds):
+            preds[i] = tf.argmax(pred, axis=tf.rank(pred) - 1)
+        preds = tf.stack(preds)
+        preds = tf.cast(preds, tf.uint8)
+        #actions = outputs['actions'][:num_to_save]
+    else:
+        preds = outputs['predicted'][:num_to_save]
+        preds = tf.stack(preds)
+        shape = preds.get_shape().as_list()
+        preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
+        preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
     retval = {'img': images, 'pred': preds}
     return retval
 
