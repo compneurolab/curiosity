@@ -75,7 +75,9 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
         shape = preds.get_shape().as_list()
         preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
         preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
-    retval = {'img': images, 'pred': preds}
+    retval = {'img': images, 'pred': preds,
+            'decode': outputs['decode'], 'encode': outputs['encode'],
+            'run_lstm': outputs['run_lstm']}
     return retval
 
 def keep_all(step_results):
@@ -173,5 +175,6 @@ if __name__ == '__main__':
     threads = tf.train.start_queue_runners(coord=coord, sess=sess)
     for i in xrange(valid_targets_dict['valid0']['num_steps']):
         # get images
-        res = sess.run(valid_targets_dict['valid0']['targets']['img'])
-    print(res.shape)
+        images = sess.run(valid_targets_dict['valid0']['targets']['img'])
+
+    print(images.shape)

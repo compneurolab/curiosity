@@ -218,8 +218,8 @@ class VPN(ThreeWorldBaseModel):
         print('Encoder: %d RMB layers' % num_rmb)
         inputs = self.ph_enc_inp = tf.placeholder_with_default(inputs, 
                 inputs.get_shape().as_list(), 'enc_inp')
-        conditioning = self.ph_enc_cond = tf.placeholder_with_default(conditioning, 
-                inputs.get_shape().as_list()[0:-1] + [256], 'enc_cond')
+        #conditioning = self.ph_enc_cond = tf.placeholder_with_default(conditioning, 
+        #        inputs.get_shape().as_list()[0:-1] + [256], 'enc_cond')
         with tf.variable_scope(scope) as encode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
@@ -351,8 +351,25 @@ class VPN(ThreeWorldBaseModel):
         return [{'rgb': rgb}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
-    #def test(self, encoder_depth=8, decoder_depth=12,
-    #        out_channels=768, num_context=2):
+    def test(self, encoder_depth=8, decoder_depth=12,
+            out_channels=768, num_context=2):
+        # convert images to float32 between [0,1) if not normalized
+        if self.normalization is None:
+            images = tf.image.convert_image_dtype(images, dtype=tf.float32)
+        # encode
+        encoded_inputs = self.encoder(images, conditioning=[], num_rmb=encoder_depth)
+        # run lstm
+        lstm_out = self.lstm(encoded_inputs)
+        # decode
+        rgb = self.decoder(images, conditioning=lstm_out, num_rmb=decoder_depth,
+                out_channels=out_channels)
+        # reshape to [batch_size, time_step, height, width, n_channels, intensities]
+        rgb = self.reshape_rgb(rgb, out_channels)
+        # get intensities
+        predicted_images = self.get_intensities(rgb)
+        return [{'decode': predicted_images, 'run_lstm': lstm_out, 
+            'encode': encoded_inputs, 'rgb': rgb},
+            {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
@@ -430,9 +447,7 @@ def model(inputs,
     if train:
         return net.train(encoder_depth, decoder_depth)
     else:
-        return net.train(encoder_depth, decoder_depth)
-        # TODO do not unroll over all pixels
-        #return net.test(encoder_depth, decoder_depth, num_context=num_context)
+        return net.test(encoder_depth, decoder_depth)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
     labels = tf.cast(labels, tf.int32)
