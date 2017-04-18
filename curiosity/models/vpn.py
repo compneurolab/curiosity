@@ -216,6 +216,10 @@ class VPN(ThreeWorldBaseModel):
 
     def encoder(self, inputs, conditioning, num_rmb=8, scope='encoder'):
         print('Encoder: %d RMB layers' % num_rmb)
+        inputs = self.ph_enc_inp = tf.placeholder_with_default(inputs, 
+                inputs.get_shape().as_list(), 'enc_inp')
+        conditioning = self.ph_enc_cond = tf.placeholder_with_default(conditioning, 
+                inputs.get_shape().as_list()[0:-1] + [256], 'enc_cond')
         with tf.variable_scope(scope) as encode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
@@ -243,6 +247,8 @@ class VPN(ThreeWorldBaseModel):
             #        dtype=tf.float32,
             #        initial_state=None,
             #        scope='ConvLSTM')
+        inputs = self.ph_lstm_inp = tf.placeholder_with_default(inputs, 
+                inputs.get_shape().as_list(), 'lstm_inp')
         inputs = tf.unstack(inputs, axis=1)
         assert len(inputs) > 0, ('input_len = ' + len(inputs) + '< 0')
         # Convolutional LSTM over time
@@ -261,6 +267,10 @@ class VPN(ThreeWorldBaseModel):
             out_channels=768, num_rmb=12, scope='decoder', disable_print=False):
         if not disable_print:
             print('Decoder: %d RMB layers' % num_rmb)
+        inputs = self.ph_dec_inp = tf.placeholder_with_default(inputs, 
+                inputs.get_shape().as_list(), 'dec_inp')
+        conditioning = self.ph_dec_cond = tf.placeholder_with_default(conditioning, 
+                inputs.get_shape().as_list()[0:-1] + [256], 'dec_cond')
         with tf.variable_scope(scope) as decode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
@@ -341,7 +351,11 @@ class VPN(ThreeWorldBaseModel):
         return [{'rgb': rgb}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
-    def test(self, encoder_depth=8, decoder_depth=12, out_channels=768, num_context=2):
+    #def test(self, encoder_depth=8, decoder_depth=12,
+    #        out_channels=768, num_context=2):
+
+    def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
+            out_channels=768, num_context=2):
         tf.get_variable_scope().reuse_variables()
         images = self.inputs['images']
         # convert images to float32 between [0,1) if not normalized
