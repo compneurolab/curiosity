@@ -42,7 +42,7 @@ def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights
 
 
 
-			with tf.contrib.framework.arg_scope([m.conv], init='trunc_norm', stddev=.01, bias=0, batch_normalize = norm_it):
+			with tf.contrib.framework.arg_scope([m.conv], init='xavier', stddev=.01, bias=0, batch_normalize = norm_it):
 			    cfs = cfg['encode'][i]['conv']['filter_size']
 			    cfs0 = cfs
 			    nf = cfg['encode'][i]['conv']['num_filters']
@@ -83,12 +83,31 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 				bypass_node = nodes_for_bypass[bypass]
 				m.add_bypass(bypass_node)
 			nf = cfg['hidden'][i]['num_features']
-			m.fc(nf, init = 'trunc_norm', activation = activation, bias = .01, stddev = stddev, dropout = None)
+			my_activation = cfg['hidden'][i].get('activation')
+			if my_activation is None:
+				my_activation = activation
+			m.fc(nf, init = 'trunc_norm', activation = my_activation, bias = .01, stddev = stddev, dropout = None)
 			nodes_for_bypass.append(m.output)
 			print(m.output)
 	return m.output
 
 
+def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, **kwargs):
+	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file, add_gaussians = add_gaussians)
+	m = ConvNetwithBypasses(**kwargs)
+	in_node = base_net.inputs['object_data_seen_1d']
+	in_shape = in_node.get_shape().as_list()
+	m.output = in_node
+	in_node = m.reshape([np.prod(in_shape[1:])])
+	act_node = base_net.inputs['actions_no_pos']
+	act_shape = act_node.get_shape().as_list()
+	m.output = act_node
+	act_node = m.reshape([np.prod(act_shape[1:])])
+	m.output = tf.concat([in_node, act_node], axis = 1)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
 
 def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, **kwargs):
 	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
@@ -121,20 +140,33 @@ def l2_loss(outputs):
 def compute_diffs(last_seen_data, future_data):
 	diffed_data_list = []
 	for t in range(future_data.get_shape().as_list()[1]):
-		diffed_data_list.append(future_data[:, t] - last_seen_data)
-		last_seen_data = future_data[:, t]
+		diffed_data_list.append(future_data[:, t:t+1] - last_seen_data)
+		last_seen_data = future_data[:, t:t+1]
+	print(diffed_data_list)
 	return tf.concat(diffed_data_list, axis = 1)
 
 def l2_diff_loss(outputs):
 	pred = outputs['pred']
 	future_dat = outputs['object_data_future']
 	seen_dat = outputs['object_data_seen_1d']
-	last_seen_dat = seen_dat[:, -1]
+	last_seen_dat = seen_dat[:, -1:]
 	tv = compute_diffs(last_seen_dat, future_dat)
 	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
-	return tf.nn.l2_loss(pred - tv) / n_entries
+	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
 
+def l2_diff_loss_just_positions(outputs):
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	last_seen_dat = seen_dat[:, -1:]
+	tv = compute_diffs(last_seen_dat, future_dat)
+	print('tv shape!')
+	print(tv.get_shape().as_list())
+	tv = tv[:, :, :, 4:]
+	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
+	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
+	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
 
 cfg_simple = {
 	'encode_depth' : 6,
@@ -153,6 +185,88 @@ cfg_simple = {
 		2 : {'num_features' : 60} #2 points * 5 timesteps * (2 + 4) dimension
 	}
 }
+
+cfg_2 = {
+	'encode_depth' : 7,
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 32}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 32}},
+		3 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 32}},
+		4 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 16}},
+		5 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 16}},
+		6 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 16}},
+		7 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 16}}
+	},
+
+	'hidden_depth' : 2,
+	'hidden' : {
+		1 : {'num_features' : 70},
+		2 : {'num_features' : 60, 'activation' : 'identity'} #2 points * 5 timesteps * (2 + 4) dimension
+	}
+}
+
+cfg_mlp = {
+	'hidden_depth' : 2,
+	'hidden' : {
+		1 : {'num_features' : 70},
+		2 : {'num_features' : 60, 'activation' : 'identity'}
+	}
+}
+
+cfg_mlp_med = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 160},
+		2 : {'num_features' : 160},
+		3 : {'num_features' : 60, 'activation' : 'identity'}
+	}
+}
+
+cfg_mlp_wide = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 300},
+		2 : {'num_features' : 300},
+		3 : {'num_features' : 60, 'activation' : 'identity'}
+	}
+}
+
+cfg_mlp_interesting_nonlinearities = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 100, 'activation' : ['square', 'identity', 'relu']},
+		2 : {'num_features' : 100, 'activation' : ['square', 'identity', 'relu']},
+		3 : {'num_features' : 60, 'activation' : 'identity'}
+	}
+}
+
+cfg_mlp_med_just_positions = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 160},
+		2 : {'num_features' : 160},
+		3 : {'num_features' : 20, 'activation' : 'identity'}
+	}	
+}
+
+cfg_mlp_interesting_nonlinearities_just_positions = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 100, 'activation' : ['square', 'identity', 'relu']},
+		2 : {'num_features' : 100, 'activation' : ['square', 'identity', 'relu']},
+		3 : {'num_features' : 20, 'activation' : 'identity'}
+	}
+}
+
+cfg_mlp_wide_just_positions = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 300},
+		2 : {'num_features' : 300},
+		3 : {'num_features' : 20, 'activation' : 'identity'}
+	}
+}
+
 
 
 

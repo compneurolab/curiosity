@@ -1,6 +1,7 @@
 '''
-Simple 2object_to_1object training main.
+1-d to 1-d paired down further to get the batch sizes up.
 '''
+
 
 import numpy as np
 import os
@@ -16,8 +17,8 @@ import curiosity.models.twoobject_to_oneobject as modelsource
 
 DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-DATA_BATCH_SIZE = 32
-MODEL_BATCH_SIZE = 32
+DATA_BATCH_SIZE = 256
+MODEL_BATCH_SIZE = 256
 TIME_SEEN = 5
 SEQUENCE_LEN = 10
 CACHE_DIR = '/data/nhaber'
@@ -48,7 +49,7 @@ def mean_losses_subselect_rest(val_res, skip_num):
 	return retval
 
 
-SAVE_TO_GFS = ['normals', 'normals2', 'object_data_seen', 'object_data_future', 'pred', 'actions_seen', 'actions_future', 'object_data_seen_1d', 'reference_ids']
+SAVE_TO_GFS = ['normals', 'normals2', 'object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids']
 
 def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	retval = {}
@@ -58,7 +59,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.l2_loss(outputs)
+	retval['loss'] = modelsource.l2_diff_loss_just_positions(outputs)
 	return retval
 
 
@@ -83,7 +84,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'sn_1e-5',
+		'exp_id' : 'pd_morerand_lr1-3',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -93,11 +94,12 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.simple_conv_to_mlp_structure,
-		'cfg' : modelsource.cfg_2,
+		'func' : modelsource.just_1d_stuff,
+		'cfg' : modelsource.cfg_mlp_med_just_positions,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
-		'stats_file' : STATS_FILE
+		'stats_file' : STATS_FILE,
+		'add_gaussians' : False
 	},
 
 	'train_params' : {
@@ -118,7 +120,7 @@ params = {
 			'queue_type' : 'random',
 			'batch_size' : MODEL_BATCH_SIZE,
 			'seed' : 0,
-			'capacity' : MODEL_BATCH_SIZE * 14 #TODO change!
+			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
 		},
 
 		'num_steps' : float('inf'),
@@ -129,14 +131,14 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.l2_diff_loss,
+		'loss_per_case_func' : modelsource.l2_diff_loss_just_positions,
 		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 
 	'learning_rate_params': {
 		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-5,
+		'learning_rate': 1e-4,
 		'decay_rate': 0.95,
 		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
 		'staircase': True
@@ -159,7 +161,7 @@ params = {
 				'sequence_len' : SEQUENCE_LEN,
 				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,
-				'shuffle_seed' : 0,
+				'shuffle_seed' : 10,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE			
 			},
@@ -168,7 +170,7 @@ params = {
 				'queue_type' : 'random',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 1
+				'capacity' : MODEL_BATCH_SIZE * 20
 			},
 
 			'targets' : {

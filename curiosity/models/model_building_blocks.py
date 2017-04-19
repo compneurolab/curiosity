@@ -81,6 +81,7 @@ class ConvNetwithBypasses(ConvNet):
 			kind = [kind]
 		for_out = []
 		for k in kind:
+			print('activation: ' + k)
 			if k == 'relu':
 				for_out.append(tf.nn.relu(in_layer, name='relu'))
 			elif k == 'tanh':
@@ -95,6 +96,7 @@ class ConvNetwithBypasses(ConvNet):
 			elif k == 'neg_relu':
 				for_out.append(tf.nn.relu(-in_layer, name = 'neg_relu'))
 			elif k == 'identity':
+				print('no nonlinearity!')
 				for_out.append(in_layer)
 			else:
 				raise ValueError("Activation '{}' not defined".format(k))
