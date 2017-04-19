@@ -3,6 +3,8 @@ import os
 import tensorflow as tf
 import sys
 import json
+import copy
+from tqdm import trange
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
@@ -41,7 +43,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test11'
+exp_id = 'test16'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -77,7 +79,11 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
         preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
     retval = {'img': images, 'pred': preds,
             'decode': outputs['decode'], 'encode': outputs['encode'],
-            'run_lstm': outputs['run_lstm']}
+            'run_lstm': outputs['run_lstm'], 
+            'ph_enc_inp': outputs['ph_enc_inp'],
+            'ph_lstm_inp': outputs['ph_lstm_inp'],
+            'ph_dec_inp': outputs['ph_dec_inp'],
+            'ph_dec_cond': outputs['ph_dec_cond']}
     return retval
 
 def keep_all(step_results):
@@ -121,8 +127,8 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'encoder_depth': 4,
-        'decoder_depth': 6,
+        'encoder_depth': 2,
+        'decoder_depth': 4,
         'n_gpus': N_GPUS,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     }
@@ -173,8 +179,35 @@ if __name__ == '__main__':
     # start queue runners
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord, sess=sess)
-    for i in xrange(valid_targets_dict['valid0']['num_steps']):
+    # get handles to network parts
+    # ops
+    get_images = valid_targets_dict['valid0']['targets']['img']
+    encode = valid_targets_dict['valid0']['targets']['encode']
+    run_lstm = valid_targets_dict['valid0']['targets']['run_lstm']
+    decode = valid_targets_dict['valid0']['targets']['decode']
+    # placeholders
+    ph_enc_inp = valid_targets_dict['valid0']['targets']['ph_enc_inp']
+    ph_lstm_inp = valid_targets_dict['valid0']['targets']['ph_lstm_inp']
+    ph_dec_inp = valid_targets_dict['valid0']['targets']['ph_dec_inp']
+    ph_dec_cond = valid_targets_dict['valid0']['targets']['ph_dec_cond']
+    for ex in range(1): #TODO xrange(valid_targets_dict['valid0']['num_steps']):
         # get images
-        images = sess.run(valid_targets_dict['valid0']['targets']['img'])
-
-    print(images.shape)
+        images = sess.run(get_images)[0].astype(np.float32) / 255.0
+        context_images = copy.deepcopy(images)
+        for i in range(2):
+            context_image = np.expand_dims(context_images[:,i,:,:,:], 1)
+            context_images[:,i,:,:,:] = np.squeeze(sess.run(encode, 
+                    feed_dict={ph_enc_inp: context_image})[0])
+        encoded_images = sess.run(run_lstm, 
+                feed_dict={ph_lstm_inp: context_images})[0]
+        image = np.zeros(images[:,2,:,:,:].shape)
+        image = np.expand_dims(image, 1)
+        context = encoded_images[:,1,:,:,:]
+        context = np.expand_dims(context, 1)
+        print('Unrolling pixel by pixel:')
+        for i in trange(images.shape[-3], desc='height'):
+            for j in trange(images.shape[-2], desc='width'):
+                for k in xrange(images.shape[-1]):
+                    image[:,0,i,j,k] = sess.run(decode, 
+                            feed_dict={ph_dec_inp: image,
+                                ph_dec_cond: context})[0][:,0,i,j,k]

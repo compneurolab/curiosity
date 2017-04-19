@@ -41,7 +41,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test10'
+exp_id = 'test16'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -118,8 +118,8 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'encoder_depth': 4,
-        'decoder_depth': 6,
+        'encoder_depth': 2,
+        'decoder_depth': 4,
         'n_gpus': N_GPUS,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },
