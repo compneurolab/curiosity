@@ -27,7 +27,7 @@ VALIDATION_DATA_PATH = os.path.join(BASE_DIR, 'new_tfvaldata')
 NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
-N_GPUS = 4
+N_GPUS = 1
 OUTPUT_BATCH_SIZE = 8 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
@@ -41,7 +41,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test10'
+exp_id = 'test11'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -75,13 +75,16 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
         shape = preds.get_shape().as_list()
         preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
         preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
-    retval = {'img': images, 'pred': preds}
+    retval = {'img': images, 'pred': preds,
+            'decode': outputs['decode'], 'encode': outputs['encode'],
+            'run_lstm': outputs['run_lstm']}
     return retval
 
 def keep_all(step_results):
     return step_results[0]
 
 params = {
+    'dont_run': True,
     'save_params' : {
         'host': HOST,
         'port': 27017,
@@ -109,7 +112,7 @@ params = {
         #'exp_id': 'trainval0',
         'exp_id': exp_id,
         #'exp_id': 'trainval2', # using screen?
-        'do_restore': False,
+        'do_restore': True,
         'load_query': None
     },
 
@@ -122,61 +125,6 @@ params = {
         'decoder_depth': 6,
         'n_gpus': N_GPUS,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
-    },
-
-    'train_params': {
-        'validate_first': True, #False,
-        #'targets': {
-        #    'func': modelsource.get_accuracy
-        #},
-
-        'data_params': {
-            'func': ThreeWorldDataProvider,
-            #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
-            'data_path': DATA_PATH,
-            'sources': ['images'],
-            'n_threads': 4,
-            'batch_size': INPUT_BATCH_SIZE,
-            'delta_time': TIME_DIFFERENCE,
-            'sequence_len': SEQUENCE_LENGTH,
-            'output_format': 'sequence',
-            'filters': ['is_not_teleporting'],
-            'gaussian': GAUSSIAN,
-            'max_random_skip': RANDOM_SKIP,
-            'resize': RESIZE,
-        },
-
-        'queue_params': {
-            'queue_type': 'random',
-            'batch_size': OUTPUT_BATCH_SIZE,
-            'seed': seed,
-    	    'capacity': 11*INPUT_BATCH_SIZE,
-            'min_after_dequeue': 10*INPUT_BATCH_SIZE,
-        },
-        
-        'num_steps': 90 * NUM_BATCHES_PER_EPOCH,  # number of steps to train
-        'thres_loss' : float('inf')
-    },
-
-    'loss_params': {
-        'targets': ['images'],
-        'agg_func': modelsource.parallel_reduce_mean,
-        'loss_per_case_func': modelsource.parallel_softmax_cross_entropy_loss,
-    },
-
-    'learning_rate_params': {
-        'func': tf.train.exponential_decay,
-        'learning_rate': 0.0001,
-        'decay_rate': 0.95,
-        'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
-        'staircase': True
-    },
-
-    'optimizer_params': {
-        'func': modelsource.ParallelClipOptimizer,
-        'optimizer_class': tf.train.RMSPropOptimizer,
-        'clip': True,
-        'momentum': .9
     }
 }
 
@@ -219,5 +167,14 @@ if USE_VALIDATION:
     }
 
 if __name__ == '__main__':
+    # get session and data
     base.get_params()
-    base.train_from_params(**params)
+    sess, queues, dbinterface, valid_targets_dict = base.test_from_params(**params)
+    # start queue runners
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+    for i in xrange(valid_targets_dict['valid0']['num_steps']):
+        # get images
+        images = sess.run(valid_targets_dict['valid0']['targets']['img'])
+
+    print(images.shape)
