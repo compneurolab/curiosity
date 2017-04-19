@@ -6,14 +6,24 @@ import tensorflow as tf
 import os
 import cPickle
 
+# DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
+# VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+# ATTRIBUTE = 'object_data2'
+# DTYPE_STRING = True
+# RAW_TYPE = tf.float32
+# RAW_SHAPE = [11, 12]
+# D_TYPE = tf.uint8
+# SHAPE = [160, 375, 3]
+
 DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-ATTRIBUTE = 'object_data2'
+ATTRIBUTE = 'reference_ids'
 DTYPE_STRING = True
-RAW_TYPE = tf.float32
-RAW_SHAPE = [11, 12]
-D_TYPE = tf.uint8
-SHAPE = [160, 375, 3]
+RAW_TYPE = tf.int32
+RAW_SHAPE = [2,]
+# D_TYPE = tf.uint8
+# SHAPE = [160, 375, 3]
+
 
 to_write = {}
 if DTYPE_STRING:
