@@ -28,7 +28,7 @@ NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
 N_GPUS = 4
-OUTPUT_BATCH_SIZE = 8 * N_GPUS
+OUTPUT_BATCH_SIZE = 7 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 IMAGE_SIZE_CROP = 256
@@ -41,7 +41,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test10'
+exp_id = 'test18'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -109,7 +109,7 @@ params = {
         #'exp_id': 'trainval0',
         'exp_id': exp_id,
         #'exp_id': 'trainval2', # using screen?
-        'do_restore': False,
+        'do_restore': True,
         'load_query': None
     },
 
@@ -118,8 +118,8 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'encoder_depth': 4,
-        'decoder_depth': 6,
+        'encoder_depth': 2,
+        'decoder_depth': 4,
         'n_gpus': N_GPUS,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     },

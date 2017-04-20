@@ -3,6 +3,8 @@ import os
 import tensorflow as tf
 import sys
 import json
+import copy
+from tqdm import trange
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
@@ -41,7 +43,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test11'
+exp_id = 'test18'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -77,7 +79,11 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
         preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
     retval = {'img': images, 'pred': preds,
             'decode': outputs['decode'], 'encode': outputs['encode'],
-            'run_lstm': outputs['run_lstm']}
+            'run_lstm': outputs['run_lstm'], 
+            'ph_enc_inp': outputs['ph_enc_inp'],
+            'ph_lstm_inp': outputs['ph_lstm_inp'],
+            'ph_dec_inp': outputs['ph_dec_inp'],
+            'ph_dec_cond': outputs['ph_dec_cond']}
     return retval
 
 def keep_all(step_results):
@@ -121,9 +127,10 @@ params = {
         'batch_size': OUTPUT_BATCH_SIZE,
         'gaussian': GAUSSIAN,
         'stats_file': NORM_PATH,
-        'encoder_depth': 4,
-        'decoder_depth': 6,
+        'encoder_depth': 2,
+        'decoder_depth': 4,
         'n_gpus': N_GPUS,
+        'my_train': False,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     }
 }
@@ -160,7 +167,7 @@ if USE_VALIDATION:
             },
         'agg_func' : keep_all,
         #'agg_func': utils.mean_dict,
-        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }
@@ -173,8 +180,48 @@ if __name__ == '__main__':
     # start queue runners
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord, sess=sess)
-    for i in xrange(valid_targets_dict['valid0']['num_steps']):
-        # get images
-        images = sess.run(valid_targets_dict['valid0']['targets']['img'])
-
-    print(images.shape)
+    # get handles to network parts
+    # ops
+    get_images = valid_targets_dict['valid0']['targets']['img']
+    encode = valid_targets_dict['valid0']['targets']['encode']
+    run_lstm = valid_targets_dict['valid0']['targets']['run_lstm']
+    decode = valid_targets_dict['valid0']['targets']['decode']
+    # placeholders
+    ph_enc_inp = valid_targets_dict['valid0']['targets']['ph_enc_inp']
+    ph_lstm_inp = valid_targets_dict['valid0']['targets']['ph_lstm_inp']
+    ph_dec_inp = valid_targets_dict['valid0']['targets']['ph_dec_inp']
+    ph_dec_cond = valid_targets_dict['valid0']['targets']['ph_dec_cond']
+    # unroll across time
+    n_context = 2
+    for ex in xrange(valid_targets_dict['valid0']['num_steps']):
+        # get input images
+        images = sess.run(get_images)[0].astype(np.float32) / 255.0
+        context_images = np.zeros(list(images.shape[:-1]) + list([256]))
+        # encode context images
+        print('Encoding context:')
+        for im in trange(n_context, desc='timestep'):
+            context_image = np.expand_dims(images[:,im,:,:,:], 1)
+            context_images[:,im,:,:,:] = np.squeeze(sess.run(encode, 
+                    feed_dict={ph_enc_inp: context_image})[0])
+        # predict images pixel by pixel, one after another
+        print('Generating images pixel by pixel:')
+        predicted_images = []
+        for im in trange(n_context, images.shape[1], desc='timestep'):
+            encoded_images = sess.run(run_lstm,
+                    feed_dict={ph_lstm_inp: context_images})[0]
+            image = np.zeros(images[:,im,:,:,:].shape)
+            image = np.expand_dims(image, 1)
+            context = encoded_images[:,im-1,:,:,:]
+            context = np.expand_dims(context, 1)
+            for i in trange(images.shape[-3], desc='height', leave=False):
+                for j in trange(images.shape[-2], desc='width'):
+                    for k in xrange(images.shape[-1]):
+                        image[:,0,i,j,k] = sess.run(decode,
+                                feed_dict={ph_dec_inp: image,
+                                    ph_dec_cond: context})[0][:,0,i,j,k]
+            context_images[:,im,:,:,:] = np.squeeze(sess.run(encode,
+                feed_dict={ph_enc_inp: image})[0])
+            predicted_images.append(image)
+        predicted_images = np.stack(predicted_images, axis=1)
+        np.save('predicted_images.npy', predicted_images)
+        np.save('gt_images.npy', images)
