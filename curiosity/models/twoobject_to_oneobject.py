@@ -92,8 +92,10 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 	return m.output
 
 
-def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, **kwargs):
-	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file, add_gaussians = add_gaussians)
+def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = None, 
+					stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file, 
+						add_gaussians = add_gaussians, img_height = image_height, img_width = image_width)
 	m = ConvNetwithBypasses(**kwargs)
 	in_node = base_net.inputs['object_data_seen_1d']
 	in_shape = in_node.get_shape().as_list()
@@ -265,6 +267,24 @@ cfg_mlp_wide_just_positions = {
 		2 : {'num_features' : 300},
 		3 : {'num_features' : 20, 'activation' : 'identity'}
 	}
+}
+
+cfg_mlp_med_just_positions_one_obj = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 160},
+		2 : {'num_features' : 160},
+		3 : {'num_features' : 10, 'activation' : 'identity'}
+	}	
+}
+
+cfg_mlp_med_more_timesteps = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 160},
+		2 : {'num_features' : 160},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}	
 }
 
 

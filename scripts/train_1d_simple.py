@@ -1,5 +1,5 @@
 '''
-1-d to 1-d paired down further to get the batch sizes up.
+1-d to 1-d paired down further to get the batch sizes up, and no normals in order to make it fast.
 '''
 
 
@@ -20,10 +20,12 @@ VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
-SEQUENCE_LEN = 8
+SEQUENCE_LEN = 23
 CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
+IMG_HEIGHT = 160
+IMG_WIDTH = 375
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -49,11 +51,11 @@ def mean_losses_subselect_rest(val_res, skip_num):
 	return retval
 
 
-SAVE_TO_GFS = ['normals', 'normals2', 'object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids']
+SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids']
 
 def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	retval = {}
-	batch_size = outputs['normals'].get_shape().as_list()[0]
+	batch_size = outputs['pred'].get_shape().as_list()[0]
 	for k in SAVE_TO_GFS:
 		if k != 'reference_ids':
 			retval[k] = outputs[k][:num_to_save]
@@ -84,7 +86,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'one_object',
+		'exp_id' : 'three_to_23',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -95,11 +97,13 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.just_1d_stuff,
-		'cfg' : modelsource.cfg_mlp_med_just_positions_one_obj,
+		'cfg' : modelsource.cfg_mlp_med_more_timesteps,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
-		'add_gaussians' : False
+		'add_gaussians' : False,
+		'image_height' : IMG_HEIGHT,
+		'image_width' : IMG_WIDTH
 	},
 
 	'train_params' : {
@@ -107,7 +111,7 @@ params = {
 		'data_params' : {
 			'func' : ThreeWorldDataProvider,
 			'data_path' : DATA_PATH,
-			'sources' : ['normals', 'normals2', 'actions', 'object_data', 'reference_ids'],
+			'sources' : ['actions', 'object_data', 'reference_ids'],
 			'sequence_len' : SEQUENCE_LEN,
 			'filters' : ['is_not_teleporting'],
 			'shuffle' : True,
@@ -157,7 +161,7 @@ params = {
 			'data_params' : {
 				'func' : ThreeWorldDataProvider,
 				'data_path' : VALDATA_PATH,
-				'sources' : ['normals', 'normals2', 'actions', 'object_data', 'reference_ids'],
+				'sources' : ['actions', 'object_data', 'reference_ids'],
 				'sequence_len' : SEQUENCE_LEN,
 				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,

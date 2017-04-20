@@ -73,6 +73,8 @@ class FuturePredictionBaseModel:
                  stats_file = None,
                  objects_to_include = None,
                  add_gaussians = True,
+                 img_height = None,
+                 img_width = None,
                  *args,
                  **kwargs):
         self.inputs = {}
@@ -93,8 +95,15 @@ class FuturePredictionBaseModel:
             normalization = tb.Normalizer(stats_file, self.normalization_method)
             normed_inputs = normalization.normalize(inputs)
 
-        #requiring that normals is in the data
-        image_shape = inputs_not_normed['normals'].get_shape().as_list()
+        if 'normals' in inputs_not_normed:
+            image_shape = inputs_not_normed['normals'].get_shape().as_list()
+        else:
+            assert img_height is not None and img_width is not None
+            #requires object_data in there...
+            obj_data_shape = inputs_not_normed['object_data'].get_shape().as_list()
+            batch_size = obj_data_shape[0]
+            seq_len = obj_data_shape[1]
+            image_shape = [batch_size, seq_len, img_height, img_width, 3]
         if add_gaussians:
             gaussians = []
 
@@ -106,12 +115,15 @@ class FuturePredictionBaseModel:
 
         	#objects_to_include should really be fed in as a tensor input generated randomly from data provider.
             if objects_to_include is None:
+                objects_to_include = [0]
             #sets only the acted-on object and the biggest other object for object of interest
-                centroids = [inputs_not_normed['object_data'][:,:time_seen,obj_num, 8:10] for obj_num in [0,1]]
-                poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in [0,1]]
             else:
             	raise NotImplementedError('Need to make fancier slicing for general case')
         	
+            centroids = [inputs_not_normed['object_data'][:,:time_seen,obj_num, 8:10] for obj_num in objects_to_include]
+            poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in objects_to_include]
+
+
             for (centroid, pose) in zip(centroids, poses):
         		pose = tf.unstack(pose, axis = 2)
         		for pose_val in pose:
@@ -143,9 +155,9 @@ class FuturePredictionBaseModel:
 
             self.inputs['actions_future'] = tf.concat(gaussians, axis = 4)
         #normalize?
-        fut_pose = inputs_not_normed['object_data'][:, time_seen : , 0:2, 1:5]
+        fut_pose = inputs_not_normed['object_data'][:, time_seen : , 0:1, 1:5]
         #normalize! use std method
-        fut_pos = normed_inputs['object_data'][:, time_seen : , 0:2, 8:10]
+        fut_pos = normed_inputs['object_data'][:, time_seen : , 0:1, 8:10]
         if screen_normalize:
             fut_pos = tf.concat([2. * (fut_pos[:, :, :, i:i+1] - float(image_shape[i+2]) / 2.) / float(image_shape[i+2]) for i in [0,1]], axis = 3)
             fut_pos = tf.tanh(fut_pos)
@@ -154,8 +166,8 @@ class FuturePredictionBaseModel:
 
         self.inputs['object_data_future'] = fut_dat
 
-        seen_pose = inputs_not_normed['object_data'][:, : time_seen, 0:2, 1:5] 
-        seen_pos = normed_inputs['object_data'][:, : time_seen, 0:2, 8:10]
+        seen_pose = inputs_not_normed['object_data'][:, : time_seen, 0:1, 1:5] 
+        seen_pos = normed_inputs['object_data'][:, : time_seen, 0:1, 8:10]
         if screen_normalize:
             seen_pos = tf.concat([2. * (seen_pos[:, :, :, i:i+1] - float(image_shape[i+2]) / 2.) / float(image_shape[i+2]) for i in [0,1]], axis = 3)
             seen_pos = tf.tanh(seen_pos)
@@ -165,8 +177,9 @@ class FuturePredictionBaseModel:
         self.inputs['object_data_seen_1d'] = seen_dat
 
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
-        self.inputs['normals'] = tf.cast(inputs_not_normed['normals'], tf.float32) / 255.
-        self.inputs['normals2'] = tf.cast(inputs_not_normed['normals2'], tf.float32) / 255.
+        if 'normals' in inputs_not_normed:
+            self.inputs['normals'] = tf.cast(inputs_not_normed['normals'], tf.float32) / 255.
+            self.inputs['normals2'] = tf.cast(inputs_not_normed['normals2'], tf.float32) / 255.
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
 
