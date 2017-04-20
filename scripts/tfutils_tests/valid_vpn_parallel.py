@@ -43,7 +43,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test16'
+exp_id = 'test18'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -130,6 +130,7 @@ params = {
         'encoder_depth': 2,
         'decoder_depth': 4,
         'n_gpus': N_GPUS,
+        'my_train': False,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
     }
 }
@@ -193,9 +194,9 @@ if __name__ == '__main__':
     for ex in range(1): #TODO xrange(valid_targets_dict['valid0']['num_steps']):
         # get images
         images = sess.run(get_images)[0].astype(np.float32) / 255.0
-        context_images = copy.deepcopy(images)
+        context_images = np.zeros(list(images.shape[:-1]) + list([256]))
         for i in range(2):
-            context_image = np.expand_dims(context_images[:,i,:,:,:], 1)
+            context_image = np.expand_dims(images[:,i,:,:,:], 1)
             context_images[:,i,:,:,:] = np.squeeze(sess.run(encode, 
                     feed_dict={ph_enc_inp: context_image})[0])
         encoded_images = sess.run(run_lstm, 

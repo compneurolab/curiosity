@@ -160,21 +160,8 @@ class VPN(ThreeWorldBaseModel):
                 assert mask.get_shape().as_list() == W.get_shape().as_list(), \
                         ('mask must be of shape', W.get_shape().as_list())
                 W *= mask
-            elif isinstance(mask, np.ndarray):
-                assert list(mask.shape) == W.get_shape().as_list(), \
-                        ('mask must be of shape', W.get_shape().as_list())
-                W *= mask
-            elif mask in ['a', 'b']:
-                # Use only for testing as this is not memory efficient
-                # rather create your own mask and reuse it for multiple mus
-                mask = np.ones(W.get_shape().as_list())
-                mask[kernel_h // 2, kernel_w // 2 + 1:, :, :] = 0.0
-                mask[kernel_h // 2 + 1:, :, :, :] = 0.0
-                if mask is 'a':
-                    mask[kernel_h // 2, kernel_w // 2, :, :] = 0.0
-                W *= mask
             elif mask is not None:
-                raise ValueError('mask has to be \'a\', \'b\', Tensor, or None')
+                raise ValueError('mask has to be a Tensor or None')
             # (masked) convolution
             g = tf.nn.conv2d(inputs, W, strides=strides, padding='SAME')
             # conditioning
@@ -271,24 +258,42 @@ class VPN(ThreeWorldBaseModel):
             if isinstance(conditioning, Tensor):
                 conditioning = tf.unstack(conditioning, axis=1)
             # construct masking sequence
+            # mask B for MUs
             mu_kernel_h = 3
             mu_kernel_w = 3
             mu_in_channels = 128
             mu_out_channels = 128
             maskB = np.ones([mu_kernel_h, mu_kernel_w, 
-                mu_in_channels, mu_out_channels*4])
+                    mu_in_channels, mu_out_channels*4])
             maskB[mu_kernel_h // 2, mu_kernel_w // 2 + 1:, :, :] = 0.0
             maskB[mu_kernel_h // 2 + 1:, :, :, :] = 0.0
-            maskA = copy.deepcopy(maskB)
-            maskA[mu_kernel_h // 2, mu_kernel_w // 2, :, :] = 0.0
-            maskA = tf.constant(maskA, dtype=tf.float32)
             maskB = tf.constant(maskB, dtype=tf.float32)
+            # mask A for W_in
+            W_kernel_h = 7
+            W_kernel_w = 7
+            W_in_channels = 3
+            W_out_channels= 3
+            maskA = np.ones([W_kernel_h, W_kernel_w, 
+                    W_in_channels, W_out_channels])
+            maskA[W_kernel_h // 2, W_kernel_w // 2 + 1:, :, :] = 0.0
+            maskA[W_kernel_h // 2 + 1:, :, :, :] = 0.0
+            for i in range(W_in_channels):
+                for o in range(W_out_channels):
+                    if i >= o:
+                        maskA[W_kernel_h // 2, W_kernel_w // 2, i, o] = 0.0
+            maskA = tf.constant(maskA, dtype=tf.float32)
             # first rmb has mask 'a', subsequent rmbs have mask 'b'
-            masks = [maskA] + [maskB] * (num_rmb - 1)
+            masks = [maskB] * num_rmb
             outputs = []
             for i, inp in enumerate(inputs):
-                W_in = self.new_variable('W_in', [1, 1, 3, 256])
-                inp = tf.nn.conv2d(inp, W_in, strides=[1, 1, 1, 1], padding='SAME')
+                # W masked with maskA
+                W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
+                        W_in_channels, W_out_channels])
+                # W to expand from 3 to 256 channels
+                W_extend = self.new_variable('W_extend', [1,1,3,256])
+                W_masked *= maskA
+                inp = tf.nn.conv2d(inp, W_masked, strides=[1, 1, 1, 1], padding='SAME')
+                inp = tf.nn.conv2d(inp, W_extend, strides=[1, 1, 1, 1], padding='SAME')
                 for r, mask in enumerate(masks):
                     # first frame has no previous time steps to condition on
                     if i == 0:
@@ -322,7 +327,7 @@ class VPN(ThreeWorldBaseModel):
         for i, inp in enumerate(inputs):
             shape = inp.get_shape().as_list()
             inputs[i] = tf.cast(tf.argmax(inp, axis=tf.rank(inp)-1), dtype=tf.uint8)
-            inputs[i].set_shape(shape[0:-1])
+            inputs[i].set_shape(shape[:-1])
             inputs[i] = tf.image.convert_image_dtype(inputs[i], dtype=tf.float32)
         inputs = tf.stack(inputs)
         return inputs
@@ -362,7 +367,7 @@ class VPN(ThreeWorldBaseModel):
                 conditioning=[], num_rmb=encoder_depth)
         # run lstm
         enc_shape = copy.deepcopy(shape)
-        enc_shape[-1] = 256 #TODO fix!
+        enc_shape[-1] = 256
         self.ph_lstm_inp = tf.placeholder(tf.float32, enc_shape, 'lstm_inp')
         lstm_out = self.lstm(self.ph_lstm_inp)
         # decode
@@ -450,7 +455,7 @@ def model(inputs,
         encoder_depth=8,
         decoder_depth=12,
         num_context=2,
-        train=True,
+        my_train=True,
         **kwargs):
 
     if normalization_method is not None:
@@ -461,10 +466,9 @@ def model(inputs,
         normalization=None
 
     net = VPN(inputs, gaussian=gaussian, normalization=normalization)
-    if train:
+    if my_train:
         return net.train(encoder_depth, decoder_depth)
     else:
-        #return net.train(encoder_depth, decoder_depth)
         return net.test_references(encoder_depth, decoder_depth)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
