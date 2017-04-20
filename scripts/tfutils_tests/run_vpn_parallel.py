@@ -41,7 +41,7 @@ USE_VALIDATION = True
 DO_TRAIN = True
 
 seed = 0
-exp_id = 'test18'
+exp_id = 'test21'
 
 rng = np.random.RandomState(seed=seed)
 
