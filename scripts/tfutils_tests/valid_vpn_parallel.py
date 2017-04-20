@@ -167,7 +167,7 @@ if USE_VALIDATION:
             },
         'agg_func' : keep_all,
         #'agg_func': utils.mean_dict,
-        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }
@@ -191,24 +191,37 @@ if __name__ == '__main__':
     ph_lstm_inp = valid_targets_dict['valid0']['targets']['ph_lstm_inp']
     ph_dec_inp = valid_targets_dict['valid0']['targets']['ph_dec_inp']
     ph_dec_cond = valid_targets_dict['valid0']['targets']['ph_dec_cond']
-    for ex in range(1): #TODO xrange(valid_targets_dict['valid0']['num_steps']):
-        # get images
+    # unroll across time
+    n_context = 2
+    for ex in xrange(valid_targets_dict['valid0']['num_steps']):
+        # get input images
         images = sess.run(get_images)[0].astype(np.float32) / 255.0
         context_images = np.zeros(list(images.shape[:-1]) + list([256]))
-        for i in range(2):
-            context_image = np.expand_dims(images[:,i,:,:,:], 1)
-            context_images[:,i,:,:,:] = np.squeeze(sess.run(encode, 
+        # encode context images
+        print('Encoding context:')
+        for im in trange(n_context, desc='timestep'):
+            context_image = np.expand_dims(images[:,im,:,:,:], 1)
+            context_images[:,im,:,:,:] = np.squeeze(sess.run(encode, 
                     feed_dict={ph_enc_inp: context_image})[0])
-        encoded_images = sess.run(run_lstm, 
-                feed_dict={ph_lstm_inp: context_images})[0]
-        image = np.zeros(images[:,2,:,:,:].shape)
-        image = np.expand_dims(image, 1)
-        context = encoded_images[:,1,:,:,:]
-        context = np.expand_dims(context, 1)
-        print('Unrolling pixel by pixel:')
-        for i in trange(images.shape[-3], desc='height'):
-            for j in trange(images.shape[-2], desc='width'):
-                for k in xrange(images.shape[-1]):
-                    image[:,0,i,j,k] = sess.run(decode, 
-                            feed_dict={ph_dec_inp: image,
-                                ph_dec_cond: context})[0][:,0,i,j,k]
+        # predict images pixel by pixel, one after another
+        print('Generating images pixel by pixel:')
+        predicted_images = []
+        for im in trange(n_context, images.shape[1], desc='timestep'):
+            encoded_images = sess.run(run_lstm,
+                    feed_dict={ph_lstm_inp: context_images})[0]
+            image = np.zeros(images[:,im,:,:,:].shape)
+            image = np.expand_dims(image, 1)
+            context = encoded_images[:,im-1,:,:,:]
+            context = np.expand_dims(context, 1)
+            for i in trange(images.shape[-3], desc='height', leave=False):
+                for j in trange(images.shape[-2], desc='width'):
+                    for k in xrange(images.shape[-1]):
+                        image[:,0,i,j,k] = sess.run(decode,
+                                feed_dict={ph_dec_inp: image,
+                                    ph_dec_cond: context})[0][:,0,i,j,k]
+            context_images[:,im,:,:,:] = np.squeeze(sess.run(encode,
+                feed_dict={ph_enc_inp: image})[0])
+            predicted_images.append(image)
+        predicted_images = np.stack(predicted_images, axis=1)
+        np.save('predicted_images.npy', predicted_images)
+        np.save('gt_images.npy', images)
