@@ -185,15 +185,17 @@ if __name__ == '__main__':
     for ex in xrange(valid_targets_dict['valid0']['num_steps']):
         # get inputs: images, actions, and segmented object images
         images, actions, objects = sess.run([get_images, get_actions, get_objects])
-        print(images[0].shape, actions[0].shape, objects[0].shape)
         images = images[0].astype(np.float32) / 255.0
         # construct action segmentation mask
         objects = objects[0][:,:,:,:,0] * (256**2) + \
                 objects[0][:,:,:,:,1] * 256 + objects[0][:,:,:,:,2]
         forces = actions[0][:,:,0:6]
         action_id = actions[0][:,:,8]
-        objects[objects == action_id] = 1
-        objects[objects != action_id] = 0
+        objects = (objects == np.ones(objects.shape) * 
+                action_id[:,:,np.newaxis, np.newaxis]).astype(np.float32)
+        acted = np.unique(np.nonzero(objects)[0])
+        if len(acted) > 0:
+            print('Actions present in evaluated batch for examples: ' + str(acted))
         action_masks = np.expand_dims(np.expand_dims(forces, 2), 2) \
                 * np.expand_dims(objects,4)
         poses = objects.copy() * 255 #ground truth pos
@@ -242,6 +244,7 @@ if __name__ == '__main__':
         results = {'pred_poses': predicted_poses,
                 'pred_images': predicted_images,
                 'gt_poses': poses,
-                'gt_images': images}
+                'gt_images': images,
+                'ex_acted': acted}
         with open('results'+str(ex)+'.pkl', 'w') as f:
             cPickle.dump(results, f)
