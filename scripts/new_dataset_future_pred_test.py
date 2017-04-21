@@ -47,6 +47,36 @@ def test_no_base():
 		print(res['actions'].shape)
 		print(res['normals'].shape)
 
+def test_long_sequence_no_base():
+	dp = ShortLongSequenceDataProvider(DATA_PATH,
+			short_sources = ['normals', 'normals2'],
+			long_sources = ['actions', 'object_data', 'reference_ids'].
+			short_len = 3,
+			long_len = 23,
+			min_len = 5,
+			filters = ['is_not_teleporting']
+		)
+	sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
+                                                log_device_placement=False))
+	ops = dp.init_ops()
+	queue = b.get_queue(ops[0], queue_type = 'random')
+	enqueue_ops = []
+	for op in ops:
+	    enqueue_ops.append(queue.enqueue_many(op))
+	tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
+	tf.train.start_queue_runners(sess=sess)
+	inputs = queue.dequeue_many(256)
+	for i in range(5):
+		start = time.time()
+		res = sess.run(inputs)
+		print(time.time() - start)
+		print(res.keys())
+		print(res['object_data'].shape)
+		print(res['reference_ids'].shape)
+		print(res['normals'].shape)
+		print(res['normals2'].shape)
+		print(res['reference_ids'][0])
+		print(res['reference_ids'][255])
 
 def convert_for_write(arr):
 	# my_max = np.amax(arr)
@@ -126,6 +156,5 @@ def test_base():
 
 if __name__ == '__main__':
 	b.get_params()
-	test_base()
-
+	test_long_sequence_no_base()
 

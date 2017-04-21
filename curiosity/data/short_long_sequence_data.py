@@ -139,47 +139,18 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
             data[k] = tf.reshape(data[k], shape)
         return data
 
-    def random_skip(self, data):
-        # get the current batch size
-        batch_size = None
-        for k in data:
-            batch_size = tf.shape(data[k])[0]
-            break
-        if batch_size is None:
-            raise ValueError('No batch size could be derived')
-
-        # randomly skip after the requested sequence length to get the last frame
-        rskip = tf.random_uniform([batch_size],\
-                minval=1, maxval=self.max_skip, dtype=tf.int32, seed=self.seed)
-        seq_len = self.sequence_len - self.max_skip
-        for k in data:
-            shape = data[k].get_shape().as_list()
-            seq = tf.slice(data[k], [0]*len(shape), [-1,seq_len]+[-1]*(len(shape)-2))
-            indices = tf.stack([tf.range(batch_size), self.sequence_len - rskip], axis=1)
-            last_frame = tf.gather_nd(data[k], indices)
-            last_frame = tf.expand_dims(last_frame, 1)
-            data[k] = tf.concat([seq, last_frame], 1)
-        data['random_skip'] = rskip
-        return data
-
     def check_lengths(self, data):
         for k in data:
-            if k is 'random_skip':
-                assert len(data[k].get_shape().as_list()) == 1
-            elif self.output_format is 'sequence':
-                assert data[k].get_shape().as_list()[1] == self.sequence_len
-            elif self.output_format is 'pairs':
-                assert data[k].get_shape().as_list()[1] == 2
+            if k in self.short_sources:
+                assert data[k].get_shape().as_list()[1] = self.short_len
+            elif k in self.long_sources or k == 'master_filter' or k in self.filters:
+                assert data[k].get_shape().as_list()[1] = self.long_len
 
     def init_ops(self):
         self.input_ops = super(ThreeWorldDataProvider, self).init_ops()
         for i in range(len(self.input_ops)):
             if self.filters is not None:
                 self.input_ops[i] = self.apply_filters(self.input_ops[i])
-            if self.max_skip is not None:
-                self.input_ops[i] = self.random_skip(self.input_ops[i])
-        if self.max_skip is not None:
-            self.sequence_len = self.sequence_len - self.max_skip + 1
         for i in range(len(self.input_ops)):
             self.check_lengths(self.input_ops[i])
         return self.input_ops
