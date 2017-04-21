@@ -86,7 +86,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'three_to_23',
+		'exp_id' : 'other_diff',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -135,7 +135,7 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.l2_diff_loss_just_positions,
+		'loss_per_case_func' : modelsource.alternate_diff_loss,
 		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},

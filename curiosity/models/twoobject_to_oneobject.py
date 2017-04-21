@@ -147,6 +147,9 @@ def compute_diffs(last_seen_data, future_data):
 	print(diffed_data_list)
 	return tf.concat(diffed_data_list, axis = 1)
 
+def other_diffs(last_seen_data, future_data):
+	return tf.concat([future_data[:, t : t + 1] - last_seen_data for t in range(future_data.get_shape().as_list()[1])], axis = 1)
+
 def l2_diff_loss(outputs):
 	pred = outputs['pred']
 	future_dat = outputs['object_data_future']
@@ -156,6 +159,7 @@ def l2_diff_loss(outputs):
 	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
+
 
 def l2_diff_loss_just_positions(outputs):
 	pred = outputs['pred']
@@ -169,6 +173,20 @@ def l2_diff_loss_just_positions(outputs):
 	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
+
+def alternate_diff_loss(outputs):
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	last_seen_dat = seen_dat[:, -1:]
+	tv = other_diffs(last_seen_dat, future_dat)
+	tv = tv[:, :, :, 4:]
+	tv = tf.reshape(tv, [tv.get_shape().as_list()[0], -1])
+	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
+	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
+
+
+
 
 cfg_simple = {
 	'encode_depth' : 6,
