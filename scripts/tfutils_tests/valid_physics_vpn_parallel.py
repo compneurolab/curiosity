@@ -4,6 +4,7 @@ import tensorflow as tf
 import sys
 import json
 import copy
+import cPickle
 from tqdm import trange
 
 from tfutils import base, data, model, optimizer, utils
@@ -195,7 +196,7 @@ if __name__ == '__main__':
         objects[objects != action_id] = 0
         action_masks = np.expand_dims(np.expand_dims(forces, 2), 2) \
                 * np.expand_dims(objects,4)
-        gt_pos = objects.copy() * 255 #ground truth pos
+        poses = objects.copy() * 255 #ground truth pos
         # encode context images
         context_images = np.zeros(list(images.shape[:-1]) + list([256]))
         action_masks[:,0:n_context] = 0 #zero out later masks as they are predicted
@@ -209,6 +210,7 @@ if __name__ == '__main__':
         # predict images pixel by pixel, one after another
         print('Generating images pixel by pixel:')
         predicted_images = []
+        predicted_poses = []
         for im in trange(n_context, images.shape[1], desc='timestep'):
             encoded_images = sess.run(run_lstm,
                     feed_dict={ph_lstm_inp: context_images})[0]
@@ -234,6 +236,12 @@ if __name__ == '__main__':
                 feed_dict={ph_enc_inp: image,
                     ph_enc_cond: action_mask})[0])
             predicted_images.append(np.squeeze(image))
+            predicted_poses.append(np.squeeze(pos))
         predicted_images = np.stack(predicted_images, axis=1)
-        np.save('predicted_images.npy', predicted_images)
-        np.save('gt_images.npy', images)
+        predicted_poses = np.stack(predicted_poses, axis=1)
+        results = {'pred_poses': predicted_poses,
+                'pred_images': predicted_images,
+                'gt_poses': poses,
+                'gt_images': images}
+        with open('results'+str(ex)+'.pkl', 'w') as f:
+            cPickle.dump(results, f)
