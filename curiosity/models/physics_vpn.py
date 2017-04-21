@@ -358,6 +358,7 @@ class VPN(ThreeWorldBaseModel):
     def test_references(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
         images = self.inputs['images']
+        actions = self.inputs['actions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
@@ -366,37 +367,46 @@ class VPN(ThreeWorldBaseModel):
         img_shape = copy.deepcopy(shape)
         img_shape[1] = 1
         self.ph_enc_inp = tf.placeholder(tf.float32, img_shape, 'enc_inp')
-        #TODO include conditioning in encoding if used
-        #conditioning = self.ph_enc_cond = tf.placeholder_with_default(conditioning, 
-        #        inputs.get_shape().as_list()[0:-1] + [256], 'enc_cond')
+        act_shape = copy.deepcopy(img_shape)
+        act_shape[-1] = 6
+        self.ph_enc_cond = tf.placeholder(tf.float32, act_shape, 'enc_cond')
         encoded_inputs = self.encoder(self.ph_enc_inp, 
-                conditioning=[], num_rmb=encoder_depth)
+                conditioning=[self.ph_enc_cond], num_rmb=encoder_depth)
         # run lstm
         enc_shape = copy.deepcopy(shape)
         enc_shape[-1] = 256
         self.ph_lstm_inp = tf.placeholder(tf.float32, enc_shape, 'lstm_inp')
         lstm_out = self.lstm(self.ph_lstm_inp)
         # decode
-        dec_inp_shape = copy.deepcopy(shape)
-        dec_inp_shape[1] = 1
-        dec_cond_shape = copy.deepcopy(shape)
-        dec_cond_shape[1] = 1
-        dec_cond_shape[-1] = 256
-        self.ph_dec_inp = tf.placeholder(tf.float32, dec_inp_shape, 'dec_inp')
-        self.ph_dec_cond = tf.placeholder(tf.float32, dec_cond_shape, 'dec_cond')
-        rgb = self.decoder(self.ph_dec_inp, 
-                conditioning=self.ph_dec_cond, num_rmb=decoder_depth,
+        dec_inp_shape = copy.deepcopy(img_shape)
+        dec_cond_past_shape = copy.deepcopy(img_shape)
+        dec_cond_past_shape[-1] = 256
+        self.ph_dec_inp = tf.placeholder(tf.float32, 
+                dec_inp_shape, 'dec_inp')
+        self.ph_dec_cond_past = tf.placeholder(tf.float32, 
+                dec_cond_past_shape, 'dec_cond_past')
+        self.ph_dec_cond_act = tf.placeholder(tf.float32,
+                act_shape, 'dec_cond_act')
+        rgb_pos = self.decoder(self.ph_dec_inp, 
+                conditioning=[self.ph_dec_cond_past, self.ph_dec_cond_act], 
+                num_rmb=decoder_depth,
                 out_channels=out_channels, condition_first_image=True)
+        rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
+        pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
         # get intensities
         predicted_images = self.get_intensities(rgb)
-        return [{'decode': predicted_images, 'run_lstm': lstm_out, 
+        predicted_poses = tf.expand_dims(self.get_intensities(pos) * 255, axis=4)
+        predicted_images_poses = tf.concat([predicted_images, predicted_poses], axis=4)
+        return [{'decode': predicted_images_poses, 'run_lstm': lstm_out, 
             'encode': encoded_inputs, 'rgb': rgb,
             'ph_enc_inp': self.ph_enc_inp,
+            'ph_enc_cond': self.ph_enc_cond,
             'ph_lstm_inp': self.ph_lstm_inp,
             'ph_dec_inp': self.ph_dec_inp,
-            'ph_dec_cond': self.ph_dec_cond,},
+            'ph_dec_cond_past': self.ph_dec_cond_past,
+            'ph_dec_cond_act': self.ph_dec_cond_act},
             {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
@@ -475,7 +485,7 @@ def model(inputs,
     if my_train:
         return net.train(encoder_depth, decoder_depth, out_channels=770)
     else:
-        return net.test_references(encoder_depth, decoder_depth)
+        return net.test_references(encoder_depth, decoder_depth, out_channels=770)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
     # pixelwise softmax cross entropy over discretized intensities [0-255]
