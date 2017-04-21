@@ -154,7 +154,7 @@ if USE_VALIDATION:
                 'resize': RESIZE,
             },
             'queue_params': {
-                'queue_type': 'random',
+                'queue_type': 'fifo',
                 'batch_size': OUTPUT_BATCH_SIZE,
                 'seed': seed,
                 'capacity': 11*INPUT_BATCH_SIZE,
@@ -221,7 +221,7 @@ if __name__ == '__main__':
                                     ph_dec_cond: context})[0][:,0,i,j,k]
             context_images[:,im,:,:,:] = np.squeeze(sess.run(encode,
                 feed_dict={ph_enc_inp: image})[0])
-            predicted_images.append(image)
+            predicted_images.append(np.squeeze(image))
         predicted_images = np.stack(predicted_images, axis=1)
         np.save('predicted_images.npy', predicted_images)
         np.save('gt_images.npy', images)

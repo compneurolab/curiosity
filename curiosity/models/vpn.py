@@ -277,10 +277,7 @@ class VPN(ThreeWorldBaseModel):
                     W_in_channels, W_out_channels])
             maskA[W_kernel_h // 2, W_kernel_w // 2 + 1:, :, :] = 0.0
             maskA[W_kernel_h // 2 + 1:, :, :, :] = 0.0
-            for i in range(W_in_channels):
-                for o in range(W_out_channels):
-                    if i >= o:
-                        maskA[W_kernel_h // 2, W_kernel_w // 2, i, o] = 0.0
+            maskA[W_kernel_h // 2, W_kernel_w // 2, :, :] = 0.0
             maskA = tf.constant(maskA, dtype=tf.float32)
             # first rmb has mask 'a', subsequent rmbs have mask 'b'
             masks = [maskB] * num_rmb

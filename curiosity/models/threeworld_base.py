@@ -78,19 +78,44 @@ class Normalizer:
 class ThreeWorldBaseModel:
     def __init__(self,
                  inputs,
-                 gaussian=None,
                  normalization=None,
+                 segmentation=None,
+                 gaussian=None,
                  *args,
                  **kwargs):
         self.inputs = inputs
-        self.gaussian = gaussian
         self.normalization = normalization
+        self.segmentation = segmentation
+        self.gaussian = gaussian
 
         # store reference to not normed inputs for not normed pixel positions
         self.inputs_raw = inputs
 
         if self.normalization is not None:
             self.inputs = self.normalization.normalize(self.inputs)
+
+        if self.segmentation is not None:
+            # 'objects' xor 'objects2'
+            assert ('objects' in self.inputs) ^ ('objects2' in self.inputs), \
+                    ('Segmented images not provided by data provider')
+            for view in ['objects', 'objects2']:
+                if view not in self.inputs:
+                    continue
+                objects = tf.cast(self.inputs[view], tf.float32)
+                shape = objects.get_shape().as_list()
+                objects = tf.unstack(objects, 
+                        axis=len(shape)-1)
+                objects = objects[0] * (256**2) + objects[1] * 256 + objects[2] 
+                if 'actions' in self.segmentation:
+                    forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
+                    action_id = tf.slice(self.inputs['actions'], [0, 0, 8], [-1, -1, 1])
+                    action_id = tf.tile(action_id, [1,1,shape[2]*shape[3]])
+                    action_id = tf.reshape(action_id, shape[:-1])
+                    idx = tf.equal(objects, action_id)
+                    objects *= tf.cast(idx, tf.float32)
+                    actions = tf.tile(tf.expand_dims(objects, axis=4), [1,1,1,1,6])
+                    actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
+                    self.inputs['actions'] = actions
 
         if self.gaussian is not None:
             # get image shape
