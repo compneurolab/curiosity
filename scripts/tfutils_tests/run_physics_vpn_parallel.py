@@ -39,10 +39,9 @@ SEGMENTATION = ['actions']
 RESIZE = {'images': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
-DO_TRAIN = True
 
 seed = 0
-exp_id = 'test19'
+exp_id = 'test22'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -54,29 +53,51 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     and outputs field (with pairs of arguments -- assuming outputs 
     is a dict of dicts)
     '''
-    images = inputs['images'][:num_to_save]
+    # ground truth images
+    images = tf.stack(inputs['images'][:num_to_save])
+    shape = images.get_shape().as_list()
+    images = tf.reshape(images, [shape[0]*shape[1]] + shape[2:])
     images = tf.cast(images, tf.uint8)
 
-    if DO_TRAIN:
-        preds = outputs['rgb'][:num_to_save]
-        preds = tf.stack(preds)
-        preds = tf.nn.softmax(preds)
-        # maximum dimension that tf.argmax can handle is 5, so unstack here
-        shape = preds.get_shape().as_list()
-        preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
-        preds = tf.unstack(preds)
-        for i, pred in enumerate(preds):
-            preds[i] = tf.argmax(pred, axis=tf.rank(pred) - 1)
-        preds = tf.stack(preds)
-        preds = tf.cast(preds, tf.uint8)
-        #actions = outputs['actions'][:num_to_save]
-    else:
-        preds = outputs['predicted'][:num_to_save]
-        preds = tf.stack(preds)
-        shape = preds.get_shape().as_list()
-        preds = tf.reshape(preds, [shape[0]*shape[1]] + shape[2:])
-        preds = tf.image.convert_image_dtype(preds, dtype=tf.uint8)
-    retval = {'img': images, 'pred': preds}
+    # ground truth actions
+    actions = tf.stack(inputs['actions'][:num_to_save])
+    shape = actions.get_shape().as_list()
+    actions = tf.reshape(actions, [shape[0]*shape[1]] + shape[2:])
+
+    # ground truth positions
+    gt_pos = tf.stack(outputs['actions'][:num_to_save])
+    shape = gt_pos.get_shape().as_list()
+    gt_pos = tf.reshape(gt_pos, [shape[0]*shape[1]] + shape[2:])
+    gt_pos = tf.slice(gt_pos, [0,0,0,0,0], [-1,-1,-1,-1,1])
+    gt_pos = tf.cast(tf.greater(gt_pos, tf.zeros(gt_pos.get_shape().as_list())), tf.uint8)
+    gt_pos = tf.squeeze(gt_pos) * 255
+
+    # predicted rgb image
+    rgb = tf.stack(outputs['rgb'][:num_to_save])
+    rgb = tf.nn.softmax(rgb)
+    # maximum dimension that tf.argmax can handle is 5, so unstack here
+    shape = rgb.get_shape().as_list()
+    rgb = tf.reshape(rgb, [shape[0]*shape[1]] + shape[2:])
+    rgb = tf.unstack(rgb)
+    for i, r in enumerate(rgb):
+        rgb[i] = tf.argmax(r, axis=tf.rank(r) - 1)
+    rgb = tf.stack(rgb)
+    rgb = tf.cast(rgb, tf.uint8)
+
+    # predicted pos image
+    pos = tf.stack(outputs['pos'][:num_to_save])
+    pos = tf.nn.softmax(pos)
+    shape = pos.get_shape().as_list()
+    pos = tf.reshape(pos, [shape[0]*shape[1]] + shape[2:])
+    pos = tf.argmax(pos, axis=tf.rank(pos) - 1)
+    pos = tf.cast(pos, tf.uint8) * 255
+
+    # return dict
+    retval = {'img': images, 
+            'pos': gt_pos,
+            'act': actions,
+            'pred_img': rgb, 
+            'pred_pos': pos,}
     return retval
 
 def keep_all(step_results):
@@ -94,7 +115,7 @@ params = {
         'cache_filters_freq': 2000,
         'save_metrics_freq': 50,
         'save_initial_filters' : False,
-        'save_to_gfs': ['pred', 'img'],
+        'save_to_gfs': ['img', 'pos', 'act', 'pred_img', 'pred_pos'],
         'cache_dir': CACHE_DIR,
     },
 
@@ -161,7 +182,7 @@ params = {
     },
 
     'loss_params': {
-        'targets': ['images'],
+        'targets': ['images', 'actions'],
         'agg_func': modelsource.parallel_reduce_mean,
         'loss_per_case_func': modelsource.parallel_softmax_cross_entropy_loss,
     },

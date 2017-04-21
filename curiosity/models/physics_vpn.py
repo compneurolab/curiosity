@@ -201,25 +201,29 @@ class VPN(ThreeWorldBaseModel):
 
             return inputs + h4
 
-    def encoder(self, inputs, conditioning, num_rmb=8, scope='encoder'):
-        print('Encoder: %d RMB layers' % num_rmb)
-        outputs = []
+    def encoder(self, inputs, conditioning, num_rmb=8, scope='encoder',
+            disable_print=False):
+        if not disable_print:
+            print('Encoder: %d RMB layers' % num_rmb)
         with tf.variable_scope(scope) as encode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
             if isinstance(conditioning, Tensor):
                 conditioning = tf.unstack(conditioning, axis=1)
-                assert len(conditioning) == len(inputs)
+                conditioning = zip(conditioning)
+            elif isinstance(conditioning, list):
+                for i, condition in enumerate(conditioning):
+                    conditioning[i] = tf.unstack(condition, axis=1)
+                conditioning = zip(*conditioning)
+            else:
+                raise ValueError('Conditioning must be a Tensor or list of Tensors')
+            outputs = []
             for i, inp in enumerate(inputs):
                 W_in = self.new_variable('W_in', [1, 1, 3, 256])
                 inp = tf.nn.conv2d(inp, W_in, strides=[1, 1, 1, 1], padding='SAME')
                 for r in range(num_rmb):
-                    if conditioning:
-                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                                conditioning = [conditioning[i]])
-                    else:
-                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                                conditioning = [])
+                    inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                            conditioning = conditioning[i])
                 outputs.append(inp)
                 # share variables across frames
                 encode_scope.reuse_variables()
@@ -266,57 +270,48 @@ class VPN(ThreeWorldBaseModel):
                 raise ValueError('Conditioning must be a Tensor or list of Tensors')
             # construct masking sequence
             # mask B for MUs
-            mu_kernel_h = 3
-            mu_kernel_w = 3
-            mu_in_channels = 128
-            mu_out_channels = 128
-            maskB = np.ones([mu_kernel_h, mu_kernel_w, 
-                    mu_in_channels, mu_out_channels*4])
+            mu_kernel_h = 3; mu_kernel_w = 3; mu_in_channels = 128; mu_out_channels = 128
+            maskB = np.ones([mu_kernel_h, mu_kernel_w, mu_in_channels, mu_out_channels*4])
             maskB[mu_kernel_h // 2, mu_kernel_w // 2 + 1:, :, :] = 0.0
             maskB[mu_kernel_h // 2 + 1:, :, :, :] = 0.0
             maskB = tf.constant(maskB, dtype=tf.float32)
             # mask A for W_in
-            W_kernel_h = 7
-            W_kernel_w = 7
-            W_in_channels = 3
-            W_out_channels= 3
-            maskA = np.ones([W_kernel_h, W_kernel_w, 
-                    W_in_channels, W_out_channels])
-            maskA[W_kernel_h // 2, W_kernel_w // 2 + 1:, :, :] = 0.0
+            W_kernel_h = 7; W_kernel_w = 7; W_in_channels = 3; W_out_channels= 3
+            maskA = np.ones([W_kernel_h, W_kernel_w, W_in_channels, W_out_channels])
+            maskA[W_kernel_h // 2, W_kernel_w // 2:, :, :] = 0.0
             maskA[W_kernel_h // 2 + 1:, :, :, :] = 0.0
-            maskA[W_kernel_h // 2, W_kernel_w // 2, :, :] = 0.0
             maskA = tf.constant(maskA, dtype=tf.float32)
-            # first rmb has mask 'a', subsequent rmbs have mask 'b'
-            masks = [maskB] * num_rmb
+            # Define convolutional kernels:
+            # First kernel has mask 'a', subsequent kernels have mask 'b'
+            # W masked with maskA
+            W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
+                    W_in_channels, W_out_channels])
+            # W to expand from 3 to 256 channels
+            W_extend = self.new_variable('W_extend', [1,1,3,256])
+            W_masked *= maskA
+            # W to convert to out_channels
+            W_out = self.new_variable('W_out', [1, 1, 256, out_channels])
             outputs = []
             for i, inp in enumerate(inputs):
-                # W masked with maskA
-                W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
-                        W_in_channels, W_out_channels])
-                # W to expand from 3 to 256 channels
-                W_extend = self.new_variable('W_extend', [1,1,3,256])
-                W_masked *= maskA
                 inp = tf.nn.conv2d(inp, W_masked, strides=[1, 1, 1, 1], padding='SAME')
                 inp = tf.nn.conv2d(inp, W_extend, strides=[1, 1, 1, 1], padding='SAME')
-                for r, mask in enumerate(masks):
+                for r in range(num_rmb):
                     # first frame has no previous time steps to condition on
                     if i == 0:
                         inp = self.rmb(inp, scope = 'rmb' + str(r), \
                                 conditioning = conditioning[i],
                                 use_conditioning = condition_first_image,
-                                mask=mask)
+                                mask=maskB)
                     # subesequent frames condition on previous time steps
                     else:
                         inp = self.rmb(inp, scope = 'rmb' + str(r), \
                                 conditioning = conditioning[i-1],
-                                mask=mask)
-                W_out = self.new_variable('W_out', [1, 1, 256, out_channels])
+                                mask=maskB)
                 inp = tf.nn.conv2d(inp, W_out, strides=[1, 1, 1, 1], padding='SAME')
                 outputs.append(inp)
                 # share variable across frames
                 decode_scope.reuse_variables()
-            outputs = tf.stack(outputs, axis=1)
-        return outputs
+            return tf.stack(outputs, axis=1)
 
     def reshape_rgb(self, inputs, out_channels):
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
@@ -343,17 +338,21 @@ class VPN(ThreeWorldBaseModel):
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
-        encoded_inputs = self.encoder(images, conditioning=[], num_rmb=encoder_depth)
+        encoded_inputs = self.encoder(images, 
+                conditioning=[actions],
+                num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
-        rgb = self.decoder(images, 
+        rgb_pos = self.decoder(images, 
                 conditioning=[lstm_out, actions], 
                 num_rmb=decoder_depth, 
                 out_channels=out_channels)
+        rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
+        pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
-        return [{'rgb': rgb, 'actions': actions}, 
+        return [{'rgb': rgb, 'actions': actions, 'pos': pos}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_references(self, encoder_depth=8, decoder_depth=12,
@@ -474,15 +473,24 @@ def model(inputs,
 
     net = VPN(inputs, **kwargs)
     if my_train:
-        return net.train(encoder_depth, decoder_depth)
+        return net.train(encoder_depth, decoder_depth, out_channels=770)
     else:
         return net.test_references(encoder_depth, decoder_depth)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
-    labels = tf.cast(labels, tf.int32)
-    logits = logits['rgb']
-    return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits))
+    # pixelwise softmax cross entropy over discretized intensities [0-255]
+    rgb_labels = tf.cast(labels[0], tf.int32) #images
+    rgb_logits = logits['rgb']
+    rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=rgb_labels, logits=rgb_logits)
+    # pixelwise softmax cross entropy over discretized binary position mask [0-1]
+    pos_labels = tf.slice(logits['actions'], [0,0,0,0,0], [-1,-1,-1,-1,1])
+    pos_labels_shape = pos_labels.get_shape().as_list()
+    pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+    pos_logits = logits['pos']
+    pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=pos_labels, logits=pos_logits)
+    return tf.reduce_mean(rgb_loss + tf.expand_dims(pos_loss,axis=4))
 
 def parallel_model(inputs, n_gpus=4, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
@@ -505,18 +513,30 @@ def parallel_model(inputs, n_gpus=4, **kwargs):
 
 def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
-        logits = logits['rgb']
-        n_gpus = len(logits)
-        labels = tf.cast(labels, tf.int32)
-        labels = tf.split(labels, axis=0, num_or_size_splits=n_gpus)
+        rgb_logits = logits['rgb']
+        pos_logits = logits['pos']
+        n_gpus = len(rgb_logits)
+        # image labels from data provider, need to be split
+        rgb_labels = tf.cast(labels[0], tf.int32) #images
+        rgb_labels = tf.split(rgb_labels, axis=0, num_or_size_splits=n_gpus)
+        # action labels from network, do not need to be split
+        pos_labels = tf.slice(logits['actions'], [0,0,0,0,0,0], [-1,-1,-1,-1,-1,1])
+        pos_labels_shape = pos_labels.get_shape().as_list()
+        pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+        pos_labels = tf.unstack(pos_labels)
         losses = []
-        for i, (label, logit) in enumerate(zip(labels, logits)):
+        for i, (rgb_label, rgb_logit, pos_label, pos_logit) \
+                in enumerate(zip(rgb_labels, rgb_logits, pos_labels, pos_logits)):
             with tf.device('/gpu:%d' % i):
                 with tf.name_scope('gpu_' + str(i)) as gpu_scope:
-                    label = tf.squeeze(label)
+                    rgb_label = tf.squeeze(rgb_label)
+                    rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                            labels=rgb_label, logits=rgb_logit)
+                    pos_label = tf.squeeze(pos_label)
+                    pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                            labels=pos_label, logits=pos_logit)
                     losses.append(
-                        tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-                                    labels=label, logits=logit)))
+                        tf.reduce_mean(rgb_loss + tf.expand_dims(pos_loss,axis=4)))
                     tf.get_variable_scope().reuse_variables()
         return losses
 
