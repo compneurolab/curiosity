@@ -9,11 +9,11 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import numpy as np
 
 
-def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False):
+def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False):
 	m.output = input_node
 	encode_nodes = [input_node]
 	#encoding
-	encode_depth = cfg['encode_depth']
+	encode_depth = cfg[desc + '_depth']
 	print('Encode depth: %d' % encode_depth)
 	cfs0 = None
 
@@ -22,11 +22,11 @@ def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights
 
 	for i in range(1, encode_depth + 1):
 	#not sure this usage ConvNet class creates exactly the params that we want to have, specifically in the 'input' field, but should give us an accurate record of this network's configuration
-		with tf.variable_scope('encode' + str(i)) as scope:
+		with tf.variable_scope(desc + str(i)) as scope:
 			if reuse_weights:
 				scope.reuse_variables()
 
-			bypass = cfg['encode'][i].get('bypass')
+			bypass = cfg[desc][i].get('bypass')
 			if bypass:
 				if type(bypass) == list:
 					bypass_node = [bypass_nodes[bp] for bp in bypass]
@@ -34,7 +34,7 @@ def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights
 					bypass_node = bypass_nodes[bypass]
 				m.add_bypass(bypass_node)
 
-			bn = cfg['encode'][i]['conv'].get('batch_normalize')
+			bn = cfg[desc][i]['conv'].get('batch_normalize')
 			if bn:
 				norm_it = bn
 			else:
@@ -43,22 +43,22 @@ def feedforward_conv_loop(input_node, m, cfg, bypass_nodes = None, reuse_weights
 
 
 			with tf.contrib.framework.arg_scope([m.conv], init='xavier', stddev=.01, bias=0, batch_normalize = norm_it):
-			    cfs = cfg['encode'][i]['conv']['filter_size']
+			    cfs = cfg[desc][i]['conv']['filter_size']
 			    cfs0 = cfs
-			    nf = cfg['encode'][i]['conv']['num_filters']
-			    cs = cfg['encode'][i]['conv']['stride']
+			    nf = cfg[desc][i]['conv']['num_filters']
+			    cs = cfg[desc][i]['conv']['stride']
 			    print('conv shape to shape')
 			    print(m.output)
 			    if no_nonlinearity_end and i == encode_depth:
 			    	m.conv(nf, cfs, cs, activation = None)
 			    else:
-			    	my_activation = cfg['encode'][i].get('nonlinearity')
+			    	my_activation = cfg[desc][i].get('nonlinearity')
 			    	if my_activation is None:
 			    		my_activation = 'relu'
 			    	m.conv(nf, cfs, cs, activation = my_activation)
 			    print(m.output)
 	#TODO add print function
-			pool = cfg['encode'][i].get('pool')
+			pool = cfg[desc][i].get('pool')
 			if pool:
 			    pfs = pool['size']
 			    ps = pool['stride']
@@ -147,6 +147,45 @@ def shared_weight_conv(inputs, cfg = None, normalization_method = None, stats_fi
 	encoded_input = []
 	for t in range(time_seen):
 		encoded_input.append(feedforward_conv_loop(input_per_time[t], m, cfg, bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		reuse_weights = True
+
+	#flatten and concat
+	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+
+	assert len(flattened_input[0].get_shape().as_list()) == 2
+	concat_input = tf.concat(flattened_input, axis = 1)
+
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
+	print('what is this shape')
+	print(base_net.inputs['object_data_future'])
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
+def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, **kwargs):
+	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+	long_len = inputs['object_data'].get_shape().as_list()[1]
+	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
+	inputs = base_net.inputs
+
+	size_1_attributes = ['normals', 'normals2']
+	size_2_attributes = ['object_data_seen', 'actions_seen']
+	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+
+	encoded_input = []
+	reuse_weights = False
+	for t in range(time_seen):
+		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+		size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+		assert size_1_encoding_before_concat.get_shape().as_list()[:-1] == size_2_encoding_before_concat.get_shape().as_list()[-1]
+		concat_inputs = tf.concat([size_1_encoding_before_concat, size_2_encoding_before_concat], axis = 3)
+		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
 
 	#flatten and concat
@@ -312,6 +351,57 @@ cfg_share_to_mlp = {
 		2 : {'num_features' : 160},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}	
+}
+
+#so small size shapes should be int(160 / 4) = 40 by int(375 / 4) = 94
+cfg_simple_different_sizes = {
+	'size_1_before_concat_depth' : 3
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
+		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
+	}
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 5,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 11, 'stride' : 2, 'num_filters' : 32}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}}, # size 256 image, this leads to 16 * 16 * 256 = 65,536 neurons. Sad!
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 250},
+		2 : {'num_features' : 250},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}	
+}
+
+cfg_alexy_share_to_mlp = {
+	'encode_depth' : 5,
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 11, 'stride' : 4, 'num_filters' : 32}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}}, # size 256 image, this leads to 16 * 16 * 256 = 65,536 neurons. Sad!
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 250},
+		2 : {'num_features' : 250},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}	
+
+
+
 }
 
 cfg_mlp = {
