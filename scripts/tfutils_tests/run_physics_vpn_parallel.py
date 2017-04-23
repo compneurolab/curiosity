@@ -41,7 +41,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test25'
+exp_id = 'test27'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -65,11 +65,10 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     actions = tf.reshape(actions, [shape[0]*shape[1]] + shape[2:])
 
     # ground truth positions
-    gt_pos = tf.stack(outputs['actions'][:num_to_save])
+    gt_pos = tf.stack(outputs['positions'][:num_to_save])
     shape = gt_pos.get_shape().as_list()
     gt_pos = tf.reshape(gt_pos, [shape[0]*shape[1]] + shape[2:])
-    gt_pos = tf.slice(gt_pos, [0,0,0,0,0], [-1,-1,-1,-1,1])
-    gt_pos = tf.cast(tf.greater(gt_pos, tf.zeros(gt_pos.get_shape().as_list())), tf.uint8)
+    gt_pos = tf.cast(gt_pos, tf.uint8)
     gt_pos = tf.squeeze(gt_pos) * 255
 
     # predicted rgb image
@@ -163,7 +162,7 @@ params = {
             'delta_time': TIME_DIFFERENCE,
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
-            'filters': ['is_not_teleporting'], #TODO 'is_object_there'
+            'filters': ['is_not_teleporting', 'is_object_there'],
             'gaussian': GAUSSIAN,
             'max_random_skip': RANDOM_SKIP,
             'resize': RESIZE,
@@ -216,7 +215,7 @@ if USE_VALIDATION:
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting'], #TODO 'is_object_there'
+                'filters': ['is_not_teleporting', 'is_object_there'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,

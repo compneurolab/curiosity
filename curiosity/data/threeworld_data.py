@@ -153,7 +153,7 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
             if init_filters:
                 all_filters = tf.ones(data[f].get_shape().as_list()[0:2], tf.int32)
                 init_filters = False
-            #TODO Take the first element of the filter (is_object_there moving object)
+            #TODO Nicer way: Take first element of filter (is_object_there 1st object)
             data[f] = tf.slice(data[f], [0,0,0], [-1,-1,1])
             data[f] = tf.cast(data[f], tf.int32)
             data[f] = tf.squeeze(data[f])

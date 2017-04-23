@@ -111,7 +111,7 @@ class ThreeWorldBaseModel:
                             [0, 0, 8], [-1, -1, 1]), axis=2)
                     pos_id = tf.slice(self.inputs_raw['object_data'], 
                             [0, 0, 0, 0], [-1, -1, 1, 1])
-                    #TODO assert that pos id and action id are the same
+                    #TODO TEST: assert that pos id and action id are the same
                     #with tf.control_dependencies([tf.assert_equal(pos_id, action_id)]):
                     pos_id = tf.tile(pos_id, [1, 1, 1, shape[2] * shape[3]])
                     pos_id = tf.reshape(pos_id, shape[:-1])
