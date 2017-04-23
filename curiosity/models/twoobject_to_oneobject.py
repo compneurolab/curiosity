@@ -111,6 +111,62 @@ def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = N
 	retval.update(base_net.inputs)
 	return retval, m.params
 
+def just_1d_new_provider(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
+					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+					img_width = image_width)
+	m = ConvNetwithBypasses(**kwargs)
+	in_node = base_net.inputs['object_data_seen_1d']
+	in_shape = in_node.get_shape().as_list()
+	m.output = in_node
+	in_node = m.reshape([np.prod(in_shape[1:])])
+	act_node = base_net.inputs['actions_no_pos']
+	act_shape = act_node.get_shape().as_list()
+	m.output = act_node
+	act_node = m.reshape([np.prod(act_shape[1:])])
+	m.output = tf.concat([in_node, act_node], axis = 1)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
+def shared_weight_conv(inputs, cfg = None, normalization_method = None, stats_file = None, image_height = None, image_width = None, **kwargs):
+	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+	long_len = inputs['object_data'].get_shape().as_list()[1]
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file)
+	inputs = base_net.inputs
+	m = ConvNetwithBypasses(**kwargs)
+	conv_input_names = ['normals', 'normals2', 'object_data_seen', 'actions_seen']
+	input_per_time = [tf.concat([inputs[nm][:, t] for nm in conv_input_names], axis = 3) for t in range(time_seen)]
+	
+	#encode! allows for bypasses if we want em
+	reuse_weights = False
+	encoded_input = []
+	for t in range(time_seen):
+		encoded_input.append(feedforward_conv_loop(input_per_time[t], m, cfg, bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		reuse_weights = True
+
+	#flatten and concat
+	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+
+	assert len(flattened_input[0].get_shape().as_list()) == 2
+	concat_input = tf.concat(flattened_input, axis = 1)
+
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
+	print('what is this shape')
+	print(base_net.inputs['object_data_future'])
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
 def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, **kwargs):
 	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
 	to_concat_attributes_float32 = ['normals', 'normals2', 'object_data_seen', 'actions_seen', 'actions_future']
@@ -185,8 +241,21 @@ def alternate_diff_loss(outputs):
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
 
-
-
+def diff_loss_with_mask(outputs):
+	master_filter = outputs['master_filter']
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	time_seen = seen_dat.get_shape().as_list()[1]
+	last_seen_dat = seen_dat[:, -1:]
+	tv = compute_diffs(last_seen_dat, future_dat)
+	tv = tv[:, :, :, 4:]
+	mask = tf.cast(tf.cumprod(master_filter[:, time_seen:], axis = 1), tf.float32)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.tile(mask, [1, 1, 1, 2])
+	n_entries = np.prod(tv.get_shape().as_list())
+	return 100. * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
 
 cfg_simple = {
 	'encode_depth' : 6,
@@ -223,6 +292,26 @@ cfg_2 = {
 		1 : {'num_features' : 70},
 		2 : {'num_features' : 60, 'activation' : 'identity'} #2 points * 5 timesteps * (2 + 4) dimension
 	}
+}
+
+cfg_share_to_mlp = {
+	'encode_depth' : 7,
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 8}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 8}},
+		3 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 8}},
+		4 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 5}},
+		5 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 5}},
+		6 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 5}},
+		7 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 5}}
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 160},
+		2 : {'num_features' : 160},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}	
 }
 
 cfg_mlp = {
