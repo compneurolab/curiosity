@@ -35,13 +35,13 @@ IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
-SEGMENTATION = ['actions']
+SEGMENTATION = ['actions', 'positions']
 RESIZE = {'images': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test23'
+exp_id = 'test25'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -157,13 +157,13 @@ params = {
             'func': ThreeWorldDataProvider,
             #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
             'data_path': DATA_PATH,
-            'sources': ['images', 'actions', 'objects'],
+            'sources': ['images', 'actions', 'objects', 'object_data'],
             'n_threads': 4,
             'batch_size': INPUT_BATCH_SIZE,
             'delta_time': TIME_DIFFERENCE,
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
-            'filters': ['is_not_teleporting'],
+            'filters': ['is_not_teleporting'], #TODO 'is_object_there'
             'gaussian': GAUSSIAN,
             'max_random_skip': RANDOM_SKIP,
             'resize': RESIZE,
@@ -210,13 +210,13 @@ if USE_VALIDATION:
                 'func': ThreeWorldDataProvider,
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
-                'sources': ['images', 'actions', 'objects'],
+                'sources': ['images', 'actions', 'objects', 'object_data'],
                 'n_threads': 4,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting'],
+                'filters': ['is_not_teleporting'], #TODO 'is_object_there'
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,

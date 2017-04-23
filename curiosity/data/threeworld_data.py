@@ -148,25 +148,33 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
 
     def apply_filters(self, data):
         seq_len = tf.constant(self.sequence_len, dtype=tf.int32)
+        init_filters = True
         for f in self.filters:
+            if init_filters:
+                all_filters = tf.ones(data[f].get_shape().as_list()[0:2], tf.int32)
+                init_filters = False
+            #TODO Take the first element of the filter (is_object_there moving object)
+            data[f] = tf.slice(data[f], [0,0,0], [-1,-1,1])
             data[f] = tf.cast(data[f], tf.int32)
             data[f] = tf.squeeze(data[f])
-            # check if ALL binary labels within sequence are not zero
-            filter_sum = tf.reduce_sum(data[f], 1)
-            if self.output_format is 'sequence':
-                pos_idx = tf.equal(filter_sum, seq_len)
-            elif self.output_format is 'pairs':
-                pos_idx = tf.equal(filter_sum, tf.constant(2, dtype=tf.int32))
-            else:
-                raise ValueError('Unknown output format')
-            # gather positive examples for each data entry
-            for k in data:
-                shape = data[k].get_shape().as_list()
-                shape[0] = -1
-                data[k] = tf.gather(data[k], tf.where(pos_idx))
-                data[k] = tf.reshape(data[k], shape)
+            # logical 'and' operation on all filters
+            all_filters *= data[f]
             # remove filter from dict such that it is not enqueued
             data.pop(f)
+        # check if ALL binary labels within sequence are not zero
+        filter_sum = tf.reduce_sum(all_filters, 1)
+        if self.output_format is 'sequence':
+            pos_idx = tf.equal(filter_sum, seq_len)
+        elif self.output_format is 'pairs':
+            pos_idx = tf.equal(filter_sum, tf.constant(2, dtype=tf.int32))
+        else:
+            raise ValueError('Unknown output format')
+        # gather positive examples for each data entry
+        for k in data:
+            shape = data[k].get_shape().as_list()
+            shape[0] = -1
+            data[k] = tf.gather(data[k], tf.where(pos_idx))
+            data[k] = tf.reshape(data[k], shape)
         return data
 
     def random_skip(self, data):

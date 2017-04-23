@@ -103,19 +103,29 @@ class ThreeWorldBaseModel:
                     continue
                 objects = tf.cast(self.inputs[view], tf.float32)
                 shape = objects.get_shape().as_list()
-                objects = tf.unstack(objects, 
-                        axis=len(shape)-1)
+                objects = tf.unstack(objects, axis=len(shape)-1)
                 objects = objects[0] * (256**2) + objects[1] * 256 + objects[2] 
                 if 'actions' in self.segmentation:
                     forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
-                    action_id = tf.slice(self.inputs['actions'], [0, 0, 8], [-1, -1, 1])
-                    action_id = tf.tile(action_id, [1,1,shape[2]*shape[3]])
-                    action_id = tf.reshape(action_id, shape[:-1])
-                    idx = tf.equal(objects, action_id)
-                    objects *= tf.cast(idx, tf.float32)
-                    actions = tf.tile(tf.expand_dims(objects, axis=4), [1,1,1,1,6])
+                    action_id = tf.expand_dims(tf.slice(self.inputs_raw['actions'], 
+                            [0, 0, 8], [-1, -1, 1]), axis=2)
+                    pos_id = tf.slice(self.inputs_raw['object_data'], 
+                            [0, 0, 0, 0], [-1, -1, 1, 1])
+                    #TODO assert that pos id and action id are the same
+                    #with tf.control_dependencies([tf.assert_equal(pos_id, action_id)]):
+                    pos_id = tf.tile(pos_id, [1, 1, 1, shape[2] * shape[3]])
+                    pos_id = tf.reshape(pos_id, shape[:-1])
+                    actions = tf.cast(tf.equal(objects, pos_id), tf.float32)
+                    actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
                     actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
                     self.inputs['actions'] = actions
+                if 'positions' in self.segmentation:
+                    pos_id = tf.slice(self.inputs_raw['object_data'], 
+                            [0, 0, 0, 0], [-1, -1, 1, 1])
+                    pos_id = tf.tile(pos_id, [1, 1, 1, shape[2] * shape[3]])
+                    pos_id = tf.reshape(pos_id, shape[:-1])
+                    positions = tf.cast(tf.equal(objects, pos_id), tf.float32)
+                    self.inputs['positions'] = tf.expand_dims(positions, axis=3)
 
         if self.gaussian is not None:
             # get image shape
