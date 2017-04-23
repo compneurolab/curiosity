@@ -334,25 +334,26 @@ class VPN(ThreeWorldBaseModel):
     def train(self, encoder_depth=8, decoder_depth=12, out_channels=768):
         images = self.inputs['images']
         actions = self.inputs['actions']
+        positions = self.inputs['positions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
         encoded_inputs = self.encoder(images, 
-                conditioning=[actions],
+                conditioning=[actions, positions],
                 num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
         rgb_pos = self.decoder(images, 
-                conditioning=[lstm_out, actions], 
-                num_rmb=decoder_depth, 
+                conditioning=[lstm_out, actions, positions], 
+                num_rmb=decoder_depth,
                 out_channels=out_channels)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
         pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
-        return [{'rgb': rgb, 'actions': actions, 'pos': pos}, 
+        return [{'rgb': rgb, 'actions': actions, 'positions': positions, 'pos': pos}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_references(self, encoder_depth=8, decoder_depth=12,
@@ -494,9 +495,7 @@ def softmax_cross_entropy_loss(labels, logits, **kwargs):
     rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=rgb_labels, logits=rgb_logits)
     # pixelwise softmax cross entropy over discretized binary position mask [0-1]
-    pos_labels = tf.slice(logits['actions'], [0,0,0,0,0], [-1,-1,-1,-1,1])
-    pos_labels_shape = pos_labels.get_shape().as_list()
-    pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+    pos_labels = tf.cast(logits['positions'], tf.int32)
     pos_logits = logits['pos']
     pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=pos_labels, logits=pos_logits)
@@ -530,9 +529,7 @@ def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
         rgb_labels = tf.cast(labels[0], tf.int32) #images
         rgb_labels = tf.split(rgb_labels, axis=0, num_or_size_splits=n_gpus)
         # action labels from network, do not need to be split
-        pos_labels = tf.slice(logits['actions'], [0,0,0,0,0,0], [-1,-1,-1,-1,-1,1])
-        pos_labels_shape = pos_labels.get_shape().as_list()
-        pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+        pos_labels = tf.cast(logits['positions'], tf.int32)
         pos_labels = tf.unstack(pos_labels)
         losses = []
         for i, (rgb_label, rgb_logit, pos_label, pos_logit) \
