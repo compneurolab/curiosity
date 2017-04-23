@@ -190,7 +190,7 @@ class ShortLongFuturePredictionBase:
 
     def __init__(self, inputs, normalization_method = None, stats_file = None,
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
-            time_seen = None, scale_down_gaussians = None,
+            time_seen = None, scale_down_height = None, scale_down_width = None,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -229,9 +229,10 @@ class ShortLongFuturePredictionBase:
             #er could shallow copy here...
             gaussian_shape = [batch_size, time_seen, img_height, img_width, 1]
 
-            if scale_down_gaussians is not None:
-                gaussian_shape[2] = int(gaussian_shape[2] * scale_down_gaussians)
-                gaussian_shape[3] = int(gaussian_shape[3] * scale_down_gaussians)
+            if scale_down_height is not None:
+                gaussian_shape[2] = scale_down_height
+                gaussian_shape[3] = scale_down_width
+                scale_down_gaussians = float(scale_down_height) / float(img_height)
             else:
                 scale_down_gaussians = 1.
             #objects_to_include should really be fed in as a tensor input generated randomly from data provider.
