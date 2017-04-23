@@ -340,13 +340,13 @@ class VPN(ThreeWorldBaseModel):
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
         encoded_inputs = self.encoder(images, 
-                conditioning=[actions, positions],
+                conditioning=[tf.concat([actions, positions], 4)],
                 num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
         rgb_pos = self.decoder(images, 
-                conditioning=[lstm_out, actions, positions], 
+                conditioning=[tf.concat([lstm_out, actions, positions], 4)], 
                 num_rmb=decoder_depth,
                 out_channels=out_channels)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])

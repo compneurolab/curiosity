@@ -125,7 +125,7 @@ class ThreeWorldBaseModel:
                     pos_id = tf.tile(pos_id, [1, 1, 1, shape[2] * shape[3]])
                     pos_id = tf.reshape(pos_id, shape[:-1])
                     positions = tf.cast(tf.equal(objects, pos_id), tf.float32)
-                    self.inputs['positions'] = tf.expand_dims(positions, axis=3)
+                    self.inputs['positions'] = tf.expand_dims(positions, axis=4)
 
         if self.gaussian is not None:
             # get image shape
