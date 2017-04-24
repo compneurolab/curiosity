@@ -38,13 +38,13 @@ IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
-SEGMENTATION = ['actions']
+SEGMENTATION = ['actions', 'positions']
 RESIZE = {'images': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test22'
+exp_id = 'test28'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -59,6 +59,7 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     retval = {'images': inputs['images'][:num_to_save], 
             'actions': inputs['actions'][:num_to_save], 
             'objects': inputs['objects'][:num_to_save],
+            'object_data': inputs['object_data'][:num_to_save],
             'decode': outputs['decode'], 
             'encode': outputs['encode'],
             'run_lstm': outputs['run_lstm'], 
@@ -66,8 +67,7 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
             'ph_enc_cond': outputs['ph_enc_cond'],
             'ph_lstm_inp': outputs['ph_lstm_inp'],
             'ph_dec_inp': outputs['ph_dec_inp'],
-            'ph_dec_cond_past': outputs['ph_dec_cond_past'],
-            'ph_dec_cond_act': outputs['ph_dec_cond_act'],}
+            'ph_dec_cond': outputs['ph_dec_cond'],}
     return retval
 
 def keep_all(step_results):
@@ -127,13 +127,13 @@ if USE_VALIDATION:
                 'func': ThreeWorldDataProvider,
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
-                'sources': ['images', 'actions', 'objects'],
+                'sources': ['images', 'actions', 'objects', 'object_data'],
                 'n_threads': 1,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting'],
+                'filters': ['is_not_teleporting',], #'is_object_there'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,
@@ -170,6 +170,7 @@ if __name__ == '__main__':
     get_images = valid_targets_dict['valid0']['targets']['images']
     get_actions = valid_targets_dict['valid0']['targets']['actions']
     get_objects = valid_targets_dict['valid0']['targets']['objects']
+    get_object_data = valid_targets_dict['valid0']['targets']['object_data']
     encode = valid_targets_dict['valid0']['targets']['encode']
     run_lstm = valid_targets_dict['valid0']['targets']['run_lstm']
     decode = valid_targets_dict['valid0']['targets']['decode']
@@ -178,37 +179,57 @@ if __name__ == '__main__':
     ph_enc_cond = valid_targets_dict['valid0']['targets']['ph_enc_cond']
     ph_lstm_inp = valid_targets_dict['valid0']['targets']['ph_lstm_inp']
     ph_dec_inp = valid_targets_dict['valid0']['targets']['ph_dec_inp']
-    ph_dec_cond_past = valid_targets_dict['valid0']['targets']['ph_dec_cond_past']
-    ph_dec_cond_act = valid_targets_dict['valid0']['targets']['ph_dec_cond_act']
+    ph_dec_cond = valid_targets_dict['valid0']['targets']['ph_dec_cond']
     # unroll across time
     n_context = 2
     for ex in xrange(valid_targets_dict['valid0']['num_steps']):
         # get inputs: images, actions, and segmented object images
-        images, actions, objects = sess.run([get_images, get_actions, get_objects])
+        images, actions, objects, object_data = sess.run([get_images, 
+            get_actions, 
+            get_objects,
+            get_object_data])
         images = images[0].astype(np.float32) / 255.0
         # construct action segmentation mask
         objects = objects[0][:,:,:,:,0] * (256**2) + \
                 objects[0][:,:,:,:,1] * 256 + objects[0][:,:,:,:,2]
-        forces = actions[0][:,:,0:6]
+        pos_id = object_data[0][:,:,0,0]
         action_id = actions[0][:,:,8]
+        if (action_id != pos_id).all():
+            print("WARNING: action_id != pos_id")
+        forces = actions[0][:,:,0:6]
         objects = (objects == np.ones(objects.shape) * 
-                action_id[:,:,np.newaxis, np.newaxis]).astype(np.float32)
+                pos_id[:,:,np.newaxis, np.newaxis]).astype(np.float32)
         acted = np.unique(np.nonzero(objects)[0])
         if len(acted) > 0:
             print('Actions present in evaluated batch for examples: ' + str(acted))
         action_masks = np.expand_dims(np.expand_dims(forces, 2), 2) \
                 * np.expand_dims(objects,4)
+        position_masks = np.expand_dims(objects,4)
         poses = objects.copy() * 255 #ground truth pos
+        # save input data
+        inputs = {'images': images, 
+                'actions': actions, 
+                'objects': objects, 
+                'object_data': object_data,
+                'action_masks': action_masks,
+                'position_masks': position_masks}
+        with open('inputs'+str(ex)+'.pkl', 'w') as f:
+            cPickle.dump(inputs, f) 
+
         # encode context images
         context_images = np.zeros(list(images.shape[:-1]) + list([256]))
-        action_masks[:,0:n_context] = 0 #zero out later masks as they are predicted
+        #zero out later masks as they are predicted
+        action_masks[:,n_context:] = 0
+        position_masks[:,n_context:] = 0
         print('Encoding context:')
         for im in trange(n_context, desc='timestep'):
             context_image = np.expand_dims(images[:,im], 1)
             action_mask = np.expand_dims(action_masks[:,im], 1)
+            position_mask = np.expand_dims(position_masks[:,im], 1)
+            enc_cond = np.concatenate((action_mask, position_mask), axis=4)
             context_images[:,im] = np.squeeze(sess.run(encode, 
                     feed_dict={ph_enc_inp: context_image,
-                        ph_enc_cond: action_mask})[0])
+                        ph_enc_cond: enc_cond})[0])
         # predict images pixel by pixel, one after another
         print('Generating images pixel by pixel:')
         predicted_images = []
@@ -221,22 +242,26 @@ if __name__ == '__main__':
             pos = np.zeros(images[:,im,:,:,0].shape)
             context = np.expand_dims(encoded_images[:,im-1], 1)
             action_mask = np.expand_dims(action_masks[:,im-1], 1)
+            position_mask = np.expand_dims(position_masks[:,im-1], 1)
+            dec_cond = np.concatenate((context, action_mask, position_mask), axis=4)
             for i in trange(images.shape[-3], desc='height', leave=False):
                 for j in trange(images.shape[-2], desc='width'):
                     #for k in xrange(images.shape[-1]): # predict all channels at once
                         image_pos = sess.run(decode,
                                 feed_dict={ph_dec_inp: image,
-                                    ph_dec_cond_past: context,
-                                    ph_dec_cond_act: action_mask})[0]
+                                    ph_dec_cond: dec_cond})[0]
                         image[:,0,i,j] = image_pos[:,0,i,j,0:3]
                         pos[:,i,j] = image_pos[:,0,i,j,3]
             # current action
             action_masks[:,im] = forces[:,im, np.newaxis, np.newaxis] \
                     * np.expand_dims(pos,3)
+            position_masks[:,im] = np.expand_dims(pos,3)
             action_mask = np.expand_dims(action_masks[:,im], 1)
+            position_mask = np.expand_dims(position_masks[:,im], 1)
+            enc_cond = np.concatenate((action_mask, position_mask), axis=4)
             context_images[:,im] = np.squeeze(sess.run(encode,
                 feed_dict={ph_enc_inp: image,
-                    ph_enc_cond: action_mask})[0])
+                    ph_enc_cond: enc_cond})[0])
             predicted_images.append(np.squeeze(image))
             predicted_poses.append(np.squeeze(pos))
         predicted_images = np.stack(predicted_images, axis=1)
