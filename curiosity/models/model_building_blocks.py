@@ -164,6 +164,91 @@ class ConvNetwithBypasses(ConvNet):
                            'seed': self.seed}
             return self.output
 
+	@tf.contrib.framework.add_arg_scope
+    def coord_to_conv(self,
+    		out_shape,
+    		in_layer,
+    		ksize = 3,
+    		stride = 1,
+    		padding = 'SAME',
+    		init = 'xavier',
+    		stddev = .01,
+    		bias = 1,
+    		activation = 'relu',
+    		weight_decay = None,
+    		trainable = True
+    				):
+    	if weight_decay is None:
+    		weight_decay = 0.
+    	in_shape = in_layer.get_shape().as_list()[-1]
+    	assert len(in_shape) == 2
+
+		if isinstance(ksize, int):
+		    ksize1 = ksize
+		    ksize2 = ksize
+		else:
+		    ksize1, ksize2 = ksize
+
+		out_width = out_shape[1]
+		out_height = out_shape[0]
+		out_channels = out_shape[2]
+
+	    coord_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+	                             shape=[ksize1, ksize2, in_shape, out_shape],
+	                             dtype=tf.float32,
+	                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+	                             name='weights', trainable=trainable)
+	    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+	                             shape=[out_channels],
+	                             dtype=tf.float32,
+	                             name='bias', trainable=trainable)
+
+	   	input_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+	   							shape = [in_shape[1], out_channels],
+	   							dtype = tf.float32,
+	                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+	                             name='inweights', trainable=trainable)
+
+		X = tf.range(out_width)
+		X = tf.expand_dims(X, 0)
+		X = tf.expand_dims(X, 1)
+		X = tf.expand_dims(X, 3)
+		X = tf.tile(X, [batch_size, height, 1, 1])
+
+
+		Y = tf.range(out_height)
+		Y = tf.expand_dims(Y, 0)
+		Y = tf.expand_dims(Y, 2)
+		Y = tf.expand_dims(Y, 3)
+		Y = tf.tile(Y, [batch_size, 1, width, 1])
+
+		coord = tf.concat(3, [Y, X])
+		coord = tf.cast(coord, tf.float32)
+
+		coord_conv = tf.nn.conv2d(coord, coord_kernel, strides = [1, stride, stride, 1], padding = padding)
+		input_mul = tf.matmul(in_layer, input_kernel)
+		input_mul = tf.expand_dims(input_mul, 1)
+		input_mul = tf.expand_dims(input_mul, 1)
+		adding = coord_conv + input_mul
+		self.output = tf.nn.bias_add(adding, biases, name='coordtoconv')
+
+		if activation is not None:
+		    self.output = self.activation(kind=activation)
+		self.params = {'input': in_layer.name,
+		               'type': 'coordtoconv',
+		               'num_filters': out_shape,
+		               'stride': stride,
+		               'kernel_size': (ksize1, ksize2),
+		               'padding': padding,
+		               'init': init,
+		               'stddev': stddev,
+		               'bias': bias,
+		               'activation': activation,
+		               'weight_decay': weight_decay,
+		               'seed': self.seed}
+		return self.output
+
+
 
 
 	@tf.contrib.framework.add_arg_scope
