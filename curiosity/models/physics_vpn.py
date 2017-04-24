@@ -340,13 +340,13 @@ class VPN(ThreeWorldBaseModel):
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
         encoded_inputs = self.encoder(images, 
-                conditioning=[actions, positions],
+                conditioning=[tf.concat([actions, positions], 4)],
                 num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
         rgb_pos = self.decoder(images, 
-                conditioning=[lstm_out, actions, positions], 
+                conditioning=[tf.concat([lstm_out, actions, positions], 4)], 
                 num_rmb=decoder_depth,
                 out_channels=out_channels)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
@@ -368,9 +368,9 @@ class VPN(ThreeWorldBaseModel):
         img_shape = copy.deepcopy(shape)
         img_shape[1] = 1
         self.ph_enc_inp = tf.placeholder(tf.float32, img_shape, 'enc_inp')
-        act_shape = copy.deepcopy(img_shape)
-        act_shape[-1] = 6
-        self.ph_enc_cond = tf.placeholder(tf.float32, act_shape, 'enc_cond')
+        cond_shape = copy.deepcopy(img_shape)
+        cond_shape[-1] = 6 + 1
+        self.ph_enc_cond = tf.placeholder(tf.float32, cond_shape, 'enc_cond')
         encoded_inputs = self.encoder(self.ph_enc_inp, 
                 conditioning=[self.ph_enc_cond], num_rmb=encoder_depth)
         # run lstm
@@ -380,16 +380,14 @@ class VPN(ThreeWorldBaseModel):
         lstm_out = self.lstm(self.ph_lstm_inp)
         # decode
         dec_inp_shape = copy.deepcopy(img_shape)
-        dec_cond_past_shape = copy.deepcopy(img_shape)
-        dec_cond_past_shape[-1] = 256
+        dec_cond_shape = copy.deepcopy(img_shape)
+        dec_cond_shape[-1] = 256 + 6 + 1
         self.ph_dec_inp = tf.placeholder(tf.float32, 
                 dec_inp_shape, 'dec_inp')
-        self.ph_dec_cond_past = tf.placeholder(tf.float32, 
-                dec_cond_past_shape, 'dec_cond_past')
-        self.ph_dec_cond_act = tf.placeholder(tf.float32,
-                act_shape, 'dec_cond_act')
+        self.ph_dec_cond = tf.placeholder(tf.float32, 
+                dec_cond_shape, 'dec_cond')
         rgb_pos = self.decoder(self.ph_dec_inp, 
-                conditioning=[self.ph_dec_cond_past, self.ph_dec_cond_act], 
+                conditioning=[self.ph_dec_cond], 
                 num_rmb=decoder_depth,
                 out_channels=out_channels, condition_first_image=True)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
@@ -406,8 +404,7 @@ class VPN(ThreeWorldBaseModel):
             'ph_enc_cond': self.ph_enc_cond,
             'ph_lstm_inp': self.ph_lstm_inp,
             'ph_dec_inp': self.ph_dec_inp,
-            'ph_dec_cond_past': self.ph_dec_cond_past,
-            'ph_dec_cond_act': self.ph_dec_cond_act},
+            'ph_dec_cond': self.ph_dec_cond},
             {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,

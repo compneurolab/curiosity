@@ -159,8 +159,6 @@ def shared_weight_conv(inputs, cfg = None, normalization_method = None, stats_fi
 	concat_input = tf.concat(flattened_input, axis = 1)
 
 	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
-	print('what is this shape')
-	print(base_net.inputs['object_data_future'])
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	pred_shape[3] = 2
 	pred = tf.reshape(pred, pred_shape)
@@ -213,25 +211,27 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 
 
 
-def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, **kwargs):
+def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
-	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width)
+
 	inputs = base_net.inputs
 
 	size_1_attributes = ['normals', 'normals2']
 	size_2_attributes = ['object_data_seen', 'actions_seen']
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
 	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+	m = ConvNetwithBypasses(**kwargs)
 
 	encoded_input = []
 	reuse_weights = False
 	for t in range(time_seen):
 		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
 		size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
-		assert size_1_encoding_before_concat.get_shape().as_list()[:-1] == size_2_encoding_before_concat.get_shape().as_list()[-1]
-		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
-		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		assert size_1_encoding_before_concat.get_shape().as_list()[:-1] == size_2_encoding_before_concat.get_shape().as_list()[-1], (size_1_encoding_before_concat.get_shape().as_list()[:-1], size_2_encoding_before_concat.get_shape().as_list()[-1])
+		concat_inputs = tf.concat([size_1_encoding_before_concat, size_2_encoding_before_concat], axis = 3)
+		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
 
 	#flatten and concat
@@ -243,8 +243,6 @@ def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, norm
 	concat_input = tf.concat(flattened_input, axis = 1)
 
 	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
-	print('what is this shape')
-	print(base_net.inputs['object_data_future'])
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	pred_shape[3] = 2
 	pred = tf.reshape(pred, pred_shape)
@@ -401,13 +399,13 @@ cfg_share_to_mlp = {
 
 #so small size shapes should be int(160 / 4) = 40 by int(375 / 4) = 94
 cfg_simple_different_sizes = {
-	'size_1_before_concat_depth' : 3
+	'size_1_before_concat_depth' : 3,
 
 	'size_1_before_concat' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
-	}
+	},
 
 	'size_2_before_concat_depth' : 0,
 
