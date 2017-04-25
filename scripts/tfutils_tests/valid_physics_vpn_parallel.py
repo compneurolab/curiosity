@@ -44,7 +44,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test28'
+exp_id = 'test29'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -133,7 +133,7 @@ if USE_VALIDATION:
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting',], #'is_object_there'],
+                'filters': ['is_not_teleporting', 'is_object_there'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,
@@ -234,7 +234,8 @@ if __name__ == '__main__':
         print('Generating images pixel by pixel:')
         predicted_images = []
         predicted_poses = []
-        for im in trange(n_context, images.shape[1], desc='timestep'):
+        num_images = images.shape[1]
+        for im in trange(n_context, num_images, desc='timestep'):
             encoded_images = sess.run(run_lstm,
                     feed_dict={ph_lstm_inp: context_images})[0]
             image = np.zeros(images[:,im].shape)
@@ -270,6 +271,7 @@ if __name__ == '__main__':
                 'pred_images': predicted_images,
                 'gt_poses': poses,
                 'gt_images': images,
+                #'context_images': context_images,
                 'ex_acted': acted}
         with open('results'+str(ex)+'.pkl', 'w') as f:
             cPickle.dump(results, f)
