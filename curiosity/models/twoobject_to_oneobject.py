@@ -112,6 +112,29 @@ def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = N
 	retval.update(base_net.inputs)
 	return retval, m.params
 
+def just_1d_with_agent_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
+					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+					img_width = image_width)
+	m = ConvNetwithBypasses(**kwargs)
+	in_node = base_net.inputs['object_data_seen_1d']
+	in_shape = in_node.get_shape().as_list()
+	m.output = in_node
+	in_node = m.reshape([np.prod(in_shape[1:])])
+	act_node = base_net.inputs['actions_no_pos']
+	act_shape = act_node.get_shape().as_list()
+	m.output = act_node
+	act_node = m.reshape([np.prod(act_shape[1:])])
+	agent_node = inputs['agent_data'][:, 3:]
+	m.output = tf.concat([in_node, act_node, agent_node], axis = 1)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
 def just_1d_new_provider(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
 					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
