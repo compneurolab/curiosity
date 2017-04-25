@@ -112,6 +112,29 @@ def just_1d_stuff(inputs, cfg = None, time_seen = None, normalization_method = N
 	retval.update(base_net.inputs)
 	return retval, m.params
 
+def just_1d_with_agent_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
+					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+					img_width = image_width)
+	m = ConvNetwithBypasses(**kwargs)
+	in_node = base_net.inputs['object_data_seen_1d']
+	in_shape = in_node.get_shape().as_list()
+	m.output = in_node
+	in_node = m.reshape([np.prod(in_shape[1:])])
+	act_node = base_net.inputs['actions_no_pos']
+	act_shape = act_node.get_shape().as_list()
+	m.output = act_node
+	act_node = m.reshape([np.prod(act_shape[1:])])
+	agent_node = inputs['agent_data'][:, 3:]
+	m.output = tf.concat([in_node, act_node, agent_node], axis = 1)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
 def just_1d_new_provider(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
 					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
@@ -176,19 +199,19 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	size_1_attributes = ['normals', 'normals2']
 	flat_inputs = ['object_data_seen_1d', 'actions_no_pos']
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
-	flat_input_per_time = [tf.concat([inputs[nm][:, t] for nm in flat_inputs], axis = 3) for t in range(time_seen)]
+	flat_input_per_time = [tf.concat([tf.reshape(inputs[nm][:, t], [batch_size, -1]) for nm in flat_inputs], axis = 1) for t in range(time_seen)]
 
 	encoded_input = []
 	reuse_weights = False
 	for t in range(time_seen):
 		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
-		with tf.variable_scope('coord_to_conv'):
+		with tf.variable_scope('coord_to_conv') as scope:
 			if reuse_weights:
 				scope.reuse_variables()
 			coord_res = m.coord_to_conv(cfg['coord_to_conv'][0]['out_shape'], flat_input_per_time[t], ksize = 1, activation = cfg['coord_to_conv'][0]['activation'])
 		coord_res = feedforward_conv_loop(coord_res, m, cfg, desc = 'coord_to_conv', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
-		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], coord_res[-1]], axis = 3)
-		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], coord_res], axis = 3)
+		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
 
 	#flatten and concat
@@ -466,7 +489,7 @@ cfg_one_to_two_to_one = {
 	'coord_to_conv_depth' : 1,
 	'coord_to_conv' : {
 		0 : {'out_shape' : [40, 94, 4], 'activation' : 'relu'},
-		1 : {'num_features' : 4}
+		1 : {'conv'  : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}}
 	},
 
 
@@ -707,6 +730,47 @@ cfg_resnet18 = {
 
 }
 
+cfg_resnet_wide = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 4}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3}
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+}
 
 
 

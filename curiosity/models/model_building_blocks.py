@@ -180,8 +180,9 @@ class ConvNetwithBypasses(ConvNet):
 					):
 		if weight_decay is None:
 			weight_decay = 0.
-		in_shape = in_layer.get_shape().as_list()[-1]
+		in_shape = in_layer.get_shape().as_list()
 		assert len(in_shape) == 2
+		batch_size = in_shape[0]
 
 		if isinstance(ksize, int):
 		    ksize1 = ksize
@@ -194,7 +195,7 @@ class ConvNetwithBypasses(ConvNet):
 		out_channels = out_shape[2]
 
 		coord_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
-										 shape=[ksize1, ksize2, in_shape, out_shape],
+										 shape=[ksize1, ksize2, 2, out_channels],
 										 dtype=tf.float32,
 										 regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
 										 name='weights', trainable=trainable)
@@ -213,16 +214,16 @@ class ConvNetwithBypasses(ConvNet):
 		X = tf.expand_dims(X, 0)
 		X = tf.expand_dims(X, 1)
 		X = tf.expand_dims(X, 3)
-		X = tf.tile(X, [batch_size, height, 1, 1])
+		X = tf.tile(X, [batch_size, out_height, 1, 1])
 
 
 		Y = tf.range(out_height)
 		Y = tf.expand_dims(Y, 0)
 		Y = tf.expand_dims(Y, 2)
 		Y = tf.expand_dims(Y, 3)
-		Y = tf.tile(Y, [batch_size, 1, width, 1])
+		Y = tf.tile(Y, [batch_size, 1, out_width, 1])
 
-		coord = tf.concat(3, [Y, X])
+		coord = tf.concat([Y, X], 3)
 		coord = tf.cast(coord, tf.float32)
 
 		coord_conv = tf.nn.conv2d(coord, coord_kernel, strides = [1, stride, stride, 1], padding = padding)

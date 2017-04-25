@@ -90,7 +90,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'res18_adam',
+		'exp_id' : 'wider_res18',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -100,8 +100,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.one_to_two_to_one,
-		'cfg' : modelsource.cfg_one_to_two_to_one,
+		'func' : modelsource.shared_weight_downscaled_nonimage,
+		'cfg' : modelsource.cfg_resnet_wide,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
