@@ -176,7 +176,7 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	size_1_attributes = ['normals', 'normals2']
 	flat_inputs = ['object_data_seen_1d', 'actions_no_pos']
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
-	flat_input_per_time = [tf.concat([inputs[nm][:, t] for nm in flat_inputs], axis = 3) for t in range(time_seen)]
+	flat_input_per_time = [tf.concat([inputs[nm][:, t] for nm in flat_inputs], axis = 1) for t in range(time_seen)]
 
 	encoded_input = []
 	reuse_weights = False
