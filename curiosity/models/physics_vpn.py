@@ -334,30 +334,32 @@ class VPN(ThreeWorldBaseModel):
     def train(self, encoder_depth=8, decoder_depth=12, out_channels=768):
         images = self.inputs['images']
         actions = self.inputs['actions']
+        positions = self.inputs['positions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode
         encoded_inputs = self.encoder(images, 
-                conditioning=[actions],
+                conditioning=[tf.concat([actions, positions], 4)],
                 num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
         rgb_pos = self.decoder(images, 
-                conditioning=[lstm_out, actions], 
-                num_rmb=decoder_depth, 
+                conditioning=[tf.concat([lstm_out, actions, positions], 4)], 
+                num_rmb=decoder_depth,
                 out_channels=out_channels)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
         pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
-        return [{'rgb': rgb, 'actions': actions, 'pos': pos}, 
+        return [{'rgb': rgb, 'actions': actions, 'positions': positions, 'pos': pos}, 
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_references(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
         images = self.inputs['images']
+        actions = self.inputs['actions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
@@ -366,37 +368,43 @@ class VPN(ThreeWorldBaseModel):
         img_shape = copy.deepcopy(shape)
         img_shape[1] = 1
         self.ph_enc_inp = tf.placeholder(tf.float32, img_shape, 'enc_inp')
-        #TODO include conditioning in encoding if used
-        #conditioning = self.ph_enc_cond = tf.placeholder_with_default(conditioning, 
-        #        inputs.get_shape().as_list()[0:-1] + [256], 'enc_cond')
+        cond_shape = copy.deepcopy(img_shape)
+        cond_shape[-1] = 6 + 1
+        self.ph_enc_cond = tf.placeholder(tf.float32, cond_shape, 'enc_cond')
         encoded_inputs = self.encoder(self.ph_enc_inp, 
-                conditioning=[], num_rmb=encoder_depth)
+                conditioning=[self.ph_enc_cond], num_rmb=encoder_depth)
         # run lstm
         enc_shape = copy.deepcopy(shape)
         enc_shape[-1] = 256
         self.ph_lstm_inp = tf.placeholder(tf.float32, enc_shape, 'lstm_inp')
         lstm_out = self.lstm(self.ph_lstm_inp)
         # decode
-        dec_inp_shape = copy.deepcopy(shape)
-        dec_inp_shape[1] = 1
-        dec_cond_shape = copy.deepcopy(shape)
-        dec_cond_shape[1] = 1
-        dec_cond_shape[-1] = 256
-        self.ph_dec_inp = tf.placeholder(tf.float32, dec_inp_shape, 'dec_inp')
-        self.ph_dec_cond = tf.placeholder(tf.float32, dec_cond_shape, 'dec_cond')
-        rgb = self.decoder(self.ph_dec_inp, 
-                conditioning=self.ph_dec_cond, num_rmb=decoder_depth,
+        dec_inp_shape = copy.deepcopy(img_shape)
+        dec_cond_shape = copy.deepcopy(img_shape)
+        dec_cond_shape[-1] = 256 + 6 + 1
+        self.ph_dec_inp = tf.placeholder(tf.float32, 
+                dec_inp_shape, 'dec_inp')
+        self.ph_dec_cond = tf.placeholder(tf.float32, 
+                dec_cond_shape, 'dec_cond')
+        rgb_pos = self.decoder(self.ph_dec_inp, 
+                conditioning=[self.ph_dec_cond], 
+                num_rmb=decoder_depth,
                 out_channels=out_channels, condition_first_image=True)
+        rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
+        pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
         # get intensities
         predicted_images = self.get_intensities(rgb)
-        return [{'decode': predicted_images, 'run_lstm': lstm_out, 
+        predicted_poses = tf.expand_dims(self.get_intensities(pos) * 255, axis=4)
+        predicted_images_poses = tf.concat([predicted_images, predicted_poses], axis=4)
+        return [{'decode': predicted_images_poses, 'run_lstm': lstm_out, 
             'encode': encoded_inputs, 'rgb': rgb,
             'ph_enc_inp': self.ph_enc_inp,
+            'ph_enc_cond': self.ph_enc_cond,
             'ph_lstm_inp': self.ph_lstm_inp,
             'ph_dec_inp': self.ph_dec_inp,
-            'ph_dec_cond': self.ph_dec_cond,},
+            'ph_dec_cond': self.ph_dec_cond},
             {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
@@ -475,7 +483,7 @@ def model(inputs,
     if my_train:
         return net.train(encoder_depth, decoder_depth, out_channels=770)
     else:
-        return net.test_references(encoder_depth, decoder_depth)
+        return net.test_references(encoder_depth, decoder_depth, out_channels=770)
 
 def softmax_cross_entropy_loss(labels, logits, **kwargs):
     # pixelwise softmax cross entropy over discretized intensities [0-255]
@@ -484,9 +492,7 @@ def softmax_cross_entropy_loss(labels, logits, **kwargs):
     rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=rgb_labels, logits=rgb_logits)
     # pixelwise softmax cross entropy over discretized binary position mask [0-1]
-    pos_labels = tf.slice(logits['actions'], [0,0,0,0,0], [-1,-1,-1,-1,1])
-    pos_labels_shape = pos_labels.get_shape().as_list()
-    pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+    pos_labels = tf.cast(logits['positions'], tf.int32)
     pos_logits = logits['pos']
     pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=pos_labels, logits=pos_logits)
@@ -511,7 +517,8 @@ def parallel_model(inputs, n_gpus=4, **kwargs):
         params = params[0]
         return [outputs, params]
 
-def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
+def parallel_softmax_cross_entropy_loss(labels, logits, 
+        weight_background=True, mask_background=False, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
         rgb_logits = logits['rgb']
         pos_logits = logits['pos']
@@ -520,9 +527,7 @@ def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
         rgb_labels = tf.cast(labels[0], tf.int32) #images
         rgb_labels = tf.split(rgb_labels, axis=0, num_or_size_splits=n_gpus)
         # action labels from network, do not need to be split
-        pos_labels = tf.slice(logits['actions'], [0,0,0,0,0,0], [-1,-1,-1,-1,-1,1])
-        pos_labels_shape = pos_labels.get_shape().as_list()
-        pos_labels = tf.cast(tf.greater(pos_labels, tf.zeros(pos_labels_shape)), tf.int32)
+        pos_labels = tf.cast(logits['positions'], tf.int32)
         pos_labels = tf.unstack(pos_labels)
         losses = []
         for i, (rgb_label, rgb_logit, pos_label, pos_logit) \
@@ -530,11 +535,24 @@ def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
             with tf.device('/gpu:%d' % i):
                 with tf.name_scope('gpu_' + str(i)) as gpu_scope:
                     rgb_label = tf.squeeze(rgb_label)
+                    # mask background to focus on foreground prediction
+                    if mask_background:
+                        rgb_logit *= tf.expand_dims(tf.cast(pos_label, tf.float32), 4)
+                        rgb_label *= pos_label
                     rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                             labels=rgb_label, logits=rgb_logit)
                     pos_label = tf.squeeze(pos_label)
                     pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                             labels=pos_label, logits=pos_logit)
+                    if weight_background:
+                        w = tf.constant(5.0, tf.float32)
+                        neg_label = tf.logical_not(tf.cast(pos_label, tf.bool))
+                        rgb_loss = rgb_loss * tf.expand_dims( \
+                                tf.cast(pos_label, tf.float32), 4) * w + \
+                                rgb_loss * tf.expand_dims( \
+                                tf.cast(neg_label, tf.float32), 4)
+                        pos_loss = pos_loss * tf.cast(pos_label, tf.float32) * w + \
+                                pos_loss * tf.cast(neg_label, tf.float32)
                     losses.append(
                         tf.reduce_mean(rgb_loss + tf.expand_dims(pos_loss,axis=4)))
                     tf.get_variable_scope().reuse_variables()

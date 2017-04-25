@@ -14,8 +14,9 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 conf = 'cluster'
 
 if conf is 'cluster':
-    BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
+    #BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
+    BASE_DIR = '/data/two_world_dataset'
     HOST = 'localhost'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
@@ -28,20 +29,19 @@ NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
 N_GPUS = 4
-OUTPUT_BATCH_SIZE = 7 * N_GPUS
+OUTPUT_BATCH_SIZE = 6 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
-IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
-SEGMENTATION = ['actions']
+SEGMENTATION = ['actions', 'positions']
 RESIZE = {'images': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test22'
+exp_id = 'test32'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -65,11 +65,10 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     actions = tf.reshape(actions, [shape[0]*shape[1]] + shape[2:])
 
     # ground truth positions
-    gt_pos = tf.stack(outputs['actions'][:num_to_save])
+    gt_pos = tf.stack(outputs['positions'][:num_to_save])
     shape = gt_pos.get_shape().as_list()
     gt_pos = tf.reshape(gt_pos, [shape[0]*shape[1]] + shape[2:])
-    gt_pos = tf.slice(gt_pos, [0,0,0,0,0], [-1,-1,-1,-1,1])
-    gt_pos = tf.cast(tf.greater(gt_pos, tf.zeros(gt_pos.get_shape().as_list())), tf.uint8)
+    gt_pos = tf.cast(gt_pos, tf.uint8)
     gt_pos = tf.squeeze(gt_pos) * 255
 
     # predicted rgb image
@@ -157,13 +156,13 @@ params = {
             'func': ThreeWorldDataProvider,
             #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
             'data_path': DATA_PATH,
-            'sources': ['images', 'actions', 'objects'],
+            'sources': ['images', 'actions', 'objects', 'object_data'],
             'n_threads': 4,
             'batch_size': INPUT_BATCH_SIZE,
             'delta_time': TIME_DIFFERENCE,
             'sequence_len': SEQUENCE_LENGTH,
             'output_format': 'sequence',
-            'filters': ['is_not_teleporting'],
+            'filters': ['is_not_teleporting',],# 'is_object_there'],
             'gaussian': GAUSSIAN,
             'max_random_skip': RANDOM_SKIP,
             'resize': RESIZE,
@@ -210,13 +209,13 @@ if USE_VALIDATION:
                 'func': ThreeWorldDataProvider,
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
-                'sources': ['images', 'actions', 'objects'],
+                'sources': ['images', 'actions', 'objects', 'object_data'],
                 'n_threads': 4,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting'],
+                'filters': ['is_not_teleporting',],# 'is_object_there'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,

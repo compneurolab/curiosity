@@ -10,6 +10,7 @@ import tfutils.base as b
 import tensorflow as tf
 import json
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
+from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 from curiosity.models import explicit_future_prediction_base as fp_base
 import time
 import os
@@ -66,7 +67,7 @@ def test_long_sequence_no_base():
 	tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
 	tf.train.start_queue_runners(sess=sess)
 	inputs = queue.dequeue_many(256)
-	for i in range(5):
+	for i in range(1):
 		start = time.time()
 		res = sess.run(inputs)
 		print(time.time() - start)
@@ -77,6 +78,10 @@ def test_long_sequence_no_base():
 		print(res['normals2'].shape)
 		print(res['reference_ids'][0])
 		print(res['reference_ids'][255])
+		for i in range(256):
+			print(i)
+			print(res['master_filter'][i])
+
 
 def convert_for_write(arr):
 	# my_max = np.amax(arr)

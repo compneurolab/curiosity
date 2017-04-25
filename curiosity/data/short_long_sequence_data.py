@@ -40,12 +40,12 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         
         assert self.short_len >= 1 and self.long_len >= 1,\
                 ("sequence length has to be at least 1")
-        assert self.batch_size >= self.sequence_len\
+        assert self.batch_size >= self.long_len, \
                 ("batch size has to be at least equal to sequence length")
         if min_len is None:
             self.min_len = self.short_len
         else:
-            assert self.min_len >= self.short_len\
+            assert self.min_len >= self.short_len, \
                 ('Min length must be at least short length')
 
         self.source_paths = [os.path.join(self.data_path, source) for source in short_sources + long_sources]
@@ -60,7 +60,7 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         #if ids_path is not in self.source_paths:
         #    self.source_paths.append(ids_path)
 
-        super(ThreeWorldDataProvider, self).__init__(
+        super(ShortLongSequenceDataProvider, self).__init__(
             self.source_paths,
             batch_size=batch_size,
             postprocess=self.postprocess(),
@@ -70,7 +70,9 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
     def postprocess(self):
         pp_dict = {}
         #postprocess images
-        for source in self.sources:
+        for source in self.short_sources:
+            pp_dict[source] = [(self.postprocess_to_sequence, ([source]), {})]
+        for source in self.long_sources:
             pp_dict[source] = [(self.postprocess_to_sequence, ([source]), {})]
         if self.filters is not None:
             for f in self.filters:
@@ -109,14 +111,18 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 
     def create_short_sequence(self, data):
         data = tf.expand_dims(data, 1)
-        shifts = [data[i : i + batch_size - (min_len - 1)] for i in range(self.short_len)]
+        # shape = data.get_shape().as_list()
+        # shape[0] -= self.min_len - 1
+        shifts = [data[i : i + self.batch_size - (self.min_len - 1)] for i in range(self.short_len)]
+        # shifts = [tf.slice()]
         return tf.concat(shifts, 1)
 
     def create_long_sequence(self, data):
+        data = tf.expand_dims(data, 1)
         data_shape = data.get_shape().as_list()
         data_type = data.dtype
-        data_augmented = tf.concat([data, tf.zeros([self.long_len - self.min_len], dtype = data_type)], axis = 0)
-        shifts = [data_augmented[i : i + batch_size - (min_len - 1)] for i in range(self.long_len)]
+        data_augmented = tf.concat([data, tf.zeros([self.long_len - self.min_len] + data_shape[1:], dtype = data_type)], axis = 0)
+        shifts = [data_augmented[i : i + self.batch_size - (self.min_len - 1)] for i in range(self.long_len)]
         return tf.concat(shifts, 1)
 
     def apply_filters(self, data):
@@ -142,12 +148,12 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
     def check_lengths(self, data):
         for k in data:
             if k in self.short_sources:
-                assert data[k].get_shape().as_list()[1] = self.short_len
+                assert data[k].get_shape().as_list()[1] == self.short_len, k
             elif k in self.long_sources or k == 'master_filter' or k in self.filters:
-                assert data[k].get_shape().as_list()[1] = self.long_len
+                assert data[k].get_shape().as_list()[1] == self.long_len, (k, data[k].get_shape().as_list())
 
     def init_ops(self):
-        self.input_ops = super(ThreeWorldDataProvider, self).init_ops()
+        self.input_ops = super(ShortLongSequenceDataProvider, self).init_ops()
         for i in range(len(self.input_ops)):
             if self.filters is not None:
                 self.input_ops[i] = self.apply_filters(self.input_ops[i])
