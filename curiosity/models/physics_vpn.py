@@ -517,7 +517,8 @@ def parallel_model(inputs, n_gpus=4, **kwargs):
         params = params[0]
         return [outputs, params]
 
-def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
+def parallel_softmax_cross_entropy_loss(labels, logits, 
+        weight_background=True, mask_background=False, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
         rgb_logits = logits['rgb']
         pos_logits = logits['pos']
@@ -534,11 +535,24 @@ def parallel_softmax_cross_entropy_loss(labels, logits, **kwargs):
             with tf.device('/gpu:%d' % i):
                 with tf.name_scope('gpu_' + str(i)) as gpu_scope:
                     rgb_label = tf.squeeze(rgb_label)
+                    # mask background to focus on foreground prediction
+                    if mask_background:
+                        rgb_logit *= tf.expand_dims(tf.cast(pos_label, tf.float32), 4)
+                        rgb_label *= pos_label
                     rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                             labels=rgb_label, logits=rgb_logit)
                     pos_label = tf.squeeze(pos_label)
                     pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                             labels=pos_label, logits=pos_logit)
+                    if weight_background:
+                        w = tf.constant(5.0, tf.float32)
+                        neg_label = tf.logical_not(tf.cast(pos_label, tf.bool))
+                        rgb_loss = rgb_loss * tf.expand_dims( \
+                                tf.cast(pos_label, tf.float32), 4) * w + \
+                                rgb_loss * tf.expand_dims( \
+                                tf.cast(neg_label, tf.float32), 4)
+                        pos_loss = pos_loss * tf.cast(pos_label, tf.float32) * w + \
+                                pos_loss * tf.cast(neg_label, tf.float32)
                     losses.append(
                         tf.reduce_mean(rgb_loss + tf.expand_dims(pos_loss,axis=4)))
                     tf.get_variable_scope().reuse_variables()

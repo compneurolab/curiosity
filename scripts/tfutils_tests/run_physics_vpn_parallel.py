@@ -14,8 +14,9 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 conf = 'cluster'
 
 if conf is 'cluster':
-    BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
+    #BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
+    BASE_DIR = '/data/two_world_dataset'
     HOST = 'localhost'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
@@ -28,10 +29,9 @@ NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
 N_GPUS = 4
-OUTPUT_BATCH_SIZE = 7 * N_GPUS
+OUTPUT_BATCH_SIZE = 6 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
-IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
