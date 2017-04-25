@@ -28,6 +28,8 @@ NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
+SCALE_DOWN_HEIGHT = 40
+SCALE_DOWN_WIDTH = 94
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -88,7 +90,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'bs_256P',
+		'exp_id' : 'res18_adam',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -98,13 +100,15 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.shared_weight_conv,
-		'cfg' : modelsource.cfg_share_to_mlp,
+		'func' : modelsource.one_to_two_to_one,
+		'cfg' : modelsource.cfg_one_to_two_to_one,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
 		'image_height' : IMG_HEIGHT,
-		'image_width' : IMG_WIDTH
+		'image_width' : IMG_WIDTH,
+		'scale_down_height' : SCALE_DOWN_HEIGHT,
+		'scale_down_width' : SCALE_DOWN_WIDTH
 	},
 
 	'train_params' : {
@@ -154,9 +158,9 @@ params = {
 
 	'optimizer_params': {
 		'func': optimizer.ClipOptimizer,
-		'optimizer_class': tf.train.RMSPropOptimizer,
+		'optimizer_class': tf.train.AdamOptimizer,
 		'clip': True,
-	'momentum': .9
+	# 'momentum': .9
 	},
 
 

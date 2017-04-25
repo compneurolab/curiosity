@@ -230,6 +230,7 @@ class ShortLongFuturePredictionBase:
             gaussian_shape = [batch_size, time_seen, img_height, img_width, 1]
 
             if scale_down_height is not None:
+                assert scale_down_width is not None
                 gaussian_shape[2] = scale_down_height
                 gaussian_shape[3] = scale_down_width
                 scale_down_gaussians = float(scale_down_height) / float(img_height)
