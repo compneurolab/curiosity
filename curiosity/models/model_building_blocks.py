@@ -165,23 +165,23 @@ class ConvNetwithBypasses(ConvNet):
             return self.output
 
 	@tf.contrib.framework.add_arg_scope
-    def coord_to_conv(self,
-    		out_shape,
-    		in_layer,
-    		ksize = 3,
-    		stride = 1,
-    		padding = 'SAME',
-    		init = 'xavier',
-    		stddev = .01,
-    		bias = 1,
-    		activation = 'relu',
-    		weight_decay = None,
-    		trainable = True
-    				):
-    	if weight_decay is None:
-    		weight_decay = 0.
-    	in_shape = in_layer.get_shape().as_list()[-1]
-    	assert len(in_shape) == 2
+	def coord_to_conv(self,
+			out_shape,
+			in_layer,
+			ksize = 3,
+			stride = 1,
+			padding = 'SAME',
+			init = 'xavier',
+			stddev = .01,
+			bias = 1,
+			activation = 'relu',
+			weight_decay = None,
+			trainable = True
+					):
+		if weight_decay is None:
+			weight_decay = 0.
+		in_shape = in_layer.get_shape().as_list()[-1]
+		assert len(in_shape) == 2
 
 		if isinstance(ksize, int):
 		    ksize1 = ksize
@@ -193,15 +193,15 @@ class ConvNetwithBypasses(ConvNet):
 		out_height = out_shape[0]
 		out_channels = out_shape[2]
 
-	    coord_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
-	                             shape=[ksize1, ksize2, in_shape, out_shape],
-	                             dtype=tf.float32,
-	                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
-	                             name='weights', trainable=trainable)
-	    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
-	                             shape=[out_channels],
-	                             dtype=tf.float32,
-	                             name='bias', trainable=trainable)
+		coord_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+										 shape=[ksize1, ksize2, in_shape, out_shape],
+										 dtype=tf.float32,
+										 regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+										 name='weights', trainable=trainable)
+		biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+		                         shape=[out_channels],
+		                         dtype=tf.float32,
+		                         name='bias', trainable=trainable)
 
 	   	input_kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
 	   							shape = [in_shape[1], out_channels],
@@ -396,7 +396,10 @@ class ConvNetwithBypasses(ConvNet):
 		#TODO: add params update
 	    if in_layer is None:
 	        in_layer = self.output
-	    self.output = tf.image.resize_images(in_layer, [new_size, new_size])
+	    if not type(new_size) == list:
+	    	assert type(new_size) == int
+	    	new_size = [new_size, new_size]
+	    self.output = tf.image.resize_images(in_layer, new_size)
 	    self.params = {'input' : in_layer.name, 'type' : 'resize', 'new_size' : new_size}
 	    return self.output
 
@@ -419,23 +422,28 @@ class ConvNetwithBypasses(ConvNet):
 	    if in_layer is None:
 	        in_layer = self.output
 
+	    print('in add bypass')
+	    print in_layer
+	    print(bypass_layers)
+
 	    if not isinstance(bypass_layers, list):
 	    	bypass_layers = [bypass_layers]
 	    in_shape = in_layer.get_shape().as_list()
 	    toconcat = [in_layer]
 	    concat_type = None
 	    if len(in_shape) == 4:	
-	    	ds = in_shape[1]
+	    	ds1 = in_shape[1]
+	    	ds2 = in_shape[2]
 	    	for layer in bypass_layers:
-	    		if layer.get_shape().as_list()[1] != ds:
-	    			toconcat.append(self.resize_images(ds, in_layer = layer))
+	    		if layer.get_shape().as_list()[1] != ds1 or layer.get_shape().as_list()[2] != ds2:
+	    			toconcat.append(self.resize_images([ds1, ds2], in_layer = layer))
 	    		else:
 	    			toconcat.append(layer)
-	    	self.output = tf.concat(3, toconcat)
+	    	self.output = tf.concat(toconcat, 3)
 	    	concat_type = 'image'
 	    elif len(in_shape) == 2:
 	    	toconcat.extend(bypass_layers)
-	    	self.output = tf.concat(1, toconcat)
+	    	self.output = tf.concat(toconcat, 1)
 	    	concat_type = 'flat'
 	    else:
 	    	raise Exception('Bypass case not yet handled.')

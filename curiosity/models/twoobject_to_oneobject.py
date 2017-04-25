@@ -181,12 +181,12 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	encoded_input = []
 	reuse_weights = False
 	for t in range(time_seen):
-		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
 		with tf.variable_scope('coord_to_conv'):
 			if reuse_weights:
 				scope.reuse_variables()
 			coord_res = m.coord_to_conv(cfg['coord_to_conv'][0]['out_shape'], flat_input_per_time[t], ksize = 1, activation = cfg['coord_to_conv'][0]['activation'])
-		coord_res = feedforward_conv_loop(coord_res, m, cfg, desc = 'coord_to_conv', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		coord_res = feedforward_conv_loop(coord_res, m, cfg, desc = 'coord_to_conv', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
 		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], coord_res[-1]], axis = 3)
 		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
@@ -200,8 +200,6 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	concat_input = tf.concat(flattened_input, axis = 1)
 
 	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
-	print('what is this shape')
-	print(base_net.inputs['object_data_future'])
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	pred_shape[3] = 2
 	pred = tf.reshape(pred, pred_shape)
@@ -227,11 +225,11 @@ def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, norm
 	encoded_input = []
 	reuse_weights = False
 	for t in range(time_seen):
-		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
-		size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
-		assert size_1_encoding_before_concat.get_shape().as_list()[:-1] == size_2_encoding_before_concat.get_shape().as_list()[-1], (size_1_encoding_before_concat.get_shape().as_list()[:-1], size_2_encoding_before_concat.get_shape().as_list()[-1])
-		concat_inputs = tf.concat([size_1_encoding_before_concat, size_2_encoding_before_concat], axis = 3)
-		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encoding', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+		size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+		assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
+		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
+		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
 
 	#flatten and concat
@@ -428,13 +426,13 @@ cfg_simple_different_sizes = {
 }
 
 cfg_fewer_channels_different_sizes = {
-	'size_1_before_concat_depth' : 3
+	'size_1_before_concat_depth' : 3,
 
 	'size_1_before_concat' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
-	}
+	},
 
 	'size_2_before_concat_depth' : 0,
 
@@ -443,7 +441,7 @@ cfg_fewer_channels_different_sizes = {
 		2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
 		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
 		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
-		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 2}}, # size 256 image, this leads to 16 * 16 * 256 = 65,536 neurons. Sad!
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 2}},
 	},
 
 	'hidden_depth' : 3,
@@ -457,29 +455,46 @@ cfg_fewer_channels_different_sizes = {
 
 
 cfg_one_to_two_to_one = {
-	'size_1_before_concat_depth' : 3
+
+	'size_1_before_concat_depth' : 1,
 
 	'size_1_before_concat' : {
-		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
-		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
-		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
-	}
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
 
 
-
-	'coord_to_conv_depth' = 1
+	'coord_to_conv_depth' : 1,
 	'coord_to_conv' : {
-		0 : {'out_shape' : [40, 94, 4], 'activation' : 'relu'}
+		0 : {'out_shape' : [40, 94, 4], 'activation' : 'relu'},
 		1 : {'num_features' : 4}
-	}
+	},
+
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
 
 	'encode' : {
-		1 : {'conv' : {'filter_size' : 11, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
-		2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
-		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
-		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
-		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 2}}, # size 256 image, this leads to 16 * 16 * 256 = 65,536 neurons. Sad!
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 10}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 4}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3}
 	},
+
+
+
+
 
 	'hidden_depth' : 3,
 	'hidden' : {
@@ -493,15 +508,17 @@ cfg_one_to_two_to_one = {
 
 
 cfg_more_bypasses = {
-	'size_1_before_concat_depth' : 3
+	'size_1_before_concat_depth' : 3,
 
 	'size_1_before_concat' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
-	}
+	},
 
 	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 5,
 
 	'encode' : {
 		1 : {'conv' : {'filter_size' : 11, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}, 'bypass' : [0]},
@@ -516,17 +533,17 @@ cfg_more_bypasses = {
 		1: {'num_features' : 250},
 		2 : {'num_features' : 250},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
-	}	
+	}
 }
 
 cfg_more_bypasses_smaller_end = {
-	'size_1_before_concat_depth' : 3
+	'size_1_before_concat_depth' : 3,
 
 	'size_1_before_concat' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}},
 		3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 6}, 'bypass' : [0]}
-	}
+	},
 
 	'size_2_before_concat_depth' : 0,
 
@@ -535,7 +552,7 @@ cfg_more_bypasses_smaller_end = {
 		2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 16}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}, 'bypass' : [0]},
 		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : [0]},
 		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : [0]},
-		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4ß}, 'bypass' : [0]}, # size 256 image, this leads to 16 * 16 * 256 = 65,536 neurons. Sad!
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : [0]},
 	},
 
 	'hidden_depth' : 3,
@@ -648,6 +665,47 @@ cfg_mlp_med_more_timesteps = {
 	}	
 }
 
+cfg_resnet18 = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 4}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3}
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 250},
+		2 : {'num_features' : 250},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+}
 
 
 

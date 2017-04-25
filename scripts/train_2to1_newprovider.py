@@ -90,7 +90,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'downsize',
+		'exp_id' : 'res18_adam',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -100,8 +100,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_simple_different_sizes,
+		'func' : modelsource.one_to_two_to_one,
+		'cfg' : modelsource.cfg_one_to_two_to_one,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -158,9 +158,9 @@ params = {
 
 	'optimizer_params': {
 		'func': optimizer.ClipOptimizer,
-		'optimizer_class': tf.train.RMSPropOptimizer,
+		'optimizer_class': tf.train.AdamOptimizer,
 		'clip': True,
-	'momentum': .9
+	# 'momentum': .9
 	},
 
 
