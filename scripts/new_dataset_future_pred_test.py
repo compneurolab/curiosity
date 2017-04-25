@@ -50,7 +50,7 @@ def test_no_base():
 def test_long_sequence_no_base():
 	dp = ShortLongSequenceDataProvider(DATA_PATH,
 			short_sources = ['normals', 'normals2'],
-			long_sources = ['actions', 'object_data', 'reference_ids'].
+			long_sources = ['actions', 'object_data', 'reference_ids'],
 			short_len = 3,
 			long_len = 23,
 			min_len = 5,
