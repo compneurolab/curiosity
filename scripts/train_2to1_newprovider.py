@@ -90,7 +90,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'res18_adam',
+		'exp_id' : 'shared_weight_downscaled_nonimage',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
