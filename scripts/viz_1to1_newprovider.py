@@ -69,7 +69,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-EXP_ID = 'wider_res18'
+EXP_ID = 'three_23_6_adam'
 
 params = {
 	
@@ -93,8 +93,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_resnet_wide,
+		'func' : modelsource.just_1d_new_provider,
+		'cfg' : modelsource.cfg_mlp_med_more_timesteps,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -109,7 +109,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2'],
+				'short_sources' : [],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,

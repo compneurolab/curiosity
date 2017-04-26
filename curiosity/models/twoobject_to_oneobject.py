@@ -774,7 +774,48 @@ cfg_resnet_wide = {
 }
 
 
+cfg_resnet_interesting_nonlinearities = {
+	'size_1_before_concat_depth' : 1,
 
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 4}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 4}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}, 'bypass' : -3}
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 500, 'activation' : ['square', 'identity', 'relu']},
+		2 : {'num_features' : 500, 'activation' : ['square', 'identity', 'relu']},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+
+}
 
 
 
