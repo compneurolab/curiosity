@@ -125,7 +125,8 @@ def just_1d_with_agent_data(inputs, cfg = None, time_seen = None, normalization_
 	act_shape = act_node.get_shape().as_list()
 	m.output = act_node
 	act_node = m.reshape([np.prod(act_shape[1:])])
-	agent_node = inputs['agent_data'][:, 3:]
+	agent_node = inputs['agent_data'][:, :,  3:]
+	agent_node = tf.reshape(agent_node, [agent_node.get_shape().as_list()[0], -1])
 	m.output = tf.concat([in_node, act_node, agent_node], axis = 1)
 	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
