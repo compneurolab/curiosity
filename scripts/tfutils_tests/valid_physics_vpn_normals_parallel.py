@@ -9,12 +9,12 @@ from tqdm import trange
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
-import curiosity.models.physics_vpn as modelsource
+import curiosity.models.physics_vpn_normals as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 USE_TRUE=True
-exp_id = 'test28'
+exp_id = 'test34'
 
 conf = 'cluster'
 
@@ -41,7 +41,7 @@ TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
 SEGMENTATION = ['actions', 'positions']
-RESIZE = {'images': [28, 64], 'objects': [28, 64]}
+RESIZE = {'normals': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
@@ -57,7 +57,7 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     and outputs field (with pairs of arguments -- assuming outputs 
     is a dict of dicts)
     '''
-    retval = {'images': inputs['images'][:num_to_save], 
+    retval = {'images': inputs['normals'][:num_to_save], 
             'actions': inputs['actions'][:num_to_save], 
             'objects': inputs['objects'][:num_to_save],
             'object_data': inputs['object_data'][:num_to_save],
@@ -128,7 +128,7 @@ if USE_VALIDATION:
                 'func': ThreeWorldDataProvider,
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
-                'sources': ['images', 'actions', 'objects', 'object_data'],
+                'sources': ['normals', 'actions', 'objects', 'object_data'],
                 'n_threads': 1,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,
