@@ -332,7 +332,7 @@ class VPN(ThreeWorldBaseModel):
         return inputs
 
     def train(self, encoder_depth=8, decoder_depth=12, out_channels=768):
-        images = self.inputs['images']
+        images = self.inputs['normals']
         actions = self.inputs['actions']
         positions = self.inputs['positions']
         # convert images to float32 between [0,1) if not normalized
@@ -358,7 +358,7 @@ class VPN(ThreeWorldBaseModel):
 
     def test_references(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
-        images = self.inputs['images']
+        images = self.inputs['normals']
         actions = self.inputs['actions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
@@ -410,7 +410,7 @@ class VPN(ThreeWorldBaseModel):
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
         tf.get_variable_scope().reuse_variables()
-        images = self.inputs['images']
+        images = self.inputs['normals']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)

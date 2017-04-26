@@ -6,7 +6,7 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
-import curiosity.models.physics_vpn as modelsource
+import curiosity.models.physics_vpn_normals as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
@@ -36,12 +36,12 @@ TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
 SEGMENTATION = ['actions', 'positions']
-RESIZE = {'images': [28, 64], 'objects': [28, 64]}
+RESIZE = {'normals': [28, 64], 'objects': [28, 64]}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test33'
+exp_id = 'test34'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -54,7 +54,7 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     is a dict of dicts)
     '''
     # ground truth images
-    images = tf.stack(inputs['images'][:num_to_save])
+    images = tf.stack(inputs['normals'][:num_to_save])
     shape = images.get_shape().as_list()
     images = tf.reshape(images, [shape[0]*shape[1]] + shape[2:])
     images = tf.cast(images, tf.uint8)
@@ -156,7 +156,7 @@ params = {
             'func': ThreeWorldDataProvider,
             #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
             'data_path': DATA_PATH,
-            'sources': ['images', 'actions', 'objects', 'object_data'],
+            'sources': ['normals', 'actions', 'objects', 'object_data'],
             'n_threads': 4,
             'batch_size': INPUT_BATCH_SIZE,
             'delta_time': TIME_DIFFERENCE,
@@ -181,7 +181,7 @@ params = {
     },
 
     'loss_params': {
-        'targets': ['images', 'actions'],
+        'targets': ['normals', 'actions'],
         'agg_func': modelsource.parallel_reduce_mean,
         'loss_per_case_func': modelsource.parallel_softmax_cross_entropy_loss,
     },
@@ -209,7 +209,7 @@ if USE_VALIDATION:
                 'func': ThreeWorldDataProvider,
                 #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
                 'data_path': DATA_PATH,
-                'sources': ['images', 'actions', 'objects', 'object_data'],
+                'sources': ['normals', 'actions', 'objects', 'object_data'],
                 'n_threads': 4,
                 'batch_size': INPUT_BATCH_SIZE,
                 'delta_time': TIME_DIFFERENCE,

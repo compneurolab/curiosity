@@ -19,6 +19,7 @@ conf = 'cluster'
 if conf is 'cluster':
     BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
+    SAVE_DIR = '/mnt/fs0/mrowca/results/vpn/raw'
     HOST = 'localhost'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
@@ -34,7 +35,6 @@ N_GPUS = 1
 OUTPUT_BATCH_SIZE = 8 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
-IMAGE_SIZE_CROP = 256
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
@@ -44,7 +44,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test29'
+exp_id = 'test31'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -133,7 +133,7 @@ if USE_VALIDATION:
                 'delta_time': TIME_DIFFERENCE,
                 'sequence_len': SEQUENCE_LENGTH,
                 'output_format': 'sequence',
-                'filters': ['is_not_teleporting', 'is_object_there'],
+                'filters': ['is_not_teleporting',], #'is_object_there'],
                 'gaussian': GAUSSIAN,
                 'max_random_skip': RANDOM_SKIP,
                 'resize': RESIZE,
@@ -160,9 +160,11 @@ if USE_VALIDATION:
 
 if __name__ == '__main__':
     # get session and data
+    print('Creating Graph')
     base.get_params()
     sess, queues, dbinterface, valid_targets_dict = base.test_from_params(**params)
     # start queue runners
+    print('Starting queue runners')
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord, sess=sess)
     # get handles to network parts
@@ -181,9 +183,11 @@ if __name__ == '__main__':
     ph_dec_inp = valid_targets_dict['valid0']['targets']['ph_dec_inp']
     ph_dec_cond = valid_targets_dict['valid0']['targets']['ph_dec_cond']
     # unroll across time
+    print('Starting prediction')
     n_context = 2
     for ex in xrange(valid_targets_dict['valid0']['num_steps']):
         # get inputs: images, actions, and segmented object images
+        print('Getting data')
         images, actions, objects, object_data = sess.run([get_images, 
             get_actions, 
             get_objects,
@@ -213,7 +217,8 @@ if __name__ == '__main__':
                 'object_data': object_data,
                 'action_masks': action_masks,
                 'position_masks': position_masks}
-        with open('inputs'+str(ex)+'.pkl', 'w') as f:
+        inputs_file = os.path.join(SAVE_DIR, 'inputs_'+exp_id+'_'+str(ex)+'.pkl')
+        with open(inputs_file, 'w') as f:
             cPickle.dump(inputs, f) 
 
         # encode context images
@@ -273,5 +278,6 @@ if __name__ == '__main__':
                 'gt_images': images,
                 #'context_images': context_images,
                 'ex_acted': acted}
-        with open('results'+str(ex)+'.pkl', 'w') as f:
+        results_file = os.path.join(SAVE_DIR, 'results_'+exp_id+'_'+str(ex)+'.pkl')
+        with open(results_file, 'w') as f:
             cPickle.dump(results, f)
