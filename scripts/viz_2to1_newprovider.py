@@ -77,7 +77,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-EXP_ID = 'just_tables_2to1'
+EXP_ID = 'shorty_tables'
 
 params = {
 	
@@ -96,13 +96,13 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_viztz',
+		'exp_id' : EXP_ID + '_valviz',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
 	'model_params' : {
 		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_resnet_wide,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
