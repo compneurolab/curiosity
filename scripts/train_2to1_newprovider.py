@@ -96,7 +96,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'just_tables_2to1',
+		'exp_id' : 'just_tables_channels',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -107,7 +107,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_resnet_wide,
+		'cfg' : modelsource.cfg_resnet_more_channels,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -184,7 +184,7 @@ params = {
 				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
-				'n_threads' : 2,
+				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
 				'file_grab_func' : table_norot_grab_func
 			},
@@ -199,7 +199,7 @@ params = {
 			'targets' : {
 				'func' : grab_all,
 				'targets' : [],
-				'num_to_save' : 1,
+				'num_to_save' : MODEL_BATCH_SIZE,
 			},
 			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'online_agg_func' : append_it,

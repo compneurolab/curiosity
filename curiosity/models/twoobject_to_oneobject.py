@@ -817,6 +817,126 @@ cfg_resnet_interesting_nonlinearities = {
 
 }
 
+cfg_resnet_more_channels = {
+	'size_1_before_concat_depth' : 1,
 
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6 * 4}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 2}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 4}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 8}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34 * 8}, 'bypass' : -3}
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 500, 'activation' : ['square', 'identity', 'relu']},
+		2 : {'num_features' : 500, 'activation' : ['square', 'identity', 'relu']},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+
+}
+
+cfg_short_conv = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+}
+
+
+cfg_121_channels = {
+
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 6}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'coord_to_conv_depth' : 1,
+	'coord_to_conv' : {
+		0 : {'out_shape' : [40, 94, 4], 'activation' : 'relu'},
+		1 : {'conv'  : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}}
+	},
+
+
+	'encode_depth' : 4 + 4 + 4 + 4 + 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}, 'bypass' : -3},
+		4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34}},
+		5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 2}, 'bypass' : -3},
+		6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}},
+		7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}, 'bypass' : -3},
+		8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 2}},
+		9 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 4}, 'bypass' : -3},
+		10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}},
+		11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}, 'bypass' : -3},
+		12 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 4}},
+		13 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34 * 8}, 'bypass' : -3},
+		14 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}},
+		15 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}, 'bypass' : -3},
+		16 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 34 * 8}},
+		17 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34 * 8}, 'bypass' : -3}
+	},
+
+
+
+
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+}
 
 
