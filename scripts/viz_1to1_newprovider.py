@@ -95,7 +95,7 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_vizc',
+		'exp_id' : EXP_ID + '_vizt2',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
@@ -123,27 +123,27 @@ params = {
 				'min_len' : MIN_LEN,
 				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,
-				'shuffle_seed' : 1,
+				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
 				'file_grab_func' : table_norot_grab_func
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
-				'seed' : 1,
+				'seed' : 0,
 				'capacity' : MODEL_BATCH_SIZE * 1
 			},
 
 			'targets' : {
 				'func' : grab_all,
 				'targets' : [],
-				'num_to_save' : 1,
+				'num_to_save' : MODEL_BATCH_SIZE,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 10),
+			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'online_agg_func' : append_it,
-			'num_steps' : 10 * 20
+			'num_steps' : 50
 		}
 
 	}

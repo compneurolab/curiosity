@@ -36,7 +36,6 @@ if not os.path.exists(CACHE_DIR):
 
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
-	print('got to file grabber!')
 	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
 
 def append_it(x, y, step):
@@ -92,7 +91,7 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_viza',
+		'exp_id' : EXP_ID + '_vizt',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
@@ -127,7 +126,7 @@ params = {
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
 				'capacity' : MODEL_BATCH_SIZE * 1
