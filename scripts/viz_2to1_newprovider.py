@@ -58,6 +58,11 @@ def mean_losses_subselect_rest(val_res, skip_num):
 	return retval
 
 
+def just_keep_everything(val_res):
+	keys = val_res[0].keys()
+	return dict((k, [d[k] for d in val_res]) for k in keys)
+
+
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
 def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
@@ -137,7 +142,8 @@ params = {
 				'targets' : [],
 				'num_to_save' : MODEL_BATCH_SIZE,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+			'agg_func' : just_keep_everything,
 			'online_agg_func' : append_it,
 			'num_steps' : 200
 		}
