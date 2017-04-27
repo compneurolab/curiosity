@@ -689,6 +689,19 @@ cfg_mlp_med_more_timesteps = {
 	}	
 }
 
+
+cfg_mlp_wider = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+
+
+}
+
 cfg_resnet18 = {
 	'size_1_before_concat_depth' : 1,
 
@@ -886,6 +899,7 @@ cfg_short_conv = {
 	}
 
 }
+
 
 
 cfg_121_channels = {
