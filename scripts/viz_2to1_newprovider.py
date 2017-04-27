@@ -34,6 +34,10 @@ SCALE_DOWN_WIDTH = 94
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
+def table_norot_grab_func(path):
+	all_filenames = os.listdir(path)
+	print('got to file grabber!')
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
 
 def append_it(x, y, step):
 	if x is None:
@@ -69,7 +73,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-EXP_ID = 'wider_res18'
+EXP_ID = 'just_tables_2to1'
 
 params = {
 	
@@ -118,7 +122,8 @@ params = {
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
-				'batch_size' : DATA_BATCH_SIZE
+				'batch_size' : DATA_BATCH_SIZE,
+				'file_grab_func' : table_norot_grab_func
 			},
 
 			'queue_params' : {
@@ -131,11 +136,11 @@ params = {
 			'targets' : {
 				'func' : grab_all,
 				'targets' : [],
-				'num_to_save' : 1,
+				'num_to_save' : MODEL_BATCH_SIZE,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 10),
+			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'online_agg_func' : append_it,
-			'num_steps' : 10 * 20
+			'num_steps' : 50
 		}
 
 	}

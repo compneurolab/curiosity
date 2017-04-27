@@ -33,6 +33,11 @@ if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
 
+def table_norot_grab_func(path):
+	all_filenames = os.listdir(path)
+	print('got to file grabber!')
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+
 def append_it(x, y, step):
 	if x is None:
 		x = []
@@ -88,7 +93,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'agent_rot',
+		'exp_id' : 'just_tables_1to1b',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -98,7 +103,7 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.just_1d_with_agent_data,
+		'func' : modelsource.just_1d_new_provider,
 		'cfg' : modelsource.cfg_mlp_med_more_timesteps,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
@@ -114,7 +119,7 @@ params = {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
 			'short_sources' : [],
-			'long_sources' : ['actions', 'object_data', 'reference_ids', 'agent_data'],
+			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
 			'min_len' : MIN_LEN,
@@ -122,7 +127,8 @@ params = {
 			'shuffle' : True,
 			'shuffle_seed' : 0,
 			'n_threads' : 4,
-			'batch_size' : DATA_BATCH_SIZE
+			'batch_size' : DATA_BATCH_SIZE,
+			'file_grab_func' : table_norot_grab_func
 		},
 
 		'queue_params' : {
@@ -167,7 +173,7 @@ params = {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
 				'short_sources' : [],
-				'long_sources' : ['actions', 'object_data', 'reference_ids', 'agent_data'],
+				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
 				'min_len' : MIN_LEN,
@@ -175,11 +181,12 @@ params = {
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 2,
-				'batch_size' : DATA_BATCH_SIZE
+				'batch_size' : DATA_BATCH_SIZE,
+				'file_grab_func' : table_norot_grab_func
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
 				'capacity' : MODEL_BATCH_SIZE * 20
@@ -190,7 +197,7 @@ params = {
 				'targets' : [],
 				'num_to_save' : 1,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 10),
+			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'online_agg_func' : append_it,
 			'num_steps' : 50
 		}
