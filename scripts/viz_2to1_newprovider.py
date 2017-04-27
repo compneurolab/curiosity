@@ -91,7 +91,7 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_vizt',
+		'exp_id' : EXP_ID + '_viztz',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
@@ -139,7 +139,7 @@ params = {
 			},
 			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'online_agg_func' : append_it,
-			'num_steps' : 50
+			'num_steps' : 200
 		}
 
 	}
