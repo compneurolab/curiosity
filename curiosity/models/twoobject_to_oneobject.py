@@ -259,18 +259,20 @@ def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, norm
 	#flatten and concat
 	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
 	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
-	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+
+	if 'rnn' not in cfg:
+            flattened_input.append(tf.reshape(
+		inputs['actions_no_pos'], [batch_size, -1]))
 
 	assert len(flattened_input[0].get_shape().as_list()) == 2
 	concat_input = tf.concat(flattened_input, axis = 1)
 
         #recurrence
         if 'rnn' in cfg:
-            pos = tf.slice(inputs['object_data_future'], [0,0,0,4], [-1,-1,1,-1])
-            pos = tf.squeeze(pos)
-            concat_input = tf.tile(tf.expand_dims(concat_input, 1), 
-                    [1, pos.get_shape().as_list()[1], 1])
-            rnn_input = tf.concat([concat_input, pos], 2)
+            act = inputs['actions_no_pos']
+            concat_input = tf.tile(tf.expand_dims(concat_input, 1),
+                    [1, act.get_shape().as_list()[1], 1])
+            rnn_input = tf.concat([concat_input, act], 2)
             pred, _ = rnn_loop(rnn_input, cfg)
             pred = tf.expand_dims(pred, axis=2)
             if 'hidden' in cfg:
@@ -928,6 +930,43 @@ cfg_resnet_more_channels = {
 
 }
 
+cfg_short_conv_rnn = {
+        'size_1_before_concat_depth' : 1,
+
+        'size_1_before_concat' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+
+        'size_2_before_concat_depth' : 0,
+
+        'encode_depth' : 2,
+
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+                2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+        },
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+        'hidden_depth' : 3,
+        'hidden' : {
+                1 : {'num_features' : 1000},
+                2 : {'num_features' : 1000},
+                3 : {'num_features' : 40, 'activation' : 'identity'}
+        },
+        'rnn_depth': 1,
+        'rnn': {
+            1: {'cell_type': 'gru',
+                'hidden_units': 1000,
+                'dropout': {
+                    'input_keep_prob': 1.0,
+                    'output_keep_prob': 1.0,
+                    #'state_keep_prob': 1.0,
+                    }
+            },
+        }
+}
+
 cfg_short_conv = {
 	'size_1_before_concat_depth' : 1,
 
@@ -952,7 +991,6 @@ cfg_short_conv = {
 		2 : {'num_features' : 1000},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}
-
 }
 
 
