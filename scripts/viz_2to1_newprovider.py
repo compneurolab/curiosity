@@ -23,7 +23,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/data/nhaber'
+CACHE_DIR = '/mnt/fs0/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
 IMG_HEIGHT = 160
@@ -34,6 +34,9 @@ SCALE_DOWN_WIDTH = 94
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
+def table_norot_grab_func(path):
+	all_filenames = os.listdir(path)
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
 
 def append_it(x, y, step):
 	if x is None:
@@ -55,6 +58,11 @@ def mean_losses_subselect_rest(val_res, skip_num):
 	return retval
 
 
+def just_keep_everything(val_res):
+	keys = val_res[0].keys()
+	return dict((k, [d[k] for d in val_res]) for k in keys)
+
+
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
 def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
@@ -69,7 +77,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-EXP_ID = 'wider_res18'
+EXP_ID = 'shorty_tables'
 
 params = {
 	
@@ -88,12 +96,13 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_viz'
+		'exp_id' : EXP_ID + '_valviz',
+		'save_to_gfs' : SAVE_TO_GFS
 	},
 
 	'model_params' : {
 		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_resnet_wide,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -117,24 +126,26 @@ params = {
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
-				'batch_size' : DATA_BATCH_SIZE
+				'batch_size' : DATA_BATCH_SIZE,
+				'file_grab_func' : table_norot_grab_func
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 20
+				'capacity' : MODEL_BATCH_SIZE * 1
 			},
 
 			'targets' : {
 				'func' : grab_all,
 				'targets' : [],
-				'num_to_save' : 1,
+				'num_to_save' : MODEL_BATCH_SIZE,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 10),
+			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+			'agg_func' : just_keep_everything,
 			'online_agg_func' : append_it,
-			'num_steps' : 50
+			'num_steps' : 200
 		}
 
 	}

@@ -34,6 +34,12 @@ SCALE_DOWN_WIDTH = 94
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
+def table_norot_grab_func(path):
+	all_filenames = os.listdir(path)
+	print('got to file grabber!')
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+
+
 
 def append_it(x, y, step):
 	if x is None:
@@ -54,6 +60,9 @@ def mean_losses_subselect_rest(val_res, skip_num):
 			retval[k] = [val_res[i][k] for i in range(len(val_res)) if i % skip_num == 0]
 	return retval
 
+def just_keep_everything(val_res):
+	keys = val_res[0].keys()
+	return dict((k, [d[k] for d in val_res]) for k in keys)
 
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
@@ -90,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'wider_res18_rnn',
+		'exp_id' : 'shorty_tables',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -101,7 +110,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_resnet_wide,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -125,7 +134,8 @@ params = {
 			'shuffle' : True,
 			'shuffle_seed' : 0,
 			'n_threads' : 4,
-			'batch_size' : DATA_BATCH_SIZE
+			'batch_size' : DATA_BATCH_SIZE,
+			'file_grab_func' : table_norot_grab_func
 		},
 
 		'queue_params' : {
@@ -177,12 +187,13 @@ params = {
 				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
-				'n_threads' : 2,
-				'batch_size' : DATA_BATCH_SIZE
+				'n_threads' : 1,
+				'batch_size' : DATA_BATCH_SIZE,
+				'file_grab_func' : table_norot_grab_func
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
 				'capacity' : MODEL_BATCH_SIZE * 20
@@ -191,9 +202,10 @@ params = {
 			'targets' : {
 				'func' : grab_all,
 				'targets' : [],
-				'num_to_save' : 1,
+				'num_to_save' : MODEL_BATCH_SIZE,
 			},
-			'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 10),
+			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+			'agg_func' : just_keep_everything
 			'online_agg_func' : append_it,
 			'num_steps' : 50
 		}
