@@ -25,7 +25,7 @@ LONG_LEN = 23
 MIN_LEN = 6
 CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
+STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
@@ -99,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'shorty_info_og',
+		'exp_id' : 'depth_newnorm',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -117,7 +117,8 @@ params = {
 		'image_height' : IMG_HEIGHT,
 		'image_width' : IMG_WIDTH,
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
-		'scale_down_width' : SCALE_DOWN_WIDTH
+		'scale_down_width' : SCALE_DOWN_WIDTH,
+		'add_depth_gaussian' : True
 	},
 
 	'train_params' : {

@@ -190,7 +190,7 @@ class ShortLongFuturePredictionBase:
 
     def __init__(self, inputs, normalization_method = None, stats_file = None,
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
-            time_seen = None, scale_down_height = None, scale_down_width = None,
+            time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -245,7 +245,10 @@ class ShortLongFuturePredictionBase:
             
             centroids = [scale_down_gaussians * inputs_not_normed['object_data'][:,:time_seen,obj_num, 8:10] for obj_num in objects_to_include]
             poses = [inputs_not_normed['object_data'][:, :time_seen, obj_num, 1:5] for obj_num in objects_to_include]
-
+            if add_depth_gaussian:
+                print('Adding depth gaussian!')
+                depths = [tf.tanh(normed_inputs['object_data'][:, : time_seen, obj_num, 7:8]) for obj_num in objects_to_include]
+                poses = [tf.concat([pose, depth], axis = -1) for (pose, depth) in zip(poses, depths)]
 
             for (centroid, pose) in zip(centroids, poses):
                 pose = tf.unstack(pose, axis = 2)
@@ -304,13 +307,13 @@ class ShortLongFuturePredictionBase:
         acted_on_ids = tf.tile(acted_on_ids, [1, 1, img_height, img_width, 1])
 
 
-        self.inputs['depth_seen'] = normed_inputs['object_data'][:, : time_seen, 0:1, 7:8]
+        self.inputs['depth_seen'] = tf.tanh(normed_inputs['object_data'][:, : time_seen, 0:1, 7:8])
 
         for desc in ['objects', 'objects2']:
             if desc in inputs_not_normed:
                 objects = tf.cast(inputs_not_normed[desc], tf.int32)
                 objects = objects[:, :, :, :, 0:1] * (256**2) + objects[:, :, :, :, 1:2] * 256 + objects[:, :, :, :, 2:3]
-                self.inputs[desc] = tf.cast(tf.equal(acted_on_ids, objects), tf.float32) / 255.
+                self.inputs[desc] = tf.cast(tf.equal(acted_on_ids, objects), tf.float32)
 
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
         for desc in ['normals', 'normals2', 'images', 'images2']:
