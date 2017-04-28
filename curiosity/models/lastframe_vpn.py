@@ -293,8 +293,14 @@ class VPN(ThreeWorldBaseModel):
             W_out = self.new_variable('W_out', [1, 1, 256, out_channels])
             outputs = []
             for i, inp in enumerate(inputs):
-                inp = tf.nn.conv2d(inp, W_masked, strides=[1, 1, 1, 1], padding='SAME')
-                inp = tf.nn.conv2d(inp, W_extend, strides=[1, 1, 1, 1], padding='SAME')
+                if i == 0:
+                    inp = tf.nn.conv2d(inputs[i], W_masked, 
+                            strides=[1, 1, 1, 1], padding='SAME')
+                else:
+                    inp = tf.nn.conv2d(inputs[i-1], W_masked,
+                            strides=[1, 1, 1, 1], padding='SAME')
+                inp = tf.nn.conv2d(inp, W_extend, 
+                        strides=[1, 1, 1, 1], padding='SAME')
                 for r in range(num_rmb):
                     # first frame has no previous time steps to condition on
                     if i == 0:
