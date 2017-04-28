@@ -203,6 +203,7 @@ class ShortLongFuturePredictionBase:
         if 'object_data' in self.normalization_method and self.normalization_method['object_data'] == 'screen_normalize':
             screen_normalize = True
             self.normalization_method.pop('object_data')
+            self.normalization_method['object_data'] = 'standard'
         else:
             screen_normalize = False
 
@@ -277,20 +278,19 @@ class ShortLongFuturePredictionBase:
 
         fut_pose = inputs_not_normed['object_data'][:, time_seen : , 0:1, 1:5]
         #normalize! use std method
-        fut_pos = normed_inputs['object_data'][:, time_seen : , 0:1, 8:10]
+        fut_pos = inputs_not_normed['object_data'][:, time_seen : , 0:1, 8:10]
+
         screen_dims = [img_height, img_width]
         if screen_normalize:
             fut_pos = tf.concat([2. * (fut_pos[:, :, :, i:i+1] - float(screen_dims[i]) / 2.) / float(screen_dims[i]) for i in [0,1]], axis = 3)
             fut_pos = tf.tanh(fut_pos)
 
         fut_dat = tf.concat([fut_pose, fut_pos], axis = 3)
-        print('future dat')
-        print(fut_dat)
 
         self.inputs['object_data_future'] = fut_dat
 
         seen_pose = inputs_not_normed['object_data'][:, : time_seen, 0:1, 1:5] 
-        seen_pos = normed_inputs['object_data'][:, : time_seen, 0:1, 8:10]
+        seen_pos = inputs_not_normed['object_data'][:, : time_seen, 0:1, 8:10]
         if screen_normalize:
             seen_pos = tf.concat([2. * (seen_pos[:, :, :, i:i+1] - float(screen_dims[i]) / 2.) / float(screen_dims[i]) for i in [0,1]], axis = 3)
             seen_pos = tf.tanh(seen_pos)
@@ -299,10 +299,24 @@ class ShortLongFuturePredictionBase:
 
         self.inputs['object_data_seen_1d'] = seen_dat
 
+        acted_on_ids = tf.cast(inputs_not_normed['object_data'][:, :time_seen, 0:1, 0:1], tf.int32)
+        acted_on_ids = tf.expand_dims(acted_on_ids, 3)
+        acted_on_ids = tf.tile(acted_on_ids, [1, 1, img_height, img_width, 1])
+
+
+        self.inputs['depth_seen'] = normed_inputs['object_data'][:, : time_seen, 0:1, 7:8]
+
+        for desc in ['objects', 'objects2']:
+            if desc in inputs_not_normed:
+                objects = tf.cast(inputs_not_normed[desc], tf.int32)
+                objects = objects[:, :, :, :, 0:1] * (256**2) + objects[:, :, :, :, 1:2] * 256 + objects[:, :, :, :, 2:3]
+                self.inputs[desc] = tf.cast(tf.equal(acted_on_ids, objects), tf.float32) / 255.
+
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
-        if 'normals' in inputs_not_normed:
-            self.inputs['normals'] = tf.cast(inputs_not_normed['normals'], tf.float32) / 255.
-            self.inputs['normals2'] = tf.cast(inputs_not_normed['normals2'], tf.float32) / 255.
+        for desc in ['normals', 'normals2', 'images', 'images2']:
+            if desc in inputs_not_normed:
+                self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
+
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times

@@ -99,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'shorty_tables2',
+		'exp_id' : 'shorty_info_og',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -109,7 +109,7 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.shared_weight_downscaled_nonimage,
+		'func' : modelsource.include_more_data,
 		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
@@ -125,7 +125,7 @@ params = {
 		'data_params' : {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2'],
+			'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
 			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
@@ -179,7 +179,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2'],
+				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,

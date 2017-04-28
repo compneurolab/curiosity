@@ -42,6 +42,8 @@ def table_norot_grab_func(path):
 
 
 
+
+
 def append_it(x, y, step):
 	if x is None:
 		x = []
@@ -100,7 +102,7 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_vizt2',
+		'exp_id' : EXP_ID + '_trviz',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
@@ -120,7 +122,7 @@ params = {
 		'valid0' : {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
-				'data_path' : VALDATA_PATH,
+				'data_path' : DATA_PATH,
 				'short_sources' : [],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
@@ -149,7 +151,7 @@ params = {
 			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'agg_func' : just_keep_everything,
 			'online_agg_func' : append_it,
-			'num_steps' : 50
+			'num_steps' : 200
 		}
 
 	}
