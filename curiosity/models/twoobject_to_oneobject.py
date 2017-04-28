@@ -264,13 +264,59 @@ def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, norm
 	assert len(flattened_input[0].get_shape().as_list()) == 2
 	concat_input = tf.concat(flattened_input, axis = 1)
 
-	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
-	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
-	pred_shape[3] = 2
-	pred = tf.reshape(pred, pred_shape)
+        #recurrence
+        if 'rnn' in cfg:
+            pos = tf.slice(inputs['object_data_future'], [0,0,0,4], [-1,-1,1,-1])
+            pos = tf.squeeze(pos)
+            concat_input = tf.tile(tf.expand_dims(concat_input, 1), 
+                    [1, pos.get_shape().as_list()[1], 1])
+            rnn_input = tf.concat([concat_input, pos], 2)
+            pred, _ = rnn_loop(rnn_input, cfg)
+            pred = tf.expand_dims(pred, axis=2)
+            if 'hidden' in cfg:
+                pred = tf.reshape(pred, [batch_size, -1])
+        else:
+            pred = concat_input
+
+        #hidden layers
+        if 'hidden' in cfg:
+            pred = hidden_loop_with_bypasses(pred, m, cfg, reuse_weights = False)  
+            pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	    pred_shape[3] = 2
+	    pred = tf.reshape(pred, pred_shape)
+
 	retval = {'pred' : pred}
 	retval.update(base_net.inputs)
 	return retval, m.params
+
+
+def rnn_loop(inputs, cfg):
+    for i in range(1, cfg['rnn_depth'] + 1):
+        rnn_cfg = cfg['rnn'][i]
+        if rnn_cfg['cell_type'] is 'gru':
+            rnn_cell = tf.contrib.rnn.GRUCell(rnn_cfg['hidden_units'])
+            initial_state = None
+        elif rnn_cfg['cell_type'] is 'lstm':
+            rnn_cell = tf.contrib.rnn.LSTMCell(rnn_cfg['hidden_units'])
+            initial_state = (None, None)
+        if 'dropout' in rnn_cfg:
+            rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell,
+                    input_keep_prob = rnn_cfg['dropout']['input_keep_prob'],
+                    output_keep_prob = rnn_cfg['dropout']['output_keep_prob'])
+                    #state_keep_prob = rnn_cfg['dropout']['state_keep_prob'])
+        inputs, state = tf.nn.dynamic_rnn(rnn_cell, inputs,
+                initial_state=initial_state,
+                dtype = inputs.dtype)
+        if 'output_format' in rnn_cfg:
+            if rnn_cfg['output_format'] is 'last':
+                outputs = tf.unstack(inputs, axis=1)
+                return [outputs[-1], state]
+            else:
+                 raise ValueError('RNN: Unknown output format')
+        else:
+            outputs = inputs
+            return [outputs, state]
+
 
 def simple_conv_to_mlp_structure(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, **kwargs):
 	base_net = fp_base.FuturePredictionBaseModel(inputs, time_seen, normalization_method = normalization_method, stats_file = stats_file)
@@ -766,16 +812,20 @@ cfg_resnet_wide = {
 #this end stuff is where we should maybe join time steps
 	'hidden_depth' : 3,
 	'hidden' : {
-		1: {'num_features' : 1000},
-		2 : {'num_features' : 1000},
-		3 : {'num_features' : 40, 'activation' : 'identity'}
-	}
-
+            1: {'num_features' : 1000},
+            2 : {'num_features' : 1000},
+            3 : {'num_features' : 40, 'activation' : 'identity'}
+        },
+        'rnn_depth': 1,
+        'rnn': {
+            1: {'cell_type': 'gru',
+                'hidden_units': 1000,
+                'dropout': {
+                    'input_keep_prob': 1.0,
+                    'output_keep_prob': 1.0,
+                    #'state_keep_prob': 1.0,
+                    }
+            },
+        }
 }
-
-
-
-
-
-
 
