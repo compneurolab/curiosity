@@ -126,7 +126,7 @@ if USE_VALIDATION:
         'valid0': {
             'data_params': {
                 'func': ThreeWorldDataProvider,
-                #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
+                #'file_pattern': '*TABLE*.tfrecords',
                 'data_path': DATA_PATH,
                 'sources': ['images', 'actions', 'objects', 'object_data'],
                 'n_threads': 1,
@@ -201,8 +201,8 @@ if __name__ == '__main__':
         action_id = actions[0][:,:,8]
         if (action_id != pos_id).all():
             print("WARNING: action_id != pos_id")
-        forces = actions[0][:,:,0:6]
         # normalize forces
+        forces = actions[0][:,:,0:6]
         max_forces = np.array([397.81982422, 313.33035278, 354.37857056,
             78.99726105, 298.25149536, 253.70016479,])
         forces /= max_forces[np.newaxis, np.newaxis, :]
