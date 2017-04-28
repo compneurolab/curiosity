@@ -14,7 +14,7 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 USE_TRUE=True
-exp_id = 'test28'
+exp_id = 'test37'
 
 conf = 'cluster'
 
@@ -153,7 +153,7 @@ if USE_VALIDATION:
             },
         'agg_func' : keep_all,
         #'agg_func': utils.mean_dict,
-        'num_steps': 1 # N_VAL // BATCH_SIZE + 1,
+        'num_steps': 10 # N_VAL // BATCH_SIZE + 1,
         #'agg_func': lambda x: {k: np.mean(v) for k, v in x.items()},
         #'online_agg_func': online_agg
         }
@@ -249,30 +249,33 @@ if __name__ == '__main__':
         print('Generating images pixel by pixel:')
         predicted_images = []
         predicted_poses = []
+        images_copy = images.copy()
         num_images = images.shape[1]
         for im in trange(n_context, num_images, desc='timestep'):
             encoded_images = sess.run(run_lstm,
                     feed_dict={ph_lstm_inp: context_images})[0]
-            image = np.zeros(images[:,im].shape)
+            #image = np.zeros(images[:,im].shape)
+            image = images_copy[:,im-1].copy()
             image = np.expand_dims(image, 1)
             pos = np.zeros(images[:,im,:,:,0].shape)
             context = np.expand_dims(encoded_images[:,im-1], 1)
             action_mask = np.expand_dims(action_masks[:,im-1], 1)
             position_mask = np.expand_dims(position_masks[:,im-1], 1)
             dec_cond = np.concatenate((context, action_mask, position_mask), axis=4)
-            for i in trange(images.shape[-3], desc='height', leave=False):
-                for j in trange(images.shape[-2], desc='width'):
+            #for i in trange(images.shape[-3], desc='height', leave=False):
+            #    for j in trange(images.shape[-2], desc='width'):
                     #for k in xrange(images.shape[-1]): # predict all channels at once
-                        image_pos = sess.run(decode,
+            image_pos = sess.run(decode,
                                 feed_dict={ph_dec_inp: image,
                                     ph_dec_cond: dec_cond})[0]
-                        image[:,0,i,j] = image_pos[:,0,i,j,0:3]
-                        pos[:,i,j] = image_pos[:,0,i,j,3]
+            image[:,0,:,:] = image_pos[:,0,:,:,0:3]
+            pos[:,:,:] = image_pos[:,0,:,:,3]
             if not USE_TRUE:
                 # current action
                 action_masks[:,im] = forces[:,im, np.newaxis, np.newaxis] \
                         * np.expand_dims(pos,3)
                 position_masks[:,im] = np.expand_dims(pos,3)
+            images_copy[:,im] = np.squeeze(image)
             action_mask = np.expand_dims(action_masks[:,im], 1)
             position_mask = np.expand_dims(position_masks[:,im], 1)
             enc_cond = np.concatenate((action_mask, position_mask), axis=4)

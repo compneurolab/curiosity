@@ -23,7 +23,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/data/nhaber'
+CACHE_DIR = '/mnt/fs0/mrowca'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
 IMG_HEIGHT = 160
@@ -110,7 +110,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.shared_weight_downscaled_nonimage,
-		'cfg' : modelsource.cfg_short_conv,
+		'cfg' : modelsource.cfg_short_conv_rnn,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,

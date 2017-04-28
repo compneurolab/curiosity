@@ -41,7 +41,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test33'
+exp_id = 'test37'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -91,12 +91,26 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
     pos = tf.argmax(pos, axis=tf.rank(pos) - 1)
     pos = tf.cast(pos, tf.uint8) * 255
 
+    # image loss
+    rgb_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=tf.cast(tf.squeeze(tf.stack(
+                inputs['images'][:num_to_save])), tf.int32),
+            logits=tf.squeeze(tf.stack(outputs['rgb'][:num_to_save])))
+
+    # position loss
+    pos_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=tf.cast(tf.squeeze(tf.stack(
+                outputs['positions'][:num_to_save])), tf.int32),
+            logits=tf.squeeze(tf.stack(outputs['pos'][:num_to_save])))
+
     # return dict
     retval = {'img': images, 
             'pos': gt_pos,
             'act': actions,
             'pred_img': rgb, 
-            'pred_pos': pos,}
+            'pred_pos': pos,
+            'loss_img': rgb_loss,
+            'loss_pos': pos_loss}
     return retval
 
 def keep_all(step_results):
@@ -114,7 +128,8 @@ params = {
         'cache_filters_freq': 2000,
         'save_metrics_freq': 50,
         'save_initial_filters' : False,
-        'save_to_gfs': ['img', 'pos', 'act', 'pred_img', 'pred_pos'],
+        'save_to_gfs': ['img', 'pos', 'act', 
+            'pred_img', 'pred_pos', 'loss_img', 'loss_pos'],
         'cache_dir': CACHE_DIR,
     },
 
@@ -154,7 +169,7 @@ params = {
 
         'data_params': {
             'func': ThreeWorldDataProvider,
-            #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
+            #'file_pattern': '*TABLE*.tfrecords',
             'data_path': DATA_PATH,
             'sources': ['images', 'actions', 'objects', 'object_data'],
             'n_threads': 4,
@@ -207,7 +222,7 @@ if USE_VALIDATION:
         'valid0': {
             'data_params': {
                 'func': ThreeWorldDataProvider,
-                #'file_pattern': 'TABLE_CONTROLLED:DROP:FAST_PUSH:*.tfrecords',
+                #'file_pattern': '*TABLE*.tfrecords',
                 'data_path': DATA_PATH,
                 'sources': ['images', 'actions', 'objects', 'object_data'],
                 'n_threads': 4,
