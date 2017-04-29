@@ -23,7 +23,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/mnt/fs0/nhaber'
+CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
@@ -34,15 +34,9 @@ SCALE_DOWN_WIDTH = 94
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
-
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
-	print('got to file grabber!')
 	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
-
-
-
 
 def append_it(x, y, step):
 	if x is None:
@@ -83,7 +77,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-EXP_ID = 'tables_1to1_depth'
+EXP_ID = 'depth_newnorm2'
 
 params = {
 	
@@ -107,15 +101,16 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.just_1d_wdepth,
-		'cfg' : modelsource.cfg_mlp_wider,
+		'func' : modelsource.include_more_data,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
 		'image_height' : IMG_HEIGHT,
 		'image_width' : IMG_WIDTH,
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
-		'scale_down_width' : SCALE_DOWN_WIDTH
+		'scale_down_width' : SCALE_DOWN_WIDTH,
+		'add_depth_gaussian' : True
 	},
 
 	'validation_params' : {
@@ -123,7 +118,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : DATA_PATH,
-				'short_sources' : [],
+				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
@@ -161,6 +156,17 @@ params = {
 if __name__ == '__main__':
 	base.get_params()
 	base.test_from_params(**params)
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -25,7 +25,7 @@ LONG_LEN = 23
 MIN_LEN = 6
 CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
+STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
 
