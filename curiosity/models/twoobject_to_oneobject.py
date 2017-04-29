@@ -172,7 +172,7 @@ def just_1d_wdepth(inputs, cfg = None, time_seen = None, normalization_method = 
 	batch_size = act_shape[0]
 	m.output = act_node
 	act_node = m.reshape([np.prod(act_shape[1:])])
-	depth_node = tf.reshape(inputs['depth_seen'], [batch_size, -1])
+	depth_node = tf.reshape(base_net.inputs['depth_seen'], [batch_size, -1])
 	m.output = tf.concat([in_node, act_node, depth_node], axis = 1)
 	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
