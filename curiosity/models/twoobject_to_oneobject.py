@@ -1032,6 +1032,59 @@ cfg_short_conv = {
 	}
 }
 
+cfg_less_short_conv = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 3,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		3 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+}
+
+
+cfg_even_shorter_conv = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 1,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 4, 'num_filters' : 34}},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+}
+
 
 cfg_short_conv_more_info = {
 	'size_1_before_concat_depth' : 1,
