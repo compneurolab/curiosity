@@ -1088,7 +1088,7 @@ cfg_less_short_conv = {
 	'encode' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 34}},
-		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+		3 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
 	},
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
