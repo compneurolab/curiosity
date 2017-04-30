@@ -1,5 +1,5 @@
 '''
-Now with new data provider, and 2->1 architecture.
+test_from_params viz
 '''
 
 
@@ -23,7 +23,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/mnt/fs0/nhaber'
+CACHE_DIR = '/data/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
@@ -36,10 +36,7 @@ if not os.path.exists(CACHE_DIR):
 
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
-	print('got to file grabber!')
 	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
-
 
 def append_it(x, y, step):
 	if x is None:
@@ -60,9 +57,11 @@ def mean_losses_subselect_rest(val_res, skip_num):
 			retval[k] = [val_res[i][k] for i in range(len(val_res)) if i % skip_num == 0]
 	return retval
 
+
 def just_keep_everything(val_res):
 	keys = val_res[0].keys()
 	return dict((k, [d[k] for d in val_res]) for k in keys)
+
 
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
@@ -78,34 +77,27 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	return retval
 
 
-
-#cfg_simple lr .05, no normalization
-#cfg_simple_norm lr .05, normalization
-#cfg_2: lr .05, normalization, diff loss, try some rmsprop
-#cfg_2_lr-3, lr .001
-#cfg_2_rmsprop lr .001 now with rmsprop
-#rms_-4 3123
-#big_lr rms, lr .05
-#fixed_end fixed end nonlinearity, otherwise like big_lr
-#rms_-4_fixed 
-#rms_5-2_fixed rms_prop
-#rms_1-5_fixed lr 1-05
-#rms_1-6_fixed
-#nrmfx_5-2
+EXP_ID = 'depth_newnorm2'
 
 params = {
-	'save_params' : {
+	
+	'load_params' : {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'depth_newnorm3',
+		'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
         'cache_dir' : CACHE_DIR,
         'save_to_gfs' : SAVE_TO_GFS
+	},
+
+	'save_params' : {
+		'exp_id' : EXP_ID + '_trviz',
+		'save_to_gfs' : SAVE_TO_GFS
 	},
 
 	'model_params' : {
@@ -121,97 +113,8 @@ params = {
 		'add_depth_gaussian' : True
 	},
 
-	'train_params' : {
-
-		'data_params' : {
-			'func' : ShortLongSequenceDataProvider,
-			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
-			'long_sources' : ['actions', 'object_data', 'reference_ids'],
-			'short_len' : SHORT_LEN,
-			'long_len' : LONG_LEN,
-			'min_len' : MIN_LEN,
-			'filters' : ['is_not_teleporting'],
-			'shuffle' : True,
-			'shuffle_seed' : 0,
-			'n_threads' : 4,
-			'batch_size' : DATA_BATCH_SIZE,
-			'file_grab_func' : table_norot_grab_func
-		},
-
-		'queue_params' : {
-			'queue_type' : 'random',
-			'batch_size' : MODEL_BATCH_SIZE,
-			'seed' : 0,
-			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
-		},
-
-		'num_steps' : float('inf'),
-		'thres_loss' : float('inf')
-
-	},
-
-	'loss_params' : {
-		'targets' : [],
-		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.diff_loss_with_mask,
-		'loss_func_kwargs' : {},
-		'loss_per_case_func_params' : {}
-	},
-
-	'learning_rate_params': {
-		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-3,
-		'decay_rate': 0.95,
-		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
-		'staircase': True
-	},
-
-	'optimizer_params': {
-		'func': optimizer.ClipOptimizer,
-		'optimizer_class': tf.train.AdamOptimizer,
-		'clip': True,
-	# 'momentum': .9
-	},
-
-
 	'validation_params' : {
 		'valid0' : {
-			'data_params' : {
-				'func' : ShortLongSequenceDataProvider,
-				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
-				'long_sources' : ['actions', 'object_data', 'reference_ids'],
-				'short_len' : SHORT_LEN,
-				'long_len' : LONG_LEN,
-				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting'],
-				'shuffle' : True,
-				'shuffle_seed' : 0,
-				'n_threads' : 1,
-				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func
-			},
-
-			'queue_params' : {
-				'queue_type' : 'fifo',
-				'batch_size' : MODEL_BATCH_SIZE,
-				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 20
-			},
-
-			'targets' : {
-				'func' : grab_all,
-				'targets' : [],
-				'num_to_save' : MODEL_BATCH_SIZE,
-			},
-			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
-			'agg_func' : just_keep_everything,
-			'online_agg_func' : append_it,
-			'num_steps' : 50
-		},
-
-		'valid1' : {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : DATA_PATH,
@@ -232,7 +135,7 @@ params = {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 20
+				'capacity' : MODEL_BATCH_SIZE * 1
 			},
 
 			'targets' : {
@@ -243,22 +146,37 @@ params = {
 			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'agg_func' : just_keep_everything,
 			'online_agg_func' : append_it,
-			'num_steps' : 20
+			'num_steps' : 200
 		}
-
-
-
-
-
 
 	}
 
 }
 
-
 if __name__ == '__main__':
 	base.get_params()
-	base.train_from_params(**params)
+	base.test_from_params(**params)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

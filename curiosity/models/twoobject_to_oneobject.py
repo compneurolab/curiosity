@@ -158,6 +158,31 @@ def just_1d_new_provider(inputs, cfg = None, time_seen = None, normalization_met
 	retval.update(base_net.inputs)
 	return retval, m.params
 
+def just_1d_wdepth(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
+					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+					img_width = image_width)
+	m = ConvNetwithBypasses(**kwargs)
+	in_node = base_net.inputs['object_data_seen_1d']
+	in_shape = in_node.get_shape().as_list()
+	m.output = in_node
+	in_node = m.reshape([np.prod(in_shape[1:])])
+	act_node = base_net.inputs['actions_no_pos']
+	act_shape = act_node.get_shape().as_list()
+	batch_size = act_shape[0]
+	m.output = act_node
+	act_node = m.reshape([np.prod(act_shape[1:])])
+	depth_node = tf.reshape(base_net.inputs['depth_seen'], [batch_size, -1])
+	m.output = tf.concat([in_node, act_node, depth_node], axis = 1)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	pred_shape[3] = 2
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
+
 def shared_weight_conv(inputs, cfg = None, normalization_method = None, stats_file = None, image_height = None, image_width = None, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
@@ -231,7 +256,7 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	retval.update(base_net.inputs)
 	return retval, m.params
 
-def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, **kwargs):
+def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -265,7 +290,8 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 
 	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
-	pred_shape[3] = 2
+	if not include_pose:
+		pred_shape[3] = 2
 	pred = tf.reshape(pred, pred_shape)
 	retval = {'pred' : pred}
 	retval.update(base_net.inputs)
@@ -446,6 +472,21 @@ def diff_loss_with_mask(outputs):
 	mask = tf.expand_dims(mask, axis = 2)
 	mask = tf.expand_dims(mask, axis = 2)
 	mask = tf.tile(mask, [1, 1, 1, 2])
+	n_entries = np.prod(tv.get_shape().as_list())
+	return 100. * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
+
+def diff_mask_loss_with_poses(outputs):
+	master_filter = outputs['master_filter']
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	time_seen = seen_dat.get_shape().as_list()[1]
+	last_seen_dat = seen_dat[:, -1:]
+	tv = compute_diffs(last_seen_dat, future_dat)
+	mask = tf.cast(tf.cumprod(master_filter[:, time_seen:], axis = 1), tf.float32)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.tile(mask, [1, 1, 1, 6])
 	n_entries = np.prod(tv.get_shape().as_list())
 	return 100. * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
 
@@ -1046,8 +1087,8 @@ cfg_less_short_conv = {
 
 	'encode' : {
 		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
-		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
-		3 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
 	},
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
@@ -1057,8 +1098,8 @@ cfg_less_short_conv = {
 		2 : {'num_features' : 1000},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}
-}
 
+}
 
 cfg_even_shorter_conv = {
 	'size_1_before_concat_depth' : 1,
@@ -1073,7 +1114,7 @@ cfg_even_shorter_conv = {
 	'encode_depth' : 1,
 
 	'encode' : {
-		1 : {'conv' : {'filter_size' : 7, 'stride' : 4, 'num_filters' : 34}},
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 4, 'num_filters' : 34}}
 	},
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
@@ -1084,6 +1125,36 @@ cfg_even_shorter_conv = {
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}
 }
+
+
+cfg_short_conv_w_poses = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1200},
+		2 : {'num_features' : 1200},
+		3 : {'num_features' : 120, 'activation' : 'identity'}
+	}
+
+}
+
+
 
 
 cfg_short_conv_more_info = {
