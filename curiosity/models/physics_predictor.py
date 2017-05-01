@@ -362,7 +362,10 @@ class VPN(ThreeWorldBaseModel):
         # encode context images
         context_images = tf.slice(images, [0,0,0,0,0], [-1,n_context,-1,-1,-1])
         encoded_context = self.encoder(context_images, 
-                conditioning=[], num_rmb=encoder_depth, scope='context_encoder')
+                conditioning=[tf.slice(tf.concat([actions, positions], 4), 
+                        [0,0,0,0,0], [-1,n_context,-1,-1,-1])],
+                num_rmb=encoder_depth, 
+                scope='context_encoder')
         encoded_context = tf.expand_dims(tf.concat(
             tf.unstack(encoded_context, axis=1), axis=3), axis=1)
         encoded_context = tf.tile(encoded_context, 
@@ -370,13 +373,13 @@ class VPN(ThreeWorldBaseModel):
         # encode
         encoded_inputs = self.encoder(
                 tf.concat([encoded_context, actions, positions], 4),
-                conditioning=[], #images
+                conditioning=[tf.concat([actions, positions], 4)],
                 num_rmb=encoder_depth)
         # run lstm
         lstm_out = self.lstm(encoded_inputs)
         # decode
         rgb_pos = self.decoder(lstm_out, 
-                conditioning=[], #images
+                conditioning=[tf.concat([actions, positions], 4)],
                 num_rmb=decoder_depth,
                 out_channels=out_channels)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
