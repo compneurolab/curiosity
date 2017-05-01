@@ -219,11 +219,15 @@ class VPN(ThreeWorldBaseModel):
                 raise ValueError('Conditioning must be a Tensor or list of Tensors')
             outputs = []
             for i, inp in enumerate(inputs):
-                W_in = self.new_variable('W_in', [1, 1, tf.shape(inp)[-1], 256])
+                inp_shape = inp.get_shape().as_list()
+                W_in = self.new_variable('W_in', [1, 1, inp_shape[-1], 256])
                 inp = tf.nn.conv2d(inp, W_in, strides=[1, 1, 1, 1], padding='SAME')
                 for r in range(num_rmb):
-                    inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                            conditioning = conditioning[i])
+                    if conditioning:
+                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                conditioning = conditioning[i])
+                    else:
+                        inp = self.rmb(inp, scope = 'rmb' + str(r))
                 outputs.append(inp)
                 # share variables across frames
                 encode_scope.reuse_variables()
@@ -284,29 +288,46 @@ class VPN(ThreeWorldBaseModel):
             # Define convolutional kernels:
             # First kernel has mask 'a', subsequent kernels have mask 'b'
             # W masked with maskA
-            W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
-                    W_in_channels, W_out_channels])
+            #W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
+            #        W_in_channels, W_out_channels])
             # W to expand from 3 to 256 channels
-            W_extend = self.new_variable('W_extend', [1,1,3,256])
-            W_masked *= maskA
+            assert len(inputs) > 0
+            inp_shape = inputs[0].get_shape().as_list()
+            W_extend = self.new_variable('W_extend', [1,1,inp_shape[-1],256])
+            #W_masked *= maskA
             # W to convert to out_channels
             W_out = self.new_variable('W_out', [1, 1, 256, out_channels])
             outputs = []
             for i, inp in enumerate(inputs):
-                inp = tf.nn.conv2d(inp, W_masked, strides=[1, 1, 1, 1], padding='SAME')
+                #inp = tf.nn.conv2d(inp, W_masked, strides=[1, 1, 1, 1], padding='SAME')
                 inp = tf.nn.conv2d(inp, W_extend, strides=[1, 1, 1, 1], padding='SAME')
                 for r in range(num_rmb):
                     # first frame has no previous time steps to condition on
                     if i == 0:
-                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                                conditioning = conditioning[i],
-                                use_conditioning = condition_first_image,
-                                mask=maskB)
+                        if conditioning:
+                            inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                    conditioning = conditioning[i],
+                                    use_conditioning = condition_first_image,
+                                    #mask=maskB,
+                                    )
+                        else:
+                            inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                    use_conditioning = condition_first_image,
+                                    #mask=maskB,
+                                    )
+
                     # subesequent frames condition on previous time steps
                     else:
-                        inp = self.rmb(inp, scope = 'rmb' + str(r), \
-                                conditioning = conditioning[i-1],
-                                mask=maskB)
+                        if conditioning:
+                            inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                    conditioning = conditioning[i-1],
+                                    #mask=maskB,
+                                    )
+                        else:
+                            inp = self.rmb(inp, scope = 'rmb' + str(r), \
+                                    #mask=maskB,
+                                    )
+
                 inp = tf.nn.conv2d(inp, W_out, strides=[1, 1, 1, 1], padding='SAME')
                 outputs.append(inp)
                 # share variable across frames
@@ -341,9 +362,11 @@ class VPN(ThreeWorldBaseModel):
         # encode context images
         context_images = tf.slice(images, [0,0,0,0,0], [-1,n_context,-1,-1,-1])
         encoded_context = self.encoder(context_images, 
-                conditioning=[], num_rmb=encoder_depth)
+                conditioning=[], num_rmb=encoder_depth, scope='context_encoder')
         encoded_context = tf.expand_dims(tf.concat(
             tf.unstack(encoded_context, axis=1), axis=3), axis=1)
+        encoded_context = tf.tile(encoded_context, 
+                [1,images.get_shape().as_list()[1],1,1,1])
         # encode
         encoded_inputs = self.encoder(
                 tf.concat([encoded_context, actions, positions], 4),
