@@ -26,12 +26,15 @@ import cPickle
 
 DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-ATTRIBUTE = 'agent_data'
+#ATTRIBUTE = 'agent_data'
+#DTYPE_STRING = True
+#RAW_TYPE = tf.float32
+#RAW_SHAPE = [6,]
+
+ATTRIBUTE = 'is_object_there'
 DTYPE_STRING = True
-RAW_TYPE = tf.float32
-RAW_SHAPE = [6,]
-
-
+RAW_TYPE = tf.int32
+RAW_SHAPE = [11,]
 
 to_write = {}
 if DTYPE_STRING:

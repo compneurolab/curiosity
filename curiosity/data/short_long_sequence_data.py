@@ -24,6 +24,7 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                  min_len = None,
                  filters=None,
                  resize=None,
+		 is_there_subsetting_rule = None,
                  *args,
                  **kwargs):
 
@@ -37,6 +38,10 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         self.min_len = min_len
         self.filters = filters
         self.resize = resize
+	self.is_there_subsetting_rule = is_there_subsetting_rule
+
+	if filters is not None and 'is_object_there' in filters:
+		assert is_there_subsetting_rule is not None
         
         assert self.short_len >= 1 and self.long_len >= 1,\
                 ("sequence length has to be at least 1")
@@ -130,6 +135,14 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         for f in self.filters:
             data[f] = tf.cast(data[f], tf.int32)
             data[f] = tf.squeeze(data[f])
+	    print(f)
+	    print(data[f])
+	if 'is_object_there' in self.filters:
+		if self.is_there_subsetting_rule == 'just_first':
+			data['is_object_there'] = data['is_object_there'][:,:, 0]
+			print(data['is_object_there'])
+		else:
+			raise Exception('Other types not implemented')
         #and operation
         prod_filters = data[self.filters[0]]
         for f in self.filters[1:]:

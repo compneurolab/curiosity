@@ -99,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'more_short_info',
+		'exp_id' : 'upd_subsetting',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -110,7 +110,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_even_shorter_conv,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -118,7 +118,8 @@ params = {
 		'image_width' : IMG_WIDTH,
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
 		'scale_down_width' : SCALE_DOWN_WIDTH,
-		'add_depth_gaussian' : True
+		'add_depth_gaussian' : True,
+		'include_pose' : False
 	},
 
 	'train_params' : {
@@ -126,17 +127,18 @@ params = {
 		'data_params' : {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
+			'short_sources' : ['normals', 'normals2', 'images'],
 			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
 			'min_len' : MIN_LEN,
-			'filters' : ['is_not_teleporting'],
+			'filters' : ['is_not_teleporting', 'is_object_there'],
 			'shuffle' : True,
 			'shuffle_seed' : 0,
 			'n_threads' : 4,
 			'batch_size' : DATA_BATCH_SIZE,
-			'file_grab_func' : table_norot_grab_func
+			'file_grab_func' : table_norot_grab_func,
+			'is_there_subsetting_rule' : 'just_first'
 		},
 
 		'queue_params' : {
@@ -180,24 +182,25 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
+				'short_sources' : ['normals', 'normals2', 'images'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
 				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting'],
+				'filters' : ['is_not_teleporting', 'is_object_there'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func
+				'file_grab_func' : table_norot_grab_func,
+				'is_there_subsetting_rule' : 'just_first'
 			},
 
 			'queue_params' : {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 20
+				'capacity' : MODEL_BATCH_SIZE
 			},
 
 			'targets' : {
@@ -220,19 +223,20 @@ params = {
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
 				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting'],
+				'filters' : ['is_not_teleporting', 'is_object_there'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func
+				'file_grab_func' : table_norot_grab_func,
+				'is_there_subsetting_rule' : 'just_first'
 			},
 
 			'queue_params' : {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE * 20
+				'capacity' : MODEL_BATCH_SIZE
 			},
 
 			'targets' : {
