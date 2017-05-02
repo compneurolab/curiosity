@@ -6,7 +6,7 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
-import curiosity.models.physics_vpn as modelsource
+import curiosity.models.physics_predictor as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
@@ -14,9 +14,9 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
 conf = 'cluster'
 
 if conf is 'cluster':
-    #BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
+    BASE_DIR = '/mnt/fs0/datasets/two_world_dataset'
     CACHE_DIR = '/mnt/fs0/mrowca/tfutils'
-    BASE_DIR = '/data/two_world_dataset'
+    #BASE_DIR = '/data/two_world_dataset'
     HOST = 'localhost'
 else:
     BASE_DIR = '/media/data2/new_dataset/'
@@ -29,7 +29,7 @@ NORM_PATH = os.path.join(BASE_DIR, 'stats.pkl')
 
 INPUT_BATCH_SIZE = 256
 N_GPUS = 4
-OUTPUT_BATCH_SIZE = 6 * N_GPUS
+OUTPUT_BATCH_SIZE = 2 * N_GPUS
 N = 2048000
 NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 TIME_DIFFERENCE = 1
@@ -41,7 +41,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 0
-exp_id = 'test37'
+exp_id = 'test43'
 
 rng = np.random.RandomState(seed=seed)
 
@@ -155,8 +155,8 @@ params = {
         'gaussian': GAUSSIAN,
         'segmentation': SEGMENTATION,
         'stats_file': NORM_PATH,
-        'encoder_depth': 2,
-        'decoder_depth': 4,
+        'encoder_depth': 8,
+        'decoder_depth': 12,
         'n_gpus': N_GPUS,
         'normalization_method': {'actions': 'minmax'},
     },

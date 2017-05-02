@@ -13,8 +13,8 @@ import curiosity.models.physics_vpn as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
-USE_TRUE=True
-exp_id = 'test28'
+USE_TRUE=False
+exp_id = 'test37'
 
 conf = 'cluster'
 
