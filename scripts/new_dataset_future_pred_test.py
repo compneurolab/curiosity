@@ -54,34 +54,37 @@ def test_long_sequence_no_base():
 			long_sources = ['actions', 'object_data', 'reference_ids'],
 			short_len = 3,
 			long_len = 23,
-			min_len = 5,
-			filters = ['is_not_teleporting']
+			min_len = 6,
+			filters = ['is_not_teleporting', 'is_object_there'],
+			is_there_subsetting_rule = 'just_first'
 		)
 	sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                                 log_device_placement=False))
 	ops = dp.init_ops()
-	queue = b.get_queue(ops[0], queue_type = 'random')
+	queue = b.get_queue(ops[0], queue_type = 'fifo')
 	enqueue_ops = []
 	for op in ops:
 	    enqueue_ops.append(queue.enqueue_many(op))
 	tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
 	tf.train.start_queue_runners(sess=sess)
 	inputs = queue.dequeue_many(256)
+	res_collector = []
 	for i in range(1):
 		start = time.time()
 		res = sess.run(inputs)
+		res_collector.append(res)
 		print(time.time() - start)
-		print(res.keys())
-		print(res['object_data'].shape)
-		print(res['reference_ids'].shape)
-		print(res['normals'].shape)
-		print(res['normals2'].shape)
-		print(res['reference_ids'][0])
-		print(res['reference_ids'][255])
-		for i in range(256):
-			print(i)
-			print(res['master_filter'][i])
-
+#		print(res.keys())
+#		print(res['object_data'].shape)
+#		print(res['reference_ids'].shape)
+#		print(res['normals'].shape)
+#		print(res['normals2'].shape)
+#		print(res['reference_ids'][0])
+#		print(res['reference_ids'][255])
+#		for i in range(256):
+#			print(i)
+#			print(res['master_filter'][i])
+	return res_collector
 
 def convert_for_write(arr):
 	# my_max = np.amax(arr)
@@ -161,5 +164,5 @@ def test_base():
 
 if __name__ == '__main__':
 	b.get_params()
-	test_long_sequence_no_base()
+	stuff = test_long_sequence_no_base()
 

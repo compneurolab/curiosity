@@ -23,7 +23,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/data/nhaber'
+CACHE_DIR = '/home/nhaber/cache'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_updated.pkl'
 IMG_HEIGHT = 160
@@ -96,7 +96,7 @@ params = {
 	},
 
 	'save_params' : {
-		'exp_id' : EXP_ID + '_valviz',
+		'exp_id' : EXP_ID + '_trvizend',
 		'save_to_gfs' : SAVE_TO_GFS
 	},
 
@@ -116,7 +116,7 @@ params = {
 		'valid0' : {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
-				'data_path' : VALDATA_PATH,
+				'data_path' : DATA_PATH,
 				'short_sources' : ['normals', 'normals2'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,

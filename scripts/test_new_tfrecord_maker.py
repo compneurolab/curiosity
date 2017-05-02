@@ -25,6 +25,8 @@ def write_images(batch_data, dir_name):
                         im.save(fn)
 
 batch_stuff = mnt.get_batch_data((0, 1234))
+
+batch_stuff1 = mnt.get_batch_data((0, 0))
 #write_images(batch_stuff, 'test1234')
 
 

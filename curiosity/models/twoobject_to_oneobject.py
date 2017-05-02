@@ -222,8 +222,8 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	inputs = base_net.inputs
 	m = ConvNetwithBypasses(**kwargs)
 
-	size_1_attributes = ['normals', 'normals2']
-	flat_inputs = ['object_data_seen_1d', 'actions_no_pos']
+	size_1_attributes = ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2']
+	flat_inputs = ['object_data_seen_1d', 'actions_no_pos', 'depth_seen']
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
 	flat_input_per_time = [tf.concat([tf.reshape(inputs[nm][:, t], [batch_size, -1]) for nm in flat_inputs], axis = 1) for t in range(time_seen)]
 
@@ -242,8 +242,10 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 
 	#flatten and concat
 	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
-	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
-	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+#	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+#	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+	flattened_input = flattened_input + flat_input_per_time
+
 
 	assert len(flattened_input[0].get_shape().as_list()) == 2
 	concat_input = tf.concat(flattened_input, axis = 1)
@@ -263,7 +265,7 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 
 	inputs = base_net.inputs
 
-	size_1_attributes = ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2']
+	size_1_attributes = ['normals', 'normals2', 'images']
 	size_2_attributes = ['object_data_seen', 'actions_seen']
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
 	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
@@ -602,6 +604,40 @@ cfg_fewer_channels_different_sizes = {
 		2 : {'num_features' : 250},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}	
+
+}
+
+
+
+cfg_onetwoone_short = {
+
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'coord_to_conv_depth' : 1,
+	'coord_to_conv' : {
+		0 : {'out_shape' : [40, 94, 6], 'activation' : 'relu'},
+		1 : {'conv'  : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 4}}
+	},
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
 
 }
 
