@@ -35,14 +35,15 @@ NUM_BATCHES_PER_EPOCH = N // OUTPUT_BATCH_SIZE
 TIME_DIFFERENCE = 1
 SEQUENCE_LENGTH = 12
 GAUSSIAN = None #['actions', 'poses']
-SEGMENTATION = ['actions', 'positions']
+# the integer here means that you take the first n images and repeat the n-th image
+SEGMENTATION = ['actions', 'positions', 2]
 RESIZE = {'images': {'size': [28, 64], 'method': 'area'}, \
         'objects': {'size': [28, 64], 'method': 'nearest'}}
 RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 1
-exp_id = 'test45'
+exp_id = 'test47'
 
 rng = np.random.RandomState(seed=seed)
 

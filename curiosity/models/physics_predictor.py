@@ -352,18 +352,18 @@ class VPN(ThreeWorldBaseModel):
         inputs = tf.stack(inputs)
         return inputs
 
-    def train(self, encoder_depth=8, decoder_depth=12, out_channels=768, n_context=2):
+    def train(self, encoder_depth=8, decoder_depth=12, out_channels=768, num_context=2):
         images = self.inputs['images']
-        actions = self.inputs['actions']
-        positions = self.inputs['positions']
+        actions = self.inputs['input_actions']
+        positions = self.inputs['input_positions']
         # convert images to float32 between [0,1) if not normalized
-        if self.normalization is None:
+        if self.normalization is None or 'images' not in self.normalization.methods:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
         # encode context images
-        context_images = tf.slice(images, [0,0,0,0,0], [-1,n_context,-1,-1,-1])
+        context_images = tf.slice(images, [0,0,0,0,0], [-1,num_context,-1,-1,-1])
         encoded_context = self.encoder(context_images, 
                 conditioning=[tf.slice(tf.concat([actions, positions], 4), 
-                        [0,0,0,0,0], [-1,n_context,-1,-1,-1])],
+                        [0,0,0,0,0], [-1,num_context,-1,-1,-1])],
                 num_rmb=encoder_depth, 
                 scope='context_encoder')
         encoded_context = tf.expand_dims(tf.concat(
@@ -386,26 +386,42 @@ class VPN(ThreeWorldBaseModel):
         pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
         rgb = self.reshape_rgb(rgb, out_channels)
-        return [{'rgb': rgb, 'actions': actions, 'positions': positions, 'pos': pos}, 
+        return [{'rgb': rgb, \
+                'actions': actions, \
+                'positions': self.inputs['positions'], \
+                'pos': pos},
                 {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_references(self, encoder_depth=8, decoder_depth=12,
             out_channels=768, num_context=2):
         images = self.inputs['images']
         actions = self.inputs['actions']
+        positions = self.inputs['positions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
-        # encode
         shape = images.get_shape().as_list()
         img_shape = copy.deepcopy(shape)
         img_shape[1] = 1
-        self.ph_enc_inp = tf.placeholder(tf.float32, img_shape, 'enc_inp')
         cond_shape = copy.deepcopy(img_shape)
         cond_shape[-1] = 6 + 1
+        # encode context images
+        self.ph_cont_enc_inp = tf.placeholder(tf.float32, img_shape, 'cont_enc_inp')
+        self.ph_cont_enc_cond = tf.placeholder(tf.float32, cond_shape, 'enc_cond')
+        encoded_context = self.encoder(self.ph_cont_enc_inp,
+                conditioning=[],
+                #conditioning=[self.ph_cont_enc_cond], 
+                num_rmb=encoder_depth,
+                scope='context_encoder')
+        # encode
+        enc_shape = copy.deepcopy(img_shape)
+        enc_shape[-1] = 256 * num_context + 6 + 1
+        self.ph_enc_inp = tf.placeholder(tf.float32, enc_shape, 'enc_inp')
         self.ph_enc_cond = tf.placeholder(tf.float32, cond_shape, 'enc_cond')
-        encoded_inputs = self.encoder(self.ph_enc_inp, 
-                conditioning=[self.ph_enc_cond], num_rmb=encoder_depth)
+        encoded_inputs = self.encoder(self.ph_enc_inp,
+                conditioning=[],
+                #conditioning=[self.ph_enc_cond], 
+                num_rmb=encoder_depth)
         # run lstm
         enc_shape = copy.deepcopy(shape)
         enc_shape[-1] = 256
@@ -413,16 +429,19 @@ class VPN(ThreeWorldBaseModel):
         lstm_out = self.lstm(self.ph_lstm_inp)
         # decode
         dec_inp_shape = copy.deepcopy(img_shape)
+        dec_inp_shape[-1] = 256
         dec_cond_shape = copy.deepcopy(img_shape)
-        dec_cond_shape[-1] = 256 + 6 + 1
+        dec_cond_shape[-1] = 6 + 1
         self.ph_dec_inp = tf.placeholder(tf.float32, 
                 dec_inp_shape, 'dec_inp')
         self.ph_dec_cond = tf.placeholder(tf.float32, 
                 dec_cond_shape, 'dec_cond')
-        rgb_pos = self.decoder(self.ph_dec_inp, 
-                conditioning=[self.ph_dec_cond], 
+        rgb_pos = self.decoder(self.ph_dec_inp,
+                conditioning=[],
+                #conditioning=[self.ph_dec_cond], 
                 num_rmb=decoder_depth,
-                out_channels=out_channels, condition_first_image=True)
+                out_channels=out_channels, 
+                condition_first_image=True)
         rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
         pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
         # reshape to [batch_size, time_step, height, width, n_channels, intensities]
@@ -432,12 +451,17 @@ class VPN(ThreeWorldBaseModel):
         predicted_poses = tf.expand_dims(self.get_intensities(pos) * 255, axis=4)
         predicted_images_poses = tf.concat([predicted_images, predicted_poses], axis=4)
         return [{'decode': predicted_images_poses, 'run_lstm': lstm_out, 
-            'encode': encoded_inputs, 'rgb': rgb,
+            'encode': encoded_inputs, 'encode_context': encoded_context, 'rgb': rgb,
+            'ph_cont_enc_inp': self.ph_cont_enc_inp,
+            'ph_cont_enc_cond': self.ph_cont_enc_cond,
             'ph_enc_inp': self.ph_enc_inp,
             'ph_enc_cond': self.ph_enc_cond,
             'ph_lstm_inp': self.ph_lstm_inp,
             'ph_dec_inp': self.ph_dec_inp,
-            'ph_dec_cond': self.ph_dec_cond},
+            'ph_dec_cond': self.ph_dec_cond,
+            'images': images,
+            'actions': actions,
+            'positions': positions},
             {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def test_unroll_all_on_gpu(self, encoder_depth=8, decoder_depth=12,
@@ -512,7 +536,7 @@ def model(inputs,
     else:
         normalization=None
 
-    net = VPN(inputs, **kwargs)
+    net = VPN(inputs, normalization=normalization, **kwargs)
     if my_train:
         return net.train(encoder_depth, decoder_depth, out_channels=770)
     else:
@@ -570,15 +594,15 @@ def parallel_softmax_cross_entropy_loss(labels, logits,
                     rgb_label = tf.squeeze(rgb_label)
                     pos_label = tf.squeeze(pos_label)
                     if last_frames:
-                        n_context = 2
+                        num_context = 2
                         rgb_label = tf.slice(rgb_label, 
-                                [0,n_context,0,0,0], [-1,-1,-1,-1,-1])
+                                [0,num_context,0,0,0], [-1,-1,-1,-1,-1])
                         rgb_logit = tf.slice(rgb_logit, 
-                                [0,n_context,0,0,0,0], [-1,-1,-1,-1,-1,-1])
+                                [0,num_context,0,0,0,0], [-1,-1,-1,-1,-1,-1])
                         pos_label = tf.slice(pos_label, 
-                                [0,n_context,0,0], [-1,-1,-1,-1])
+                                [0,num_context,0,0], [-1,-1,-1,-1])
                         pos_logit = tf.slice(pos_logit, 
-                                [0,n_context,0,0,0], [-1,-1,-1,-1,-1])
+                                [0,num_context,0,0,0], [-1,-1,-1,-1,-1])
                     # mask background to focus on foreground prediction
                     if mask_background:
                         rgb_logit *= tf.expand_dims(tf.cast(pos_label, tf.float32), 4)
