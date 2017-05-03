@@ -258,6 +258,133 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	retval.update(base_net.inputs)
 	return retval, m.params
 
+def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
+        batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+        long_len = inputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+        inputs = base_net.inputs
+
+        size_1_attributes = ['normals', 'normals2', 'images']
+        size_2_attributes = ['object_data_seen', 'actions_seen']
+        size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+        size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+        m = ConvNetwithBypasses(**kwargs)
+
+        encoded_input = []
+        reuse_weights = False
+        for t in range(time_seen):
+                size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
+                concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
+                encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+                reuse_weights = True
+
+        #flatten and concat
+        flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+        flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+        flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
+
+        assert len(flattened_input[0].get_shape().as_list()) == 2
+        concat_input = tf.concat(flattened_input, axis = 1)
+
+        act = inputs['actions_no_pos']
+        #print('\033[91mHELLO!!!\033[0m')
+        concat_input = tf.tile(tf.expand_dims(concat_input, 1),
+                                [1, act.get_shape().as_list()[1], 1])
+        time_input = tf.concat([concat_input, act], 2)
+        time_input = tf.unstack(time_input, axis=1)
+
+        future_time = base_net.inputs['object_data_future'].get_shape().as_list()[1]
+        current_time = inputs['object_data_seen_1d'].get_shape().as_list()[1]
+        pred = []
+        for i in xrange(current_time, current_time+future_time):
+            if i == current_time:
+                pos = tf.slice(inputs['object_data_seen_1d'], 
+                        [0,current_time-1,0,4], [-1,1,-1,-1]) #[b,1,1,feat]
+            else:
+                pos = pred_pos
+            inp = tf.concat([tf.squeeze(pos), time_input[i]], 1)
+
+            if i == current_time:
+                pred_pos = hidden_loop_with_bypasses(inp,
+                        m, cfg, reuse_weights = False)
+            else:
+                pred_pos = hidden_loop_with_bypasses(inp,
+                        m, cfg, reuse_weights = True)
+            pred.append(pred_pos)
+        pred = tf.stack(pred, axis=1)
+        pred = tf.expand_dims(pred, axis=2)
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
+
+
+def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
+        batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+        long_len = inputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+        inputs = base_net.inputs
+
+        size_1_attributes = ['normals', 'normals2', 'images']
+        size_2_attributes = ['object_data_seen', 'actions_seen']
+        size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+        size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+        m = ConvNetwithBypasses(**kwargs)
+
+        encoded_input = []
+        reuse_weights = False
+        for t in range(time_seen):
+                size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
+                concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
+                encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+                reuse_weights = True
+
+        #flatten and concat
+        flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+        flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+        flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
+
+        assert len(flattened_input[0].get_shape().as_list()) == 2
+        concat_input = tf.concat(flattened_input, axis = 1)
+
+        act = inputs['actions_no_pos']
+        print('\033[91mHELLO!!!\033[0m')
+        concat_input = tf.tile(tf.expand_dims(concat_input, 1),
+                                [1, act.get_shape().as_list()[1], 1])
+        rnn_input = tf.concat([concat_input, act], 2)
+        pred, _ = rnn_loop(rnn_input, cfg)
+
+        pred = tf.unstack(pred, axis=1)
+        for i, _ in enumerate(pred):
+            if i == 0:
+                pred[i] = hidden_loop_with_bypasses(pred[i], 
+                        m, cfg, reuse_weights = False)
+            else:
+                pred[i] = hidden_loop_with_bypasses(pred[i],
+                        m, cfg, reuse_weights = True)
+        pred = tf.stack(pred, axis=1)
+        size = base_net.inputs['object_data_future'].get_shape().as_list()[1]
+        begin = pred.get_shape().as_list()[1] - size
+        pred = tf.slice(pred, [0,begin,0], [-1,size,-1])
+        pred = tf.expand_dims(pred, axis=2)
+        #pred = hidden_loop_with_bypasses(pred, m, cfg, reuse_weights = False)
+        #pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+        #print(base_net.inputs['object_data_future'].get_shape().as_list())
+        #if not include_pose:
+        #        pred_shape[3] = 2
+        #pred = tf.reshape(pred, pred_shape)
+
+        
+
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
+
+
+
 def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
@@ -1046,6 +1173,50 @@ cfg_resnet_more_channels = {
 
 }
 
+cfg_short_conv_one_step = {
+        'size_1_before_concat_depth' : 1,
+
+        'size_1_before_concat' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+
+        'size_2_before_concat_depth' : 0,
+
+        'encode_depth' : 2,
+
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+                2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+        },
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+        'hidden_depth' : 10,
+        'hidden' : {
+                1 : {'num_features' : 100},
+                2 : {'num_features' : 100},
+                3 : {'num_features' : 100},
+                4 : {'num_features' : 100},
+                5 : {'num_features' : 100},
+                6 : {'num_features' : 100},
+                7 : {'num_features' : 100},
+                8 : {'num_features' : 100},
+                9 : {'num_features' : 100},
+                10 : {'num_features' : 2, 'activation' : 'identity'}
+        },
+        'rnn_depth': 0,
+        'rnn': {
+            1: {'cell_type': 'gru',
+                'hidden_units': 1000,
+                'dropout': {
+                    'input_keep_prob': 1.0,
+                    'output_keep_prob': 1.0,
+                    #'state_keep_prob': 1.0,
+                    }
+            },
+        }
+}
+
 cfg_short_conv_rnn = {
         'size_1_before_concat_depth' : 1,
 
@@ -1064,11 +1235,11 @@ cfg_short_conv_rnn = {
         },
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
-        'hidden_depth' : 3,
+        'hidden_depth' : 1,
         'hidden' : {
-                1 : {'num_features' : 1000},
-                2 : {'num_features' : 1000},
-                3 : {'num_features' : 40, 'activation' : 'identity'}
+                 1 : {'num_features' : 2, 'activation': 'identity'},
+        #        2 : {'num_features' : 1000},
+        #        3 : {'num_features' : 40, 'activation' : 'identity'}
         },
         'rnn_depth': 1,
         'rnn': {
