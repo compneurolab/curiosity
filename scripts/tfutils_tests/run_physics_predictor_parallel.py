@@ -6,7 +6,7 @@ import json
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
-import curiosity.models.physics_predictor as modelsource
+import curiosity.models.self_physics as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
@@ -43,7 +43,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 1
-exp_id = 'test47'
+exp_id = 'test48'
 
 rng = np.random.RandomState(seed=seed)
 
