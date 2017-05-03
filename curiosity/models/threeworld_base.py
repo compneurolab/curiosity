@@ -118,6 +118,7 @@ class ThreeWorldBaseModel:
                     input_objects = tf.concat([input_objects, rep_object], axis=1)
                 if 'actions' in self.segmentation:
                     forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
+                    self.inputs['forces'] = forces
                     action_id = tf.expand_dims(tf.slice(self.inputs_raw['actions'], 
                             [0, 0, 8], [-1, -1, 1]), axis=2)
                     pos_id = tf.slice(self.inputs_raw['object_data'], 
