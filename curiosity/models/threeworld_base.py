@@ -104,9 +104,21 @@ class ThreeWorldBaseModel:
                 objects = tf.cast(self.inputs[view], tf.float32)
                 shape = objects.get_shape().as_list()
                 objects = tf.unstack(objects, axis=len(shape)-1)
-                objects = objects[0] * (256**2) + objects[1] * 256 + objects[2] 
+                objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+                # if an integer is specified repeat n-th image after n
+                n_context = [k for k in self.segmentation if isinstance(k, int)]
+                if len(n_context) > 0:
+                    if len(n_context) != 1:
+                        raise KeyError('Only one integer in segmentation is allowed')
+                    n_context = n_context[0]
+                    input_objects = tf.slice(objects, [0,0,0,0], [-1,n_context,-1,-1])
+                    rep_object = tf.slice(input_objects, 
+                            [0,n_context-1,0,0], [-1, 1,-1,-1])
+                    rep_object = tf.tile(rep_object, [1,shape[1]-n_context,1,1])
+                    input_objects = tf.concat([input_objects, rep_object], axis=1)
                 if 'actions' in self.segmentation:
                     forces = tf.slice(self.inputs['actions'], [0, 0, 0], [-1, -1, 6])
+                    self.inputs['forces'] = forces
                     action_id = tf.expand_dims(tf.slice(self.inputs_raw['actions'], 
                             [0, 0, 8], [-1, -1, 1]), axis=2)
                     pos_id = tf.slice(self.inputs_raw['object_data'], 
@@ -119,6 +131,14 @@ class ThreeWorldBaseModel:
                     actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
                     actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
                     self.inputs['actions'] = actions
+                    if n_context:
+                        actions = tf.cast(tf.equal(input_objects, pos_id), tf.float32)
+                        actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+                        actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
+                        self.inputs['input_actions'] = actions
+                    else:
+                        self.inputs['input_actions'] = self.inputs['actions']
+
                 if 'positions' in self.segmentation:
                     pos_id = tf.slice(self.inputs_raw['object_data'], 
                             [0, 0, 0, 0], [-1, -1, 1, 1])
@@ -126,6 +146,12 @@ class ThreeWorldBaseModel:
                     pos_id = tf.reshape(pos_id, shape[:-1])
                     positions = tf.cast(tf.equal(objects, pos_id), tf.float32)
                     self.inputs['positions'] = tf.expand_dims(positions, axis=4)
+                    if n_context:
+                        positions = tf.cast(tf.equal(input_objects, pos_id), tf.float32)
+                        self.inputs['input_positions'] = \
+                                tf.expand_dims(positions, axis=4)
+                    else:
+                        self.inputs['input_positions'] = self.inputs['positions']
 
         if self.gaussian is not None:
             # get image shape

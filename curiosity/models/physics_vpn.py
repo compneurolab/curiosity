@@ -360,6 +360,7 @@ class VPN(ThreeWorldBaseModel):
             out_channels=768, num_context=2):
         images = self.inputs['images']
         actions = self.inputs['actions']
+        positions = self.inputs['positions']
         # convert images to float32 between [0,1) if not normalized
         if self.normalization is None:
             images = tf.image.convert_image_dtype(images, dtype=tf.float32)
@@ -400,6 +401,7 @@ class VPN(ThreeWorldBaseModel):
         predicted_images_poses = tf.concat([predicted_images, predicted_poses], axis=4)
         return [{'decode': predicted_images_poses, 'run_lstm': lstm_out, 
             'encode': encoded_inputs, 'rgb': rgb,
+            'images': images, 'actions': actions, 'positions': positions,
             'ph_enc_inp': self.ph_enc_inp,
             'ph_enc_cond': self.ph_enc_cond,
             'ph_lstm_inp': self.ph_lstm_inp,

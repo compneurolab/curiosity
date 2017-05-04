@@ -14,7 +14,7 @@ from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 USE_TRUE=False
-exp_id = 'test37'
+exp_id = 'test39'
 
 conf = 'cluster'
 
@@ -113,8 +113,8 @@ params = {
         'gaussian': GAUSSIAN,
         'segmentation': SEGMENTATION,
         'stats_file': NORM_PATH,
-        'encoder_depth': 2,
-        'decoder_depth': 4,
+        'encoder_depth': 8,
+        'decoder_depth': 12,
         'n_gpus': N_GPUS,
         'my_train': False,
         #'normalization_method': {'images': 'standard', 'actions': 'minmax'},
@@ -205,7 +205,7 @@ if __name__ == '__main__':
         forces = actions[0][:,:,0:6]
         max_forces = np.array([397.81982422, 313.33035278, 354.37857056,
             78.99726105, 298.25149536, 253.70016479,])
-        forces /= max_forces[np.newaxis, np.newaxis, :]
+        #forces /= max_forces[np.newaxis, np.newaxis, :]
         objects = (objects == np.ones(objects.shape) * 
                 pos_id[:,:,np.newaxis, np.newaxis]).astype(np.float32)
         acted = np.unique(np.nonzero(objects)[0])

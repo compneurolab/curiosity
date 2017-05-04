@@ -257,10 +257,11 @@ class VPN(ThreeWorldBaseModel):
         return tf.concat(self.lstm_outputs, axis = 1)
 
     def decoder(self, inputs, conditioning, condition_first_image=False, \
-            out_channels=768, num_rmb=12, scope='decoder', disable_print=False):
+            out_channels=768, num_rmb=12, scope='decoder', 
+            reuse=False, disable_print=False):
         if not disable_print:
             print('Decoder: %d RMB layers' % num_rmb)
-        with tf.variable_scope(scope) as decode_scope:
+        with tf.variable_scope(scope, reuse) as decode_scope:
             # Residual Multiplicative Blocks
             inputs = tf.unstack(inputs, axis=1)
             if isinstance(conditioning, Tensor):
@@ -274,22 +275,25 @@ class VPN(ThreeWorldBaseModel):
                 raise ValueError('Conditioning must be a Tensor or list of Tensors')
             # construct masking sequence
             # mask B for MUs
-            mu_kernel_h = 3; mu_kernel_w = 3; mu_in_channels = 128; mu_out_channels = 128
-            maskB = np.ones([mu_kernel_h, mu_kernel_w, mu_in_channels, mu_out_channels*4])
-            maskB[mu_kernel_h // 2, mu_kernel_w // 2 + 1:, :, :] = 0.0
-            maskB[mu_kernel_h // 2 + 1:, :, :, :] = 0.0
-            maskB = tf.constant(maskB, dtype=tf.float32)
+            #mu_kernel_h = 3; mu_kernel_w = 3
+            #mu_in_channels = 128; mu_out_channels = 128
+            #maskB = np.ones([mu_kernel_h, mu_kernel_w, 
+            #    mu_in_channels, mu_out_channels*4])
+            #maskB[mu_kernel_h // 2, mu_kernel_w // 2 + 1:, :, :] = 0.0
+            #maskB[mu_kernel_h // 2 + 1:, :, :, :] = 0.0
+            #maskB = tf.constant(maskB, dtype=tf.float32)
             # mask A for W_in
-            W_kernel_h = 7; W_kernel_w = 7; W_in_channels = 3; W_out_channels= 3
-            maskA = np.ones([W_kernel_h, W_kernel_w, W_in_channels, W_out_channels])
-            maskA[W_kernel_h // 2, W_kernel_w // 2:, :, :] = 0.0
-            maskA[W_kernel_h // 2 + 1:, :, :, :] = 0.0
-            maskA = tf.constant(maskA, dtype=tf.float32)
+            #W_kernel_h = 7; W_kernel_w = 7; W_in_channels = 3; W_out_channels= 3
+            #maskA = np.ones([W_kernel_h, W_kernel_w, W_in_channels, W_out_channels])
+            #maskA[W_kernel_h // 2, W_kernel_w // 2:, :, :] = 0.0
+            #maskA[W_kernel_h // 2 + 1:, :, :, :] = 0.0
+            #maskA = tf.constant(maskA, dtype=tf.float32)
             # Define convolutional kernels:
             # First kernel has mask 'a', subsequent kernels have mask 'b'
             # W masked with maskA
             #W_masked = self.new_variable('W_masked', [W_kernel_h, W_kernel_w, 
             #        W_in_channels, W_out_channels])
+
             # W to expand from 3 to 256 channels
             assert len(inputs) > 0
             inp_shape = inputs[0].get_shape().as_list()
@@ -351,6 +355,99 @@ class VPN(ThreeWorldBaseModel):
             inputs[i] = tf.image.convert_image_dtype(inputs[i], dtype=tf.float32)
         inputs = tf.stack(inputs)
         return inputs
+
+    def self_train(self, 
+            encoder_depth=8, 
+            decoder_depth=12, 
+            out_channels=768, 
+            num_context=2):
+        images = self.inputs['images']
+        actions = self.inputs['input_actions']
+        positions = self.inputs['input_positions']
+        forces = tf.expand_dims(tf.expand_dims(self.inputs['forces'], 2), 2)
+        # convert images to float32 between [0,1) if not normalized
+        if self.normalization is None or 'images' not in self.normalization.methods:
+            images = tf.image.convert_image_dtype(images, dtype=tf.float32)
+        # split data into context and prediction
+        max_time = images.get_shape().as_list()[1]
+        context_images, future_images = tf.split(images, 
+                [num_context, max_time - num_context], axis=1)
+        context_actions, future_actions = tf.split(actions,
+                [num_context, max_time - num_context], axis=1)
+        context_forces, future_forces = tf.split(forces,
+                [num_context, max_time - num_context], axis=1)
+        context_positions, future_positions = tf.split(positions,
+                [num_context, max_time - num_context], axis=1)
+        # encode initial context data
+        context = tf.concat([context_images, context_actions, context_positions], 4)
+        encoded_context = tf.unstack(context)
+        context_rgb = []
+        context_pos = []
+        for i, _ in enumerate(encoded_context):
+            encoded_context[i] = self.encoder(tf.expand_dims(encoded_context[i], 1),
+                    conditioning=[context], 
+                    num_rmb=encoder_depth)
+            # run lstm
+            lstm_out = tf.unstack(self.lstm(encoded_context[i]), axis=1)
+            # decode
+            rgb_pos = self.decoder(tf.expand_dims(lstm_out[-1], 1),
+                    conditioning=[context],
+                    num_rmb=decoder_depth,
+                out_channels=out_channels,
+                condition_first_image=False)
+            context_rgb.append(tf.slice(
+                rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2]))
+            context_pos.append(tf.slice(
+                rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1]))
+            context_rgb[i] = self.reshape_rgb(context_rgb[i], out_channels)
+            # reuse parameters
+            tf.get_variable_scope().reuse_variables()
+
+        lstm_out = tf.unstack(lstm_out, axis=1)
+        future_forces = tf.unstack(
+                tf.zeros(future_forces.get_shape().as_list()), axis=1)
+        pred_images = tf.unstack(
+                tf.zeros(future_images.get_shape().as_list()), axis=1)
+        pred_actions = tf.unstack(
+                tf.zeros(future_actions.get_shape().as_list()), axis=1)
+        pred_positions = tf.unstack(
+                tf.zeros(future_positions.get_shape().as_list()), axis=1)
+        pred_rgb = []
+        pred_pos = []
+        for i, _ in enumerate(zip(pred_images, pred_actions, pred_positions)):
+            tf.get_variable_scope().reuse_variables()
+            # decode
+            rgb_pos = self.decoder(tf.expand_dims(lstm_out[-1], 1),
+                    conditioning=[context],
+                    condition_first_image=True,
+                    num_rmb=decoder_depth,
+                    out_channels=out_channels,
+                    reuse=True,
+                    disable_print=True)
+            rgb = tf.slice(rgb_pos, [0,0,0,0,0], [-1,-1,-1,-1,out_channels-2])
+            pos = tf.slice(rgb_pos, [0,0,0,0,out_channels-2], [-1,-1,-1,-1,-1])
+            rgb = self.reshape_rgb(rgb, out_channels)
+            pred_rgb.append(rgb)
+            pred_pos.append(pos)
+            # encode
+            pred_images[i] = self.get_intensities(rgb)
+            pred_positions[i] = tf.expand_dims(self.get_intensities(pos), 4)
+            pred_actions[i] = pred_positions[i] * tf.expand_dims(future_forces[i], 1)
+            inputs = tf.concat([pred_images[i], pred_actions[i], pred_positions[i]], 4)
+            encoded_inputs = self.encoder(inputs,
+                        conditioning=[context],
+                        num_rmb=encoder_depth,
+                        disable_print=True)
+            lstm_out = tf.unstack(self.lstm(encoded_inputs), axis=1)
+        
+        pos = tf.concat(context_pos + pred_pos, axis=1)
+        rgb = tf.concat(context_rgb + pred_rgb, axis=1)
+
+        return [{'rgb': rgb, \
+                'actions': actions, \
+                'positions': self.inputs['positions'], \
+                'pos': pos},
+                {'encoder_depth': encoder_depth, 'decoder_depth': decoder_depth}]
 
     def train(self, encoder_depth=8, decoder_depth=12, out_channels=768, num_context=2):
         images = self.inputs['images']
@@ -538,7 +635,7 @@ def model(inputs,
 
     net = VPN(inputs, normalization=normalization, **kwargs)
     if my_train:
-        return net.train(encoder_depth, decoder_depth, out_channels=770)
+        return net.self_train(encoder_depth, decoder_depth, out_channels=770)
     else:
         return net.test_references(encoder_depth, decoder_depth, out_channels=770)
 

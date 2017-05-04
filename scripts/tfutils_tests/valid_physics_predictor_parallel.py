@@ -9,12 +9,12 @@ from tqdm import trange
 
 from tfutils import base, data, model, optimizer, utils
 from curiosity.data.threeworld_data import ThreeWorldDataProvider
-import curiosity.models.physics_vpn as modelsource
+import curiosity.models.physics_predictor as modelsource
 from curiosity.utils.loadsave import (get_checkpoint_path,
                                       preprocess_config,
                                       postprocess_config)
 USE_TRUE=False
-exp_id = 'test38'
+exp_id = 'test40'
 
 conf = 'cluster'
 
@@ -66,7 +66,10 @@ def get_debug_info(inputs, outputs, num_to_save = 1, **loss_params):
             'opos': outputs['positions'],
             'decode': outputs['decode'], 
             'encode': outputs['encode'],
-            'run_lstm': outputs['run_lstm'], 
+            'encode_context': outputs['encode_context'],
+            'run_lstm': outputs['run_lstm'],
+            'ph_cont_enc_inp': outputs['ph_cont_enc_inp'],
+            'ph_cont_enc_cond': outputs['ph_cont_enc_cond'],
             'ph_enc_inp': outputs['ph_enc_inp'],
             'ph_enc_cond': outputs['ph_enc_cond'],
             'ph_lstm_inp': outputs['ph_lstm_inp'],
@@ -180,10 +183,13 @@ if __name__ == '__main__':
     get_oact = valid_targets_dict['valid0']['targets']['oact']
     get_opos = valid_targets_dict['valid0']['targets']['opos']
     get_object_data = valid_targets_dict['valid0']['targets']['object_data']
+    encode_context = valid_targets_dict['valid0']['targets']['encode_context']
     encode = valid_targets_dict['valid0']['targets']['encode']
     run_lstm = valid_targets_dict['valid0']['targets']['run_lstm']
     decode = valid_targets_dict['valid0']['targets']['decode']
     # placeholders
+    ph_cont_enc_inp = valid_targets_dict['valid0']['targets']['ph_cont_enc_inp']
+    ph_cont_enc_cond = valid_targets_dict['valid0']['targets']['ph_cont_enc_cond']
     ph_enc_inp = valid_targets_dict['valid0']['targets']['ph_enc_inp']
     ph_enc_cond = valid_targets_dict['valid0']['targets']['ph_enc_cond']
     ph_lstm_inp = valid_targets_dict['valid0']['targets']['ph_lstm_inp']
@@ -225,8 +231,14 @@ if __name__ == '__main__':
                 * np.expand_dims(objects,4)
         position_masks = np.expand_dims(objects,4)
         poses = objects.copy() * 255 #ground truth pos
+        assert np.sum(action_masks - oact[0]) < 0.1, \
+                ('%s' % np.sum(action_masks - oact[0]))
+        assert np.sum(position_masks - opos[0]) < 0.1, \
+                ('%s' % np.sum(position_masks - opos[0]))
+        assert np.sum(images - oimg[0]) < 0.1, \
+                ('%s' % np.sum(images - oimg[0]))
         # save input data
-        inputs = {'images': images, 
+        inputs_dict = {'images': images, 
                 'actions': actions, 
                 'objects': objects, 
                 'object_data': object_data,
@@ -239,9 +251,12 @@ if __name__ == '__main__':
             inputs_file = os.path.join(SAVE_DIR,
                     'inputs_'+exp_id+'_'+str(ex)+'.pkl')
         with open(inputs_file, 'w') as f:
-            cPickle.dump(inputs, f) 
+            cPickle.dump(inputs_dict, f) 
         # encode context images
-        context_images = np.zeros(list(images.shape[:-1]) + list([256]))
+        cimg_shape = list(copy.deepcopy(images.shape))
+        cimg_shape[1] = n_context
+        cimg_shape[-1] = 256
+        context_images = np.zeros(cimg_shape)
         if not USE_TRUE:
             #zero out later masks as they are predicted
             action_masks[:,n_context:] = 0
@@ -249,49 +264,58 @@ if __name__ == '__main__':
         print('Encoding context:')
         for im in trange(n_context, desc='timestep'):
             context_image = np.expand_dims(images[:,im], 1)
-            action_mask = np.expand_dims(action_masks[:,im], 1)
-            position_mask = np.expand_dims(position_masks[:,im], 1)
-            enc_cond = np.concatenate((action_mask, position_mask), axis=4)
-            context_images[:,im] = np.squeeze(sess.run(encode, 
-                    feed_dict={ph_enc_inp: context_image,
-                        ph_enc_cond: enc_cond})[0])
+            #action_mask = np.expand_dims(action_masks[:,im], 1)
+            #position_mask = np.expand_dims(position_masks[:,im], 1)
+            #enc_cond = np.concatenate((action_mask, position_mask), axis=4)
+            context_images[:,im] = np.squeeze(sess.run(encode_context, 
+                    feed_dict={ph_cont_enc_inp: context_image,
+                        #ph_cont_enc_cond: enc_cond,
+                        })[0])
+        context_images = np.split(context_images, context_images.shape[1], axis=1)
+        context_images = np.concatenate(context_images, axis=4)
+        context_images = np.tile(context_images, [1,images.shape[1],1,1,1])
+        inputs = np.concatenate([context_images, action_masks, position_masks], 4)
+        print('Encoding inputs:')
+        encoded_inputs = np.zeros(list(images.shape[:-1]) + list([256]))
+        for inp in trange(n_context, desc='timestep'):
+            encoded_inputs[:,inp] = np.squeeze(sess.run(encode,
+                feed_dict={ph_enc_inp: np.expand_dims(inputs[:,inp], axis=1),
+                #    ph_enc_cond: enc_cond,
+                })[0])
         # predict images pixel by pixel, one after another
-        print('Generating images pixel by pixel:')
+        print('Generating images:')
         predicted_images = []
         predicted_poses = []
-        images_copy = images.copy()
         num_images = images.shape[1]
         for im in trange(n_context, num_images, desc='timestep'):
-            encoded_images = sess.run(run_lstm,
-                    feed_dict={ph_lstm_inp: context_images})[0]
-            #image = np.zeros(images[:,im].shape)
-            image = images_copy[:,im-1].copy()
-            image = np.expand_dims(image, 1)
+            lstm_out = sess.run(run_lstm,
+                    feed_dict={ph_lstm_inp: encoded_inputs})[0]
+            image = np.zeros(images[:,im].shape)
             pos = np.zeros(images[:,im,:,:,0].shape)
-            context = np.expand_dims(encoded_images[:,im-1], 1)
-            action_mask = np.expand_dims(action_masks[:,im-1], 1)
-            position_mask = np.expand_dims(position_masks[:,im-1], 1)
-            dec_cond = np.concatenate((context, action_mask, position_mask), axis=4)
-            #for i in trange(images.shape[-3], desc='height', leave=False):
-            #    for j in trange(images.shape[-2], desc='width'):
-                    #for k in xrange(images.shape[-1]): # predict all channels at once
+            dec_inp = np.expand_dims(lstm_out[:,im-1], 1)
+            #action_mask = np.expand_dims(action_masks[:,im-1], 1)
+            #position_mask = np.expand_dims(position_masks[:,im-1], 1)
+            #dec_cond = np.concatenate((action_mask, position_mask), axis=4)
             image_pos = sess.run(decode,
-                                feed_dict={ph_dec_inp: image,
-                                    ph_dec_cond: dec_cond})[0]
-            image[:,0,:,:] = image_pos[:,0,:,:,0:3]
-            pos[:,:,:] = image_pos[:,0,:,:,3]
+                                feed_dict={ph_dec_inp: dec_inp,
+                                    #ph_dec_cond: dec_cond,
+                                    })[0]
+            image = image_pos[:,0,:,:,0:3]
+            pos = image_pos[:,0,:,:,3]
             if not USE_TRUE:
                 # current action
                 action_masks[:,im] = forces[:,im, np.newaxis, np.newaxis] \
                         * np.expand_dims(pos,3)
                 position_masks[:,im] = np.expand_dims(pos,3)
-            images_copy[:,im] = np.squeeze(image)
-            action_mask = np.expand_dims(action_masks[:,im], 1)
-            position_mask = np.expand_dims(position_masks[:,im], 1)
-            enc_cond = np.concatenate((action_mask, position_mask), axis=4)
-            context_images[:,im] = np.squeeze(sess.run(encode,
-                feed_dict={ph_enc_inp: image,
-                    ph_enc_cond: enc_cond})[0])
+                inputs = np.concatenate([context_images, 
+                    action_masks, position_masks], 4)
+            #action_mask = np.expand_dims(action_masks[:,im], 1)
+            #position_mask = np.expand_dims(position_masks[:,im], 1)
+            #enc_cond = np.concatenate((action_mask, position_mask), axis=4)
+            encoded_inputs[:,im] = np.squeeze(sess.run(encode,
+                feed_dict={ph_enc_inp: np.expand_dims(inputs[:,im], axis=1),
+                    #ph_enc_cond: enc_cond,
+                    })[0])
             predicted_images.append(np.squeeze(image))
             predicted_poses.append(np.squeeze(pos))
         predicted_images = np.stack(predicted_images, axis=1)

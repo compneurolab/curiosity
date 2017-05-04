@@ -103,8 +103,20 @@ class ThreeWorldDataProvider(TFRecordsParallelByFileProvider):
         data = self.set_data_shape(data)
         if self.resize is not None and source in self.resize:
             data = tf.image.convert_image_dtype(data, dtype=tf.float32)
+            if self.resize[source]['method'] is 'bicubic':
+                method = tf.image.ResizeMethod.BICUBIC
+            elif self.resize[source]['method'] is 'nearest':
+                method = tf.image.ResizeMethod.NEAREST_NEIGHBOR
+            elif self.resize[source]['method'] is 'area':
+                method = tf.image.ResizeMethod.AREA
+            elif self.resize[source]['method'] is 'bilinear':
+                method = tf.image.ResizeMethod.BILINEAR
+            else:
+                raise ValueError('Unknown interpolation method: %s' \
+                        % self.resize[source]['method'])
             data = tf.image.resize_images(data,
-                    self.resize[source], method=tf.image.ResizeMethod.BICUBIC)
+                    self.resize[source]['size'], 
+                    method=method)
             data = tf.image.convert_image_dtype(data, dtype=tf.uint8)
         data = self.create_data_sequence(data, source)
         return data
