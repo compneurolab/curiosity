@@ -17,13 +17,16 @@ import curiosity.models.twoobject_to_oneobject as modelsource
 
 DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+#DATA_PATH = '/data/two_world_dataset/new_tfdata'
+#VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
+
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 23
 MIN_LEN = 6
-CACHE_DIR = '/mnt/fs0/nhaber'
+CACHE_DIR = '/mnt/fs0/mrowca'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
@@ -99,7 +102,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'rnn2',
+		'exp_id' : 'rnn8',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -109,8 +112,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.one_step_more_data,
-		'cfg' : modelsource.cfg_short_conv_one_step,
+		'func' : modelsource.rnn_more_data,
+		'cfg' : modelsource.cfg_short_conv_rnn,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -200,7 +203,7 @@ params = {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE
+				'capacity' : MODEL_BATCH_SIZE * 10
 			},
 
 			'targets' : {

@@ -258,7 +258,7 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	retval.update(base_net.inputs)
 	return retval, m.params
 
-def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
+def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, train=True, **kwargs):
         batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
         long_len = inputs['object_data'].get_shape().as_list()[1]
         base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -280,14 +280,16 @@ def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_metho
                 encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
                 reuse_weights = True
 
+        # concat across channel and reduce across time
+        encoded_input = tf.concat(encoded_input, axis = 3)
+        encoded_input = [feedforward_conv_loop(encoded_input, m, cfg, desc ='encode_time', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]]
+
         #flatten and concat
         flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
         flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
         flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
-
         assert len(flattened_input[0].get_shape().as_list()) == 2
         concat_input = tf.concat(flattened_input, axis = 1)
-
         act = inputs['actions_no_pos']
         #print('\033[91mHELLO!!!\033[0m')
         concat_input = tf.tile(tf.expand_dims(concat_input, 1),
@@ -305,7 +307,11 @@ def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_metho
             else:
                 pos = pred_pos
             inp = tf.concat([tf.squeeze(pos), time_input[i]], 1)
-
+            if train:
+                keep_prob = 0.5
+            else:
+                keep_prob = 1.0
+            inp = tf.nn.dropout(inp, keep_prob)
             if i == current_time:
                 pred_pos = hidden_loop_with_bypasses(inp,
                         m, cfg, reuse_weights = False)
@@ -342,6 +348,10 @@ def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = N
                 encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
                 reuse_weights = True
 
+        # concat across channel and reduce across time
+        encoded_input = tf.concat(encoded_input, axis = 3)
+        encoded_input = [feedforward_conv_loop(encoded_input, m, cfg, desc ='encode_time', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]]
+
         #flatten and concat
         flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
         flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
@@ -355,7 +365,7 @@ def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = N
         concat_input = tf.tile(tf.expand_dims(concat_input, 1),
                                 [1, act.get_shape().as_list()[1], 1])
         rnn_input = tf.concat([concat_input, act], 2)
-        pred, _ = rnn_loop(rnn_input, cfg)
+        pred, _ = rnn_loop(rnn_input, cfg, **kwargs)
 
         pred = tf.unstack(pred, axis=1)
         for i, _ in enumerate(pred):
@@ -486,7 +496,7 @@ def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, norm
 	return retval, m.params
 
 
-def rnn_loop(inputs, cfg):
+def rnn_loop(inputs, cfg, train=True, **kwargs):
     for i in range(1, cfg['rnn_depth'] + 1):
         rnn_cfg = cfg['rnn'][i]
         if rnn_cfg['cell_type'] is 'gru':
@@ -494,8 +504,8 @@ def rnn_loop(inputs, cfg):
             initial_state = None
         elif rnn_cfg['cell_type'] is 'lstm':
             rnn_cell = tf.contrib.rnn.LSTMCell(rnn_cfg['hidden_units'])
-            initial_state = (None, None)
-        if 'dropout' in rnn_cfg:
+            initial_state = None
+        if 'dropout' in rnn_cfg and train:
             rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell,
                     input_keep_prob = rnn_cfg['dropout']['input_keep_prob'],
                     output_keep_prob = rnn_cfg['dropout']['output_keep_prob'])
@@ -1175,34 +1185,40 @@ cfg_resnet_more_channels = {
 
 cfg_short_conv_one_step = {
         'size_1_before_concat_depth' : 1,
-
         'size_1_before_concat' : {
-                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
-        },
-
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 24}, 
+                'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+            },
 
         'size_2_before_concat_depth' : 0,
 
         'encode_depth' : 2,
-
         'encode' : {
-                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
-                2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
+            #2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}}, 
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
+                'bypass' : 0},
+            },
+
+        'encode_time_depth': 1,
+        'encode_time' : {
+            1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}}
         },
+
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
-        'hidden_depth' : 10,
+        'hidden_depth' : 6,
         'hidden' : {
                 1 : {'num_features' : 100},
                 2 : {'num_features' : 100},
                 3 : {'num_features' : 100},
                 4 : {'num_features' : 100},
                 5 : {'num_features' : 100},
-                6 : {'num_features' : 100},
-                7 : {'num_features' : 100},
-                8 : {'num_features' : 100},
-                9 : {'num_features' : 100},
-                10 : {'num_features' : 2, 'activation' : 'identity'}
+                #6 : {'num_features' : 100},
+                #7 : {'num_features' : 100},
+                #8 : {'num_features' : 100},
+                #9 : {'num_features' : 100},
+                6 : {'num_features' : 2, 'activation' : 'identity'}
         },
         'rnn_depth': 0,
         'rnn': {
@@ -1230,9 +1246,16 @@ cfg_short_conv_rnn = {
         'encode_depth' : 2,
 
         'encode' : {
-                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
-                2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
+                #2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
+                    'bypass' : 0},
         },
+
+        'encode_time_depth': 1,
+            'encode_time' : {
+                1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}}
+                                                },
 #down to 5 x 12 x 4
 #this end stuff is where we should maybe join time steps
         'hidden_depth' : 1,
@@ -1243,11 +1266,11 @@ cfg_short_conv_rnn = {
         },
         'rnn_depth': 1,
         'rnn': {
-            1: {'cell_type': 'gru',
-                'hidden_units': 1000,
+            1: {'cell_type': 'lstm',
+                'hidden_units': 500,
                 'dropout': {
-                    'input_keep_prob': 1.0,
-                    'output_keep_prob': 1.0,
+                    'input_keep_prob': 0.5,
+                    'output_keep_prob': 0.5,
                     #'state_keep_prob': 1.0,
                     }
             },
