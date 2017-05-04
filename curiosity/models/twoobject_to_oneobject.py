@@ -158,7 +158,7 @@ def just_1d_new_provider(inputs, cfg = None, time_seen = None, normalization_met
 	retval.update(base_net.inputs)
 	return retval, m.params
 
-def just_1d_wdepth(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+def just_1d_wdepth(inputs, cfg = None, num_classes = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, 
 					time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
 					img_width = image_width)
@@ -177,6 +177,8 @@ def just_1d_wdepth(inputs, cfg = None, time_seen = None, normalization_method = 
 	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	pred_shape[3] = 2
+	if num_classes is not None:
+		pred_shape.append(num_classes)
 	pred = tf.reshape(pred, pred_shape)
 	retval = {'pred' : pred}
 	retval.update(base_net.inputs)
@@ -258,7 +260,7 @@ def one_to_two_to_one(inputs, cfg = None, time_seen = None, normalization_method
 	retval.update(base_net.inputs)
 	return retval, m.params
 
-def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
+def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -281,7 +283,15 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
 		reuse_weights = True
 
+	num_encode_together = cfg.get('encode_together_depth')
+	if num_encode_together:
+		print('Encoding together!')
+		together_input = tf.concat(encoded_input, axis = 3)
+		encoded_input = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = size_1_encoding_before_concat, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]	
+
+
 	#flatten and concat
+
 	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
 	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
 	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
@@ -294,6 +304,10 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	if not include_pose:
 		pred_shape[3] = 2
+	print('num classes: ' + str(num_classes))
+	if num_classes is not None:
+		pred_shape.append(num_classes)
+		print('here!')
 	pred = tf.reshape(pred, pred_shape)
 	retval = {'pred' : pred}
 	retval.update(base_net.inputs)
@@ -461,7 +475,8 @@ def alternate_diff_loss(outputs):
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
 
-def diff_loss_with_mask(outputs):
+def diff_loss_with_mask(outputs, multiple = 100.):
+	print('multiple: ' + str(multiple))
 	master_filter = outputs['master_filter']
 	pred = outputs['pred']
 	future_dat = outputs['object_data_future']
@@ -475,7 +490,40 @@ def diff_loss_with_mask(outputs):
 	mask = tf.expand_dims(mask, axis = 2)
 	mask = tf.tile(mask, [1, 1, 1, 2])
 	n_entries = np.prod(tv.get_shape().as_list())
-	return 100. * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
+	return multiple * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
+
+def diff_loss_with_correlation(outputs, l2_coef = 1.):
+	master_filter = outputs['master_filter']
+	pred = outputs['pred']
+	future_dat = outputs['object_data_future']
+	seen_dat = outputs['object_data_seen_1d']
+	time_seen = seen_dat.get_shape().as_list()[1]
+	last_seen_dat = seen_dat[:, -1:]
+	tv = compute_diffs(last_seen_dat, future_dat)
+	tv = tv[:, :, :, 4:]
+	mask = tf.cast(tf.cumprod(master_filter[:, time_seen:], axis = 1), tf.float32)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.tile(mask, [1, 1, 1, 2])
+	n_entries = np.prod(tv.get_shape().as_list())
+	return l2_coef * tf.nn.l2_loss(mask * (pred - tv)) / n_entries - correlation(mask * pred, mask * tv) + 1
+
+
+
+def correlation(x, y):
+	x = tf.reshape(x, (-1,))
+	y = tf.reshape(y, (-1,))
+	n = tf.cast(tf.shape(x)[0], tf.float32)
+	x_sum = tf.reduce_sum(x)
+	y_sum = tf.reduce_sum(y)
+	xy_sum = tf.reduce_sum(tf.multiply(x, y))
+	x2_sum = tf.reduce_sum(tf.pow(x, 2))
+	y2_sum = tf.reduce_sum(tf.pow(y, 2))
+	numerator = tf.scalar_mul(n, xy_sum) - tf.scalar_mul(x_sum, y_sum)
+	denominator = tf.sqrt(tf.scalar_mul(tf.scalar_mul(n, x2_sum) - tf.pow(x_sum, 2),
+                                        tf.scalar_mul(n, y2_sum) - tf.pow(y_sum, 2)))
+	corr = tf.truediv(numerator, denominator)
+	return corr
 
 def diff_mask_loss_with_poses(outputs):
 	master_filter = outputs['master_filter']
@@ -491,6 +539,38 @@ def diff_mask_loss_with_poses(outputs):
 	mask = tf.tile(mask, [1, 1, 1, 6])
 	n_entries = np.prod(tv.get_shape().as_list())
 	return 100. * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
+
+def discretize(in_tensor, min_value, max_value, num_classes):
+	assert in_tensor.dtype == tf.float32
+	assert num_classes <= 256 #just making a little assumption here
+	shifted_tensor = (in_tensor - min_value) / (max_value - min_value) * (num_classes - 1)
+	discrete_tensor = tf.cast(shifted_tensor, tf.uint8)
+	one_hotted = tf.one_hot(discrete_tensor, depth = num_classes)
+	return one_hotted
+
+def discretized_loss(outputs, num_classes = 64):
+	min_value = -1.
+	max_value = 1.
+	master_filter = outputs['master_filter']
+	pred = outputs['pred']
+	print('num classes ' + str(num_classes))
+	future_dat = outputs['object_data_future'][:,:,:,4:]
+	time_seen = outputs['object_data_seen'].get_shape().as_list()[1]
+	disc_future_dat = discretize(future_dat, min_value = min_value, max_value = max_value, num_classes = num_classes)
+	assert disc_future_dat.get_shape().as_list() == pred.get_shape().as_list(), (disc_future_dat.get_shape().as_list(), pred.get_shape().as_list())
+	mask = tf.cast(tf.cumprod(master_filter[:, time_seen:], axis = 1), tf.float32)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.expand_dims(mask, axis = 2)
+	mask = tf.tile(mask, [1, 1, 1, 2])
+	final_shape = mask.get_shape().as_list()
+	print('final shape!')
+	print(final_shape)
+	tv = tf.reshape(disc_future_dat, [np.prod(final_shape), num_classes])
+	pred = tf.reshape(pred, [np.prod(final_shape), num_classes])
+	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = tv, logits = pred)
+	return tf.reduce_mean(tf.reshape(mask, [np.prod(final_shape)]) * cross_ent)
+	
+
 
 cfg_simple = {
 	'encode_depth' : 6,
@@ -799,6 +879,9 @@ cfg_mlp_wide = {
 	}
 }
 
+
+
+
 cfg_mlp_interesting_nonlinearities = {
 	'hidden_depth' : 3,
 	'hidden' : {
@@ -863,6 +946,17 @@ cfg_mlp_wider = {
 	}
 
 
+
+}
+
+def cfg_mlp_wider_discrete(num_classes):
+	return {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 20 * 2 * num_classes, 'activation' : 'identity'}
+	}
 
 }
 
@@ -1107,6 +1201,98 @@ cfg_short_conv = {
 		2 : {'num_features' : 1000},
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}
+}
+
+cfg_short_conv_together = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'encode_together_depth' : 1,
+	'encode_together' : {
+		1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}, 'bypass' : 0}
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 500},
+		2 : {'num_features' : 500},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+}
+
+cfg_short_conv_together_alt = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'encode_together_depth' : 1,
+	'encode_together' : {
+		1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}, 'bypass' : 0}
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 250},
+		2 : {'num_features' : 250},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+}
+
+
+cfg_short_conv_discretized = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000},
+		2 : {'num_features' : 1000},
+		3 : {'num_features' : 20 * 2 * 64, 'activation' : 'identity'}
+	}
+
+
+
 }
 
 cfg_less_short_conv = {
