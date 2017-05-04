@@ -69,7 +69,7 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
 	return encode_nodes
 
 
-def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev = .01, reuse_weights = False, activation = 'relu'):
+def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev = .01, reuse_weights = False, activation = 'relu', dropout = None):
 	assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
 	hidden_depth = cfg['hidden_depth']
 	m.output = input_node
@@ -87,7 +87,7 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 			my_activation = cfg['hidden'][i].get('activation')
 			if my_activation is None:
 				my_activation = activation
-			m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = None)
+			m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = dropout)
 			nodes_for_bypass.append(m.output)
 			print(m.output)
 	return m.output
@@ -385,7 +385,7 @@ def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = N
         retval.update(base_net.inputs)
         return retval, m.params
 
-def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, **kwargs):
+def include_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, **kwargs):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -397,6 +397,13 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
 	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
 	m = ConvNetwithBypasses(**kwargs)
+
+
+	if kwargs['train']:
+		keep_prob = keep_prob
+	else:
+		keep_prob = None
+
 
 	encoded_input = []
 	reuse_weights = False
@@ -425,7 +432,7 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	assert len(flattened_input[0].get_shape().as_list()) == 2
 	concat_input = tf.concat(flattened_input, axis = 1)
 
-	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False)
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, dropout = keep_prob)
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	if not include_pose:
 		pred_shape[3] = 2

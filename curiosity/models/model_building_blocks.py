@@ -151,7 +151,8 @@ class ConvNetwithBypasses(ConvNet):
             if activation is not None:
                 self.activation(kind=activation)
             if dropout is not None:
-                self.dropout(dropout=dropout)
+		print('Dropout!')
+                self.output = tf.nn.dropout(self.output, dropout, seed = self.seed, name = 'dropout') 
 
             self.params = {'input': in_layer.name,
                            'type': 'fc',
