@@ -1,5 +1,5 @@
 '''
-Now with new data provider, and 2->1 architecture.
+Short config, adding all the data back in.
 '''
 
 
@@ -37,9 +37,8 @@ if not os.path.exists(CACHE_DIR):
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
 	print('got to file grabber!')
-	retval = [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-	print(len(retval))
-	return retval
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+
 
 
 def append_it(x, y, step):
@@ -100,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'test_subset',
+		'exp_id' : 'data_back2',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -138,7 +137,6 @@ params = {
 			'shuffle_seed' : 0,
 			'n_threads' : 4,
 			'batch_size' : DATA_BATCH_SIZE,
-			'file_grab_func' : table_norot_grab_func,
 			'is_there_subsetting_rule' : 'just_first'
 		},
 
@@ -146,7 +144,7 @@ params = {
 			'queue_type' : 'random',
 			'batch_size' : MODEL_BATCH_SIZE,
 			'seed' : 0,
-			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
+			'capacity' : MODEL_BATCH_SIZE * 15 #TODO change!
 		},
 
 		'num_steps' : float('inf'),
@@ -193,7 +191,6 @@ params = {
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func,
 				'is_there_subsetting_rule' : 'just_first'
 			},
 
@@ -215,41 +212,40 @@ params = {
 			'num_steps' : 50
 		},
 
-		'valid1' : {
-			'data_params' : {
-				'func' : ShortLongSequenceDataProvider,
-				'data_path' : DATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
-				'long_sources' : ['actions', 'object_data', 'reference_ids'],
-				'short_len' : SHORT_LEN,
-				'long_len' : LONG_LEN,
-				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting', 'is_object_there'],
-				'shuffle' : True,
-				'shuffle_seed' : 0,
-				'n_threads' : 1,
-				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func,
-				'is_there_subsetting_rule' : 'just_first'
-			},
-
-			'queue_params' : {
-				'queue_type' : 'fifo',
-				'batch_size' : MODEL_BATCH_SIZE,
-				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE
-			},
-
-			'targets' : {
-				'func' : grab_all,
-				'targets' : [],
-				'num_to_save' : MODEL_BATCH_SIZE,
-			},
-			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
-			'agg_func' : just_keep_everything,
-			'online_agg_func' : append_it,
-			'num_steps' : 20
-		}
+#		'valid1' : {
+#			'data_params' : {
+#				'func' : ShortLongSequenceDataProvider,
+#				'data_path' : DATA_PATH,
+#				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
+#				'long_sources' : ['actions', 'object_data', 'reference_ids'],
+#				'short_len' : SHORT_LEN,
+#				'long_len' : LONG_LEN,
+#				'min_len' : MIN_LEN,
+#				'filters' : ['is_not_teleporting', 'is_object_there'],
+#				'shuffle' : True,
+#				'shuffle_seed' : 0,
+#				'n_threads' : 1,
+#				'batch_size' : DATA_BATCH_SIZE,
+#				'is_there_subsetting_rule' : 'just_first'
+#			},
+#
+#			'queue_params' : {
+#				'queue_type' : 'fifo',
+#				'batch_size' : MODEL_BATCH_SIZE,
+#				'seed' : 0,
+#				'capacity' : MODEL_BATCH_SIZE
+#			},
+#
+#			'targets' : {
+#				'func' : grab_all,
+#				'targets' : [],
+#				'num_to_save' : MODEL_BATCH_SIZE,
+#			},
+#			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+#			'agg_func' : just_keep_everything,
+#			'online_agg_func' : append_it,
+#			'num_steps' : 20
+#		}
 
 
 

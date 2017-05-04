@@ -14,6 +14,7 @@ import numpy as np
 from tfutils import base, optimizer
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 import curiosity.models.twoobject_to_oneobject as modelsource
+import curiosity.models.short_cfg_generator as cfg_gen
 
 DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
 VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
@@ -37,9 +38,8 @@ if not os.path.exists(CACHE_DIR):
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
 	print('got to file grabber!')
-	retval = [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-	print(len(retval))
-	return retval
+	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+
 
 
 def append_it(x, y, step):
@@ -99,8 +99,8 @@ params = {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
-		'collname' : 'choice_2',
-		'exp_id' : 'test_subset',
+		'collname' : 'shoty_search',
+	#	'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,7 +111,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv,
+#		'cfg' : cfg,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -149,7 +149,7 @@ params = {
 			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
 		},
 
-		'num_steps' : float('inf'),
+		'num_steps' : 18000,
 		'thres_loss' : float('inf')
 
 	},
@@ -215,42 +215,6 @@ params = {
 			'num_steps' : 50
 		},
 
-		'valid1' : {
-			'data_params' : {
-				'func' : ShortLongSequenceDataProvider,
-				'data_path' : DATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images', 'images2', 'objects', 'objects2'],
-				'long_sources' : ['actions', 'object_data', 'reference_ids'],
-				'short_len' : SHORT_LEN,
-				'long_len' : LONG_LEN,
-				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting', 'is_object_there'],
-				'shuffle' : True,
-				'shuffle_seed' : 0,
-				'n_threads' : 1,
-				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func,
-				'is_there_subsetting_rule' : 'just_first'
-			},
-
-			'queue_params' : {
-				'queue_type' : 'fifo',
-				'batch_size' : MODEL_BATCH_SIZE,
-				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE
-			},
-
-			'targets' : {
-				'func' : grab_all,
-				'targets' : [],
-				'num_to_save' : MODEL_BATCH_SIZE,
-			},
-			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
-			'agg_func' : just_keep_everything,
-			'online_agg_func' : append_it,
-			'num_steps' : 20
-		}
-
 
 
 
@@ -263,7 +227,11 @@ params = {
 
 if __name__ == '__main__':
 	base.get_params()
-	base.train_from_params(**params)
+	while True:
+		EXP_ID, cfg = cfg_gen.get_next_to_start()
+		params['save_params']['exp_id'] = EXP_ID
+		params['model_params']['cfg'] = cfg
+		base.train_from_params(**params)
 
 
 
