@@ -25,6 +25,8 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                  filters=None,
                  resize=None,
 		 is_there_subsetting_rule = None,
+		 mirror = False,
+		 uniform_adjustments = {},
                  *args,
                  **kwargs):
 
@@ -39,6 +41,8 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         self.filters = filters
         self.resize = resize
 	self.is_there_subsetting_rule = is_there_subsetting_rule
+	self.mirror = mirror
+	self.uniform_adjustments = uniform_adjustments
 
 	if filters is not None and 'is_object_there' in filters:
 		assert is_there_subsetting_rule is not None
@@ -84,6 +88,26 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                 pp_dict[f] = [(self.postprocess_to_sequence, ([f]), {},)]
         return pp_dict
 
+    def augmentation_postprocess(self, data, source):
+	if self.mirror:
+		raise Exception('Not yet implemented')
+		data = self.mirror_postprocess(data)
+	if self.uniform_adjustments:
+		data = self.adjust_uniform(data, source)
+	return data
+
+    def adjust_uniform(self, data, source):
+	if source in self.uniform_adjustments:
+		adjustments = self.uniform_adjustments[source]
+		for desc, op in [('brightness', tf.image.random_brightness), ('hue', tf.image.random_hue)]:
+			if desc in adjustments:
+				data = op(data, max_delta = adjustments[desc], seed = 0)
+		for desc, op in [('contrast', tf.image.random_contrast), ('saturation', tf.image.random_saturation)]:
+			if desc in adjustments:
+				data = op(data, lower = adjustments[desc][0], upper = adjustments[desc][1], seed = 0)
+	return data
+
+
     def postprocess_to_sequence(self, data, source, *args, **kwargs):
         if data.dtype is tf.string:
             data = tf.decode_raw(data, self.meta_dict[source]['rawtype'])
@@ -94,8 +118,10 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
             data = tf.image.resize_images(data,
                     self.resize[source], method=tf.image.ResizeMethod.BICUBIC)
             data = tf.image.convert_image_dtype(data, dtype=tf.uint8)
+	data = self.augmentation_postprocess(data, source)
         data = self.create_data_sequence(data, source)
         return data
+
 
     def set_data_shape(self, data):
         shape = data.get_shape().as_list()

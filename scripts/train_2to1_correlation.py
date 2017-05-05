@@ -75,7 +75,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.diff_loss_with_correlation(outputsi, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.diff_loss_with_correlation(outputs, l2_coef = L2_COEF)
 	return retval
 
 
@@ -100,7 +100,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'correlation',
+		'exp_id' : 'correlation2',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,7 +111,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv,
+		'cfg' : modelsource.cfg_short_conv_together_alt,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -146,7 +146,7 @@ params = {
 			'queue_type' : 'random',
 			'batch_size' : MODEL_BATCH_SIZE,
 			'seed' : 0,
-			'capacity' : MODEL_BATCH_SIZE * 10 #TODO change!
+			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
 		},
 
 		'num_steps' : float('inf'),
