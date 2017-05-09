@@ -1,5 +1,5 @@
 '''
-Correlation loss 1 to 1 benchmark.
+Just a basic script that uses a segmentation.
 '''
 
 
@@ -21,8 +21,8 @@ DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 4
-MIN_LEN = 4
+LONG_LEN = 23
+MIN_LEN = 6
 CACHE_DIR = '/mnt/fs0/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
@@ -30,8 +30,6 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
-NUM_CLASSES = 256
-L2_COEF = 200.
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -39,8 +37,9 @@ if not os.path.exists(CACHE_DIR):
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
 	print('got to file grabber!')
-	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
+	retval = [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+	print(len(retval))
+	return retval
 
 
 def append_it(x, y, step):
@@ -76,7 +75,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.diff_loss_with_correlation(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.diff_loss_with_mask(outputs)
 	return retval
 
 
@@ -100,8 +99,8 @@ params = {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
-		'collname' : 'time1',
-		'exp_id' : 'bench_1timecorr1e-5c',
+		'collname' : 'choice_2',
+		'exp_id' : 'yuke_test',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,8 +110,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.just_1d_wdepth,
-		'cfg' : modelsource.cfg_mlp_wider_1time,
+		'func' : modelsource.yukes_segmentation_model_gen,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -120,6 +119,7 @@ params = {
 		'image_width' : IMG_WIDTH,
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
 		'scale_down_width' : SCALE_DOWN_WIDTH,
+		'add_depth_gaussian' : True,
 		'include_pose' : False
 	},
 
@@ -128,7 +128,7 @@ params = {
 		'data_params' : {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
-			'short_sources' : [],
+			'short_sources' : ['normals', 'normals2', 'images', 'objects'],
 			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
@@ -157,14 +157,14 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.diff_loss_with_correlation,
-		'loss_func_kwargs' : {'l2_coef' : 200.},
+		'loss_per_case_func' : modelsource.diff_loss_with_mask,
+		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 
 	'learning_rate_params': {
 		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-5,
+		'learning_rate': 1e-3,
 		'decay_rate': 0.95,
 		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
 		'staircase': True
@@ -183,7 +183,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : [],
+				'short_sources' : ['normals', 'normals2', 'images', 'objects'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
@@ -201,7 +201,7 @@ params = {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : 20 * MODEL_BATCH_SIZE
+				'capacity' : MODEL_BATCH_SIZE
 			},
 
 			'targets' : {
