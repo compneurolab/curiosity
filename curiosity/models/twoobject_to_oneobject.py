@@ -705,6 +705,33 @@ def diff_loss_with_correlation(outputs, l2_coef = 1.):
 	n_entries = np.prod(tv.get_shape().as_list())
 	return l2_coef * tf.nn.l2_loss(mask * (pred - tv)) / n_entries - correlation(mask * pred, mask * tv) + 1
 
+def softmax_cross_entropy_jerk_loss(inputs, outputs, bin_data_file, **kwargs):
+    gt = inputs
+    # bin ground truth into n-bins
+    with open(bin_data_file) as f:
+        bin_data = cPickle.load(f)
+    # upper bound of bin
+    bins = bin_data['bins']
+    labels = []
+    for i, _ in enumerate(bins):
+        if i == 0:
+            label = tf.less(gt, bins[i])
+        elif i == len(bins) - 1:
+            label = tf.greater(gt, bins[i-1])
+        else:
+            label = tf.logical_and(tf.greater(gt, bins[i-1]), \
+                    tf.less(gt, bins[i]))
+        label = tf.expand_dims(label, axis=2)
+        labels.append(label)
+    labels = tf.stack(labels, axis=2)
+    labels = tf.cast(labels, tf.float32)
+    # weighting of bin
+    w = tf.cast(bin_data['weights'], tf.float32)
+    labels *= tf.expand_dims(tf.expand_dims(w, axis=0), axis=0)
+    pred = tf.cast(outputs['pred'], tf.float32)
+    loss = tf.nn.softmax_cross_entropy_with_logits(
+            labels=labels, logits=pred)
+    return tf.reduce_mean(loss)
 
 
 def correlation(x, y):
