@@ -96,7 +96,31 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         return m.output
 
 
-
+def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method,
+                                        time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+                                        img_width = image_width)
+        m = ConvNetwithBypasses(**kwargs)
+        in_node = base_net.inputs['object_data_seen_1d']
+        in_shape = in_node.get_shape().as_list()
+        m.output = in_node
+        in_node = m.reshape([np.prod(in_shape[1:])])
+        act_node = base_net.inputs['actions_no_pos']
+        act_shape = act_node.get_shape().as_list()
+        batch_size = act_shape[0]
+        m.output = act_node
+        act_node = m.reshape([np.prod(act_shape[1:])])
+        depth_node = tf.reshape(base_net.inputs['depth_seen'], [batch_size, -1])
+        m.output = tf.concat([in_node, act_node, depth_node], axis = 1)
+        pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False, train = kwargs['train'])
+        pred_shape = pred.get_shape().as_list()
+        if num_classes is not None:
+                pred_shape.append(int(num_classes))
+                pred_shape[1] = int(pred_shape[1] / num_classes)
+                pred = tf.reshape(pred, pred_shape)
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
 
 
 
@@ -267,7 +291,14 @@ cfg_class_jerk = {
         }
 }
 
-
+cfg_class_jerk_bench = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 1000, 'dropout' : .75},
+		2 : {'num_features' : 1000, 'dropout' : .75},
+		3 : {'num_features' : 3 * 40, 'activation' : 'identity'}
+	}
+}
 
 
 
