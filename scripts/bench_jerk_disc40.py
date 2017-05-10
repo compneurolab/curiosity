@@ -1,5 +1,5 @@
 '''
-Correlation loss, 2 to 1
+Correlation loss 1 to 1 benchmark.
 '''
 
 
@@ -10,7 +10,6 @@ import sys
 sys.path.append('tfutils')
 sys.path.append('curiosity')
 import numpy as np
-
 
 from tfutils import base, optimizer
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
@@ -31,7 +30,8 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
-L2_COEF = 0.
+NUM_CLASSES = 256
+L2_COEF = 200.
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -49,19 +49,6 @@ def append_it(x, y, step):
 	x.append(y)
 	return x
 
-def mean_losses_subselect_rest(val_res, skip_num):
-	retval = {}
-	keys = val_res[0].keys()
-	for k in keys:
-		if 'loss' in k:
-			plucked = [d[k] for d in val_res]
-			retval[k] = np.mean(plucked)
-		elif 'reference_ids' in k:
-			retval[k] = [d[k] for d in val_res]
-		else:
-			retval[k] = [val_res[i][k] for i in range(len(val_res)) if i % skip_num == 0]
-	return retval
-
 def just_keep_everything(val_res):
 	keys = val_res[0].keys()
 	return dict((k, [d[k] for d in val_res]) for k in keys)
@@ -76,7 +63,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.correlation_jerk_loss(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.discretized_loss(outputs)
 	return retval
 
 
@@ -101,7 +88,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'jerk',
-		'exp_id' : 'just_corr',
+		'exp_id' : 'bench_jerk_disc40',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,8 +98,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.basic_jerk_model,
-		'cfg' : modelsource.cfg_alt_short_jerk,
+		'func' : modelsource.basic_jerk_bench,
+		'cfg' : modelsource.cfg_class_jerk_bench,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -120,8 +107,8 @@ params = {
 		'image_width' : IMG_WIDTH,
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
 		'scale_down_width' : SCALE_DOWN_WIDTH,
-		'add_depth_gaussian' : True,
-		'include_pose' : False
+		'include_pose' : False,
+		'num_classes' : 40
 	},
 
 	'train_params' : {
@@ -129,7 +116,7 @@ params = {
 		'data_params' : {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2', 'images'],
+			'short_sources' : [],
 			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
@@ -137,7 +124,7 @@ params = {
 			'filters' : ['is_not_teleporting', 'is_object_there', 'is_object_in_view', 'is_object_in_view2'],
 			'shuffle' : True,
 			'shuffle_seed' : 0,
-			'n_threads' : 1,
+			'n_threads' : 4,
 			'batch_size' : DATA_BATCH_SIZE,
 			'file_grab_func' : table_norot_grab_func,
 			'is_there_subsetting_rule' : 'just_first',
@@ -159,8 +146,8 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.correlation_jerk_loss,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
+		'loss_per_case_func' : modelsource.discretized_loss,
+		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 
@@ -185,7 +172,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images'],
+				'short_sources' : [],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
