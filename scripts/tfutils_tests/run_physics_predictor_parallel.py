@@ -43,7 +43,7 @@ RANDOM_SKIP = None
 USE_VALIDATION = True
 
 seed = 1
-exp_id = 'test48'
+exp_id = 'test49'
 
 rng = np.random.RandomState(seed=seed)
 

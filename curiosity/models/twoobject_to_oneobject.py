@@ -314,7 +314,7 @@ def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_metho
                 pos = pred_pos
             inp = tf.concat([tf.squeeze(pos), time_input[i]], 1)
             if train:
-                keep_prob = 0.5
+                keep_prob = 1.0 #0.5
             else:
                 keep_prob = 1.0
             inp = tf.nn.dropout(inp, keep_prob)
@@ -332,7 +332,8 @@ def one_step_more_data(inputs, cfg = None, time_seen = None, normalization_metho
         return retval, m.params
 
 
-def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, **kwargs):
+def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, gpu_id = 0, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
         batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
         long_len = inputs['object_data'].get_shape().as_list()[1]
         base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -360,7 +361,8 @@ def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = N
 
         #flatten and concat
         flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
-        flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+        # This is put in one timestep at a time now
+        #flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
         flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
 
         assert len(flattened_input[0].get_shape().as_list()) == 2
@@ -370,7 +372,10 @@ def rnn_more_data(inputs, cfg = None, time_seen = None, normalization_method = N
         print('\033[91mHELLO!!!\033[0m')
         concat_input = tf.tile(tf.expand_dims(concat_input, 1),
                                 [1, act.get_shape().as_list()[1], 1])
-        rnn_input = tf.concat([concat_input, act], 2)
+        pos = tf.concat(
+                [inputs['object_data_seen_1d'][:,:,0,4:6],
+                    inputs['object_data_future'][:,:,0,4:6]], axis=1)
+        rnn_input = tf.concat([concat_input, act, pos], 2)
         pred, _ = rnn_loop(rnn_input, cfg, **kwargs)
 
         pred = tf.unstack(pred, axis=1)
@@ -672,7 +677,8 @@ def alternate_diff_loss(outputs):
 	n_entries = tv.get_shape().as_list()[1] * tv.get_shape().as_list()[0]
 	return 100. * tf.nn.l2_loss(pred - tv) / n_entries # now with a multiplier because i'm tired of staring at tiny numbers
 
-def diff_loss_with_mask(outputs, multiple = 100.):
+def diff_loss_with_mask(outputs, multiple = 100., gpu_id = 0, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
 	print('multiple: ' + str(multiple))
 	master_filter = outputs['master_filter']
 	pred = outputs['pred']
@@ -687,7 +693,7 @@ def diff_loss_with_mask(outputs, multiple = 100.):
 	mask = tf.expand_dims(mask, axis = 2)
 	mask = tf.tile(mask, [1, 1, 1, 2])
 	n_entries = np.prod(tv.get_shape().as_list())
-	return multiple * tf.nn.l2_loss(mask * (pred - tv)) / n_entries
+	return [multiple * tf.nn.l2_loss(mask * (pred - tv)) / n_entries]
 
 def diff_loss_with_correlation(outputs, l2_coef = 1.):
 	master_filter = outputs['master_filter']
@@ -1395,11 +1401,11 @@ cfg_short_conv_one_step = {
 
         'size_2_before_concat_depth' : 0,
 
-        'encode_depth' : 2,
+        'encode_depth' : 3,
         'encode' : {
             1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
-            #2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}}, 
-            2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}}, 
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
                 'bypass' : 0},
             },
 
@@ -1422,17 +1428,6 @@ cfg_short_conv_one_step = {
                 #8 : {'num_features' : 100},
                 #9 : {'num_features' : 100},
                 6 : {'num_features' : 2, 'activation' : 'identity'}
-        },
-        'rnn_depth': 0,
-        'rnn': {
-            1: {'cell_type': 'gru',
-                'hidden_units': 1000,
-                'dropout': {
-                    'input_keep_prob': 1.0,
-                    'output_keep_prob': 1.0,
-                    #'state_keep_prob': 1.0,
-                    }
-            },
         }
 }
 
@@ -1446,12 +1441,12 @@ cfg_short_conv_rnn = {
 
         'size_2_before_concat_depth' : 0,
 
-        'encode_depth' : 2,
+        'encode_depth' : 3,
 
         'encode' : {
                 1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
-                #2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
-                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 34}, 
                     'bypass' : 0},
         },
 
@@ -1469,11 +1464,11 @@ cfg_short_conv_rnn = {
         },
         'rnn_depth': 1,
         'rnn': {
-            1: {'cell_type': 'lstm',
-                'hidden_units': 500,
+            1: {'cell_type': 'gru', #lstm
+                'hidden_units': 200,
                 'dropout': {
-                    'input_keep_prob': 0.5,
-                    'output_keep_prob': 0.5,
+                    'input_keep_prob': 0.5, #0.5
+                    'output_keep_prob': 0.5, #0.5
                     #'state_keep_prob': 1.0,
                     }
             },
@@ -1820,3 +1815,57 @@ cfg_121_channels = {
 	}
 
 }
+
+def parallel_reduce_mean(losses, **kwargs):
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        for i, loss in enumerate(losses):
+            losses[i] = tf.reduce_mean(loss)
+        print(losses)
+        return losses
+
+class ParallelClipOptimizer(object):
+    def __init__(self, optimizer_class, clip=True, gpu_offset=0, *optimizer_args, **optimizer_kwargs):
+        self._optimizer = optimizer_class(*optimizer_args, **optimizer_kwargs)
+        self.clip = clip
+        self.gpu_offset = gpu_offset
+
+    def compute_gradients(self, *args, **kwargs):
+        gvs = self._optimizer.compute_gradients(*args, **kwargs)
+        if self.clip:
+            # gradient clipping. Some gradients returned are 'None' because
+            # no relation between the variable and loss; so we skip those.
+            gvs = [(tf.clip_by_value(grad, -1., 1.), var)
+                   for grad, var in gvs if grad is not None]
+        return gvs
+
+    def minimize(self, losses, global_step):
+        with tf.variable_scope(tf.get_variable_scope()) as vscope:
+            grads_and_vars = []
+            if isinstance(losses, list):
+                for i, loss in enumerate(losses):
+                    with tf.device('/gpu:%d' % i + self.gpu_offset):
+                        with tf.name_scope('gpu_' + str(i + self.gpu_offset)) \
+                                as gpu_scope:
+                            grads_and_vars.append(self.compute_gradients(loss))
+                            #tf.get_variable_scope().reuse_variables()
+                grads_and_vars = self.average_gradients(grads_and_vars)
+            else:
+                with tf.device('/gpu:%d' % self.gpu_offset):
+                    with tf.name_scope('gpu_' + str(self.gpu_offset)) as gpu_scope:
+                        grads_and_vars = self.compute_gradients(losses)
+            return self._optimizer.apply_gradients(grads_and_vars,
+                                               global_step=global_step)
+
+    def average_gradients(self, all_grads_and_vars):
+        average_grads_and_vars = []
+        for grads_and_vars in zip(*all_grads_and_vars):
+            grads = []
+            for g, _ in grads_and_vars:
+                grads.append(tf.expand_dims(g, axis=0))
+            grad = tf.concat(grads, axis=0)
+            grad = tf.reduce_mean(grad, axis=0)
+            # all variables are the same so we just use the first gpu variables
+            var = grads_and_vars[0][1]
+            grad_and_var = (grad, var)
+            average_grads_and_vars.append(grad_and_var)
+        return average_grads_and_vars
