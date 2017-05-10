@@ -25,6 +25,7 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                  filters=None,
                  resize=None,
 		 is_there_subsetting_rule = None,
+		 is_in_view_subsetting_rule = None,
 		 mirror = False,
 		 uniform_adjustments = {},
                  *args,
@@ -43,6 +44,7 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 	self.is_there_subsetting_rule = is_there_subsetting_rule
 	self.mirror = mirror
 	self.uniform_adjustments = uniform_adjustments
+	self.is_in_view_subsetting_rule = is_in_view_subsetting_rule
 
 	if filters is not None and 'is_object_there' in filters:
 		assert is_there_subsetting_rule is not None
@@ -56,6 +58,11 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         else:
             assert self.min_len >= self.short_len, \
                 ('Min length must be at least short length')
+	if is_in_view_subsetting_rule is not None:
+		if is_in_view_subsetting_rule == 'last_seen_and_first_not':
+			assert 'is_object_in_view' in filters and 'is_object_in_view2' in filters
+		else:
+			raise Exception('Not implemented yet!')
 
         self.source_paths = [os.path.join(self.data_path, source) for source in short_sources + long_sources]
 
@@ -169,6 +176,11 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 			print(data['is_object_there'])
 		else:
 			raise Exception('Other types not implemented')
+	if self.is_object_in_view_subsetting_rule is not None:
+		if self.is_object_in_view_subsetting_rule == 'last_seen_and_first_not':
+			raise Exception('Need to implement!')
+		else:
+			raise Exception('Other types not implemented!')
         #and operation
         prod_filters = data[self.filters[0]]
         for f in self.filters[1:]:
