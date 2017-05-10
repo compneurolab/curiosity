@@ -31,10 +31,16 @@ VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
 #RAW_TYPE = tf.float32
 #RAW_SHAPE = [6,]
 
-ATTRIBUTE = 'is_object_there'
+#ATTRIBUTE = 'is_object_there'
+#DTYPE_STRING = True
+#RAW_TYPE = tf.int32
+#RAW_SHAPE = [11,]
+
+ATTRIBUTE = 'is_object_in_view2'
 DTYPE_STRING = True
 RAW_TYPE = tf.int32
 RAW_SHAPE = [11,]
+
 
 to_write = {}
 if DTYPE_STRING:

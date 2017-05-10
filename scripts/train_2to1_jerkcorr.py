@@ -101,7 +101,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'jerk',
-		'exp_id' : 'jerk_corr',
+		'exp_id' : 'jerk_corr_mask',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -134,13 +134,14 @@ params = {
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
 			'min_len' : MIN_LEN,
-			'filters' : ['is_not_teleporting', 'is_object_there'],
+			'filters' : ['is_not_teleporting', 'is_object_there', 'is_object_in_view', 'is_object_in_view2'],
 			'shuffle' : True,
 			'shuffle_seed' : 0,
 			'n_threads' : 1,
 			'batch_size' : DATA_BATCH_SIZE,
 			'file_grab_func' : table_norot_grab_func,
-			'is_there_subsetting_rule' : 'just_first'
+			'is_there_subsetting_rule' : 'just_first',
+			'is_in_view_subsetting_rule' : 'last_seen_and_first_not'
 		},
 
 		'queue_params' : {
@@ -189,13 +190,14 @@ params = {
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
 				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting', 'is_object_there'],
+				'filters' : ['is_not_teleporting', 'is_object_there', 'is_object_in_view', 'is_object_in_view2'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
 				'file_grab_func' : table_norot_grab_func,
-				'is_there_subsetting_rule' : 'just_first'
+				'is_there_subsetting_rule' : 'just_first',
+				'is_in_view_subsetting_rule' : 'last_seen_and_first_not'
 			},
 
 			'queue_params' : {

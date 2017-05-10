@@ -178,7 +178,14 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 			raise Exception('Other types not implemented')
 	if self.is_in_view_subsetting_rule is not None:
 		if self.is_in_view_subsetting_rule == 'last_seen_and_first_not':
-			raise Exception('Need to implement!')
+			print('Subsetting nicely!')
+			either_view = tf.logical_or(tf.cast(data['is_object_in_view'][:, :, 0], tf.bool), 
+					tf.cast(data['is_object_in_view2'][:, :, 0], tf.bool))
+			both_times = tf.logical_and(either_view[:,self.short_len - 1: self.short_len], 
+either_view[:, self.short_len: self.short_len + 1])
+			both_times = tf.cast(tf.tile(both_times, [1,self.long_len]), tf.int32)
+			data['is_object_in_view'] = both_times
+			data['is_object_in_view2'] = both_times
 		else:
 			raise Exception('Other types not implemented!')
         #and operation
