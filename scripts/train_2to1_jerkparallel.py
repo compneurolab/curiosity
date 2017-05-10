@@ -14,10 +14,10 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-#DATA_PATH = '/data/two_world_dataset/new_tfdata'
-#VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
+#DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
+#VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+DATA_PATH = '/data/two_world_dataset/new_tfdata'
+VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
@@ -247,7 +247,8 @@ params = {
     'loss_params' : loss_params,
     'learning_rate_params' : learning_rate_params,
     'optimizer_params': optimizer_params,
-    'validation_params' : validation_params
+    'validation_params' : validation_params,
+    'inter_op_parallelism_threads': 500,
 }
 
 if __name__ == '__main__':
