@@ -252,7 +252,7 @@ def softmax_cross_entropy_loss_with_bins(inputs, outputs, bin_data_file,
         labels = tf.stack(labels, axis=2)
         labels = tf.cast(labels, tf.float32)
         if clip_weight is not None:
-            w = tf.maximum(w, clip_weight)
+            w = tf.minimum(w, clip_weight)
         labels *= tf.expand_dims(tf.expand_dims(w, axis=0), axis=0)
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
