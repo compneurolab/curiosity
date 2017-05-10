@@ -345,7 +345,8 @@ cfg_alt_short_jerk = {
 }
 
 
-cfg_class_jerk = {
+def cfg_class_jerk(num_classes_per_dim):
+	return {
         'size_1_before_concat_depth' : 1,
 
         'size_1_before_concat' : {
@@ -372,7 +373,7 @@ cfg_class_jerk = {
         'hidden' : {
                 1: {'num_features' : 250, 'dropout' : .75},
                 2 : {'num_features' : 250, 'dropout' : .75},
-                3 : {'num_features' : 3 * 60, 'activation' : 'identity'}
+                3 : {'num_features' : 3 * num_classes_per_dim, 'activation' : 'identity'}
         }
 }
 
