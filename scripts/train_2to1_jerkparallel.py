@@ -167,6 +167,7 @@ validation_params = [{
             'shuffle' : True,
             'shuffle_seed' : 0,
             'n_threads' : 2,
+            'batch_size' : DATA_BATCH_SIZE,
             'is_there_subsetting_rule' : 'just_first',
             'is_in_view_subsetting_rule' : 'last_seen_and_first_not',
             },
