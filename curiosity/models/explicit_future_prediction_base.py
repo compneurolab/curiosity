@@ -332,7 +332,7 @@ class ShortLongFuturePredictionBase:
 		#jerk
 		pos_all = inputs_not_normed['object_data'][:, :, 0, 5:8]
 		vel_all = pos_all[:, 1:] - pos_all[:, :-1]
-		acc_all = vec_all[:, 1:] - pos_all[:, :-1]
+		acc_all = vel_all[:, 1:] - vel_all[:, :-1]
 		jerk = acc_all[:, 1:] - acc_all[:, :-1]
 		assert(jerk.get_shape().as_list()[1] == 1)
 		jerk = jerk[:,0]

@@ -176,8 +176,8 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 			print(data['is_object_there'])
 		else:
 			raise Exception('Other types not implemented')
-	if self.is_object_in_view_subsetting_rule is not None:
-		if self.is_object_in_view_subsetting_rule == 'last_seen_and_first_not':
+	if self.is_in_view_subsetting_rule is not None:
+		if self.is_in_view_subsetting_rule == 'last_seen_and_first_not':
 			raise Exception('Need to implement!')
 		else:
 			raise Exception('Other types not implemented!')
