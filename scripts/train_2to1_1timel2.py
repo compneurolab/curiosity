@@ -1,5 +1,5 @@
 '''
-Correlation loss, 2 to 1
+Just one prediction timestep, l2 loss.
 '''
 
 
@@ -21,8 +21,8 @@ DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 23
-MIN_LEN = 6
+LONG_LEN = 4
+MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
@@ -75,7 +75,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.diff_loss_with_correlation(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.diff_loss_with_mask(outputs)
 	return retval
 
 
@@ -99,8 +99,8 @@ params = {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
-		'collname' : 'choice_2',
-		'exp_id' : 'correlation2',
+		'collname' : 'time1',
+		'exp_id' : 'loss_l2',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,7 +111,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv_together_alt,
+		'cfg' : modelsource.cfg_short_conv_time1,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -157,14 +157,14 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.diff_loss_with_correlation,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
+		'loss_per_case_func' : modelsource.diff_loss_with_mask,
+		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 
 	'learning_rate_params': {
 		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-3,
+		'learning_rate': 1e-5,
 		'decay_rate': 0.95,
 		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
 		'staircase': True
@@ -198,10 +198,10 @@ params = {
 			},
 
 			'queue_params' : {
-				'queue_type' : 'fifo',
+				'queue_type' : 'random',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE
+				'capacity' : 20 * MODEL_BATCH_SIZE
 			},
 
 			'targets' : {

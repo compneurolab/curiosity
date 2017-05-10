@@ -1,5 +1,5 @@
 '''
-Correlation loss, 2 to 1
+Just a basic script that uses a segmentation.
 '''
 
 
@@ -30,7 +30,6 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
-L2_COEF = 200.
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -38,8 +37,9 @@ if not os.path.exists(CACHE_DIR):
 def table_norot_grab_func(path):
 	all_filenames = os.listdir(path)
 	print('got to file grabber!')
-	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
+	retval = [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
+	print(len(retval))
+	return retval
 
 
 def append_it(x, y, step):
@@ -75,7 +75,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.diff_loss_with_correlation(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.diff_loss_with_mask(outputs)
 	return retval
 
 
@@ -100,7 +100,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'correlation2',
+		'exp_id' : 'yuke_test',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -110,8 +110,8 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv_together_alt,
+		'func' : modelsource.yukes_segmentation_model_gen,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -128,7 +128,7 @@ params = {
 		'data_params' : {
 			'func' : ShortLongSequenceDataProvider,
 			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2', 'images'],
+			'short_sources' : ['normals', 'normals2', 'images', 'objects'],
 			'long_sources' : ['actions', 'object_data', 'reference_ids'],
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
@@ -136,7 +136,7 @@ params = {
 			'filters' : ['is_not_teleporting', 'is_object_there'],
 			'shuffle' : True,
 			'shuffle_seed' : 0,
-			'n_threads' : 1,
+			'n_threads' : 4,
 			'batch_size' : DATA_BATCH_SIZE,
 			'file_grab_func' : table_norot_grab_func,
 			'is_there_subsetting_rule' : 'just_first'
@@ -157,8 +157,8 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.diff_loss_with_correlation,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
+		'loss_per_case_func' : modelsource.diff_loss_with_mask,
+		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 
@@ -183,7 +183,7 @@ params = {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
 				'data_path' : VALDATA_PATH,
-				'short_sources' : ['normals', 'normals2', 'images'],
+				'short_sources' : ['normals', 'normals2', 'images', 'objects'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,

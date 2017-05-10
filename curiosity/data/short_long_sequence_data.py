@@ -25,6 +25,9 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                  filters=None,
                  resize=None,
 		 is_there_subsetting_rule = None,
+		 is_in_view_subsetting_rule = None,
+		 mirror = False,
+		 uniform_adjustments = {},
                  *args,
                  **kwargs):
 
@@ -39,6 +42,9 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         self.filters = filters
         self.resize = resize
 	self.is_there_subsetting_rule = is_there_subsetting_rule
+	self.mirror = mirror
+	self.uniform_adjustments = uniform_adjustments
+	self.is_in_view_subsetting_rule = is_in_view_subsetting_rule
 
 	if filters is not None and 'is_object_there' in filters:
 		assert is_there_subsetting_rule is not None
@@ -52,6 +58,11 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         else:
             assert self.min_len >= self.short_len, \
                 ('Min length must be at least short length')
+	if is_in_view_subsetting_rule is not None:
+		if is_in_view_subsetting_rule == 'last_seen_and_first_not':
+			assert 'is_object_in_view' in filters and 'is_object_in_view2' in filters
+		else:
+			raise Exception('Not implemented yet!')
 
         self.source_paths = [os.path.join(self.data_path, source) for source in short_sources + long_sources]
 
@@ -84,6 +95,26 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
                 pp_dict[f] = [(self.postprocess_to_sequence, ([f]), {},)]
         return pp_dict
 
+    def augmentation_postprocess(self, data, source):
+	if self.mirror:
+		raise Exception('Not yet implemented')
+		data = self.mirror_postprocess(data)
+	if self.uniform_adjustments:
+		data = self.adjust_uniform(data, source)
+	return data
+
+    def adjust_uniform(self, data, source):
+	if source in self.uniform_adjustments:
+		adjustments = self.uniform_adjustments[source]
+		for desc, op in [('brightness', tf.image.random_brightness), ('hue', tf.image.random_hue)]:
+			if desc in adjustments:
+				data = op(data, max_delta = adjustments[desc], seed = 0)
+		for desc, op in [('contrast', tf.image.random_contrast), ('saturation', tf.image.random_saturation)]:
+			if desc in adjustments:
+				data = op(data, lower = adjustments[desc][0], upper = adjustments[desc][1], seed = 0)
+	return data
+
+
     def postprocess_to_sequence(self, data, source, *args, **kwargs):
         if data.dtype is tf.string:
             data = tf.decode_raw(data, self.meta_dict[source]['rawtype'])
@@ -94,8 +125,10 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
             data = tf.image.resize_images(data,
                     self.resize[source], method=tf.image.ResizeMethod.BICUBIC)
             data = tf.image.convert_image_dtype(data, dtype=tf.uint8)
+	data = self.augmentation_postprocess(data, source)
         data = self.create_data_sequence(data, source)
         return data
+
 
     def set_data_shape(self, data):
         shape = data.get_shape().as_list()
@@ -143,6 +176,18 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 			print(data['is_object_there'])
 		else:
 			raise Exception('Other types not implemented')
+	if self.is_in_view_subsetting_rule is not None:
+		if self.is_in_view_subsetting_rule == 'last_seen_and_first_not':
+			print('Subsetting nicely!')
+			either_view = tf.logical_or(tf.cast(data['is_object_in_view'][:, :, 0], tf.bool), 
+					tf.cast(data['is_object_in_view2'][:, :, 0], tf.bool))
+			both_times = tf.logical_and(either_view[:,self.short_len - 1: self.short_len], 
+either_view[:, self.short_len: self.short_len + 1])
+			both_times = tf.cast(tf.tile(both_times, [1,self.long_len]), tf.int32)
+			data['is_object_in_view'] = both_times
+			data['is_object_in_view2'] = both_times
+		else:
+			raise Exception('Other types not implemented!')
         #and operation
         prod_filters = data[self.filters[0]]
         for f in self.filters[1:]:

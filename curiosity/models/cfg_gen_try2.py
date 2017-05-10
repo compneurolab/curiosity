@@ -39,7 +39,7 @@ def get_next_to_start():
 	with open(STARTS_WRITE_LOC, 'w') as stream:
 		cPickle.dump(idx + 1, stream)
 	print('Starting config ' + str(idx))
-	return 'gencfg_' + str(idx), retval
+	return 'gencfg2_' + str(idx), retval
 
 def get_config_list():
 	with open(WRITE_LOC) as stream:

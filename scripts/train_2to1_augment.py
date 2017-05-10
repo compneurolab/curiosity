@@ -1,5 +1,5 @@
 '''
-Correlation loss, 2 to 1
+Now with new data provider, and 2->1 architecture.
 '''
 
 
@@ -30,7 +30,6 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
-L2_COEF = 200.
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -75,7 +74,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.diff_loss_with_correlation(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.diff_loss_with_mask(outputs)
 	return retval
 
 
@@ -100,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'correlation2',
+		'exp_id' : 'augment',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -111,7 +110,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv_together_alt,
+		'cfg' : modelsource.cfg_short_conv_together,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -120,7 +119,7 @@ params = {
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
 		'scale_down_width' : SCALE_DOWN_WIDTH,
 		'add_depth_gaussian' : True,
-		'include_pose' : False
+		'include_pose' : False, 
 	},
 
 	'train_params' : {
@@ -135,11 +134,16 @@ params = {
 			'min_len' : MIN_LEN,
 			'filters' : ['is_not_teleporting', 'is_object_there'],
 			'shuffle' : True,
-			'shuffle_seed' : 0,
-			'n_threads' : 1,
+#			'shuffle_seed' : 0,
+			'n_threads' : 4,
 			'batch_size' : DATA_BATCH_SIZE,
 			'file_grab_func' : table_norot_grab_func,
-			'is_there_subsetting_rule' : 'just_first'
+			'is_there_subsetting_rule' : 'just_first',
+			'uniform_adjustments' : {
+				'images' : {'brightness' : .3},
+				'normals' : {'brightness' : .1},
+				'normals2' : {'brightness' : .1},
+			}
 		},
 
 		'queue_params' : {
@@ -157,8 +161,8 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.diff_loss_with_correlation,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
+		'loss_per_case_func' : modelsource.diff_loss_with_mask,
+		'loss_func_kwargs' : {},
 		'loss_per_case_func_params' : {}
 	},
 

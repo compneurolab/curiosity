@@ -21,8 +21,8 @@ DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 23
-MIN_LEN = 6
+LONG_LEN = 4
+MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
@@ -100,8 +100,8 @@ params = {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
-		'collname' : 'choice_2',
-		'exp_id' : 'bench_corr_co2001-3',
+		'collname' : 'time1',
+		'exp_id' : 'bench_1timecorr1e-5c',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -112,7 +112,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.just_1d_wdepth,
-		'cfg' : modelsource.cfg_mlp_wider,
+		'cfg' : modelsource.cfg_mlp_wider_1time,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -164,7 +164,7 @@ params = {
 
 	'learning_rate_params': {
 		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-3,
+		'learning_rate': 1e-5,
 		'decay_rate': 0.95,
 		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
 		'staircase': True
@@ -201,7 +201,7 @@ params = {
 				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
-				'capacity' : MODEL_BATCH_SIZE
+				'capacity' : 20 * MODEL_BATCH_SIZE
 			},
 
 			'targets' : {

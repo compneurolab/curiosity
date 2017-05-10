@@ -69,7 +69,7 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
 	return encode_nodes
 
 
-def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev = .01, reuse_weights = False, activation = 'relu', dropout = None):
+def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev = .01, reuse_weights = False, activation = 'relu', train = False):
 	assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
 	hidden_depth = cfg['hidden_depth']
 	m.output = input_node
@@ -87,7 +87,11 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 			my_activation = cfg['hidden'][i].get('activation')
 			if my_activation is None:
 				my_activation = activation
-			m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = dropout)
+			if train:
+				my_dropout = cfg['hidden'][i].get('dropout')
+			else:
+				my_dropout = None
+			m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = my_dropout)
 			nodes_for_bypass.append(m.output)
 			print(m.output)
 	return m.output
@@ -174,7 +178,7 @@ def just_1d_wdepth(inputs, cfg = None, num_classes = None, time_seen = None, nor
 	act_node = m.reshape([np.prod(act_shape[1:])])
 	depth_node = tf.reshape(base_net.inputs['depth_seen'], [batch_size, -1])
 	m.output = tf.concat([in_node, act_node, depth_node], axis = 1)
-	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False)
+	pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False, train = kwargs['train'])
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	pred_shape[3] = 2
 	if num_classes is not None:
@@ -414,10 +418,59 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	m = ConvNetwithBypasses(**kwargs)
 
 
-	if kwargs['train']:
-		keep_prob = keep_prob
-	else:
-		keep_prob = None
+	encoded_input = []
+	reuse_weights = False
+	for t in range(time_seen):
+		size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+		size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+		assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
+		concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
+		encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+		reuse_weights = True
+
+	num_encode_together = cfg.get('encode_together_depth')
+	if num_encode_together:
+		print('Encoding together!')
+		together_input = tf.concat(encoded_input, axis = 3)
+		encoded_input = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = size_1_encoding_before_concat, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]	
+
+
+	#flatten and concat
+
+	flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+	flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+	flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+	flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
+
+	assert len(flattened_input[0].get_shape().as_list()) == 2
+	concat_input = tf.concat(flattened_input, axis = 1)
+
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, train = kwargs['train'])
+	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+	if not include_pose:
+		pred_shape[3] = 2
+	print('num classes: ' + str(num_classes))
+	if num_classes is not None:
+		pred_shape.append(num_classes)
+		print('here!')
+	pred = tf.reshape(pred, pred_shape)
+	retval = {'pred' : pred}
+	retval.update(base_net.inputs)
+	return retval, m.params
+
+
+def yukes_segmentation_model_gen(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, **kwargs):
+	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+	long_len = inputs['object_data'].get_shape().as_list()[1]
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+
+	inputs = base_net.inputs
+
+	size_1_attributes = ['normals', 'normals2', 'images', 'objects']
+	size_2_attributes = ['object_data_seen', 'actions_seen']
+	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+	m = ConvNetwithBypasses(**kwargs)
 
 
 	encoded_input = []
@@ -447,7 +500,7 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	assert len(flattened_input[0].get_shape().as_list()) == 2
 	concat_input = tf.concat(flattened_input, axis = 1)
 
-	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, dropout = keep_prob)
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, train = kwargs['train'])
 	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 	if not include_pose:
 		pred_shape[3] = 2
@@ -459,6 +512,8 @@ def include_more_data(inputs, cfg = None, time_seen = None, normalization_method
 	retval = {'pred' : pred}
 	retval.update(base_net.inputs)
 	return retval, m.params
+
+
 
 
 def shared_weight_downscaled_nonimage(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, **kwargs):
@@ -656,6 +711,33 @@ def diff_loss_with_correlation(outputs, l2_coef = 1.):
 	n_entries = np.prod(tv.get_shape().as_list())
 	return l2_coef * tf.nn.l2_loss(mask * (pred - tv)) / n_entries - correlation(mask * pred, mask * tv) + 1
 
+def softmax_cross_entropy_jerk_loss(inputs, outputs, bin_data_file, **kwargs):
+    gt = inputs
+    # bin ground truth into n-bins
+    with open(bin_data_file) as f:
+        bin_data = cPickle.load(f)
+    # upper bound of bin
+    bins = bin_data['bins']
+    labels = []
+    for i, _ in enumerate(bins):
+        if i == 0:
+            label = tf.less(gt, bins[i])
+        elif i == len(bins) - 1:
+            label = tf.greater(gt, bins[i-1])
+        else:
+            label = tf.logical_and(tf.greater(gt, bins[i-1]), \
+                    tf.less(gt, bins[i]))
+        label = tf.expand_dims(label, axis=2)
+        labels.append(label)
+    labels = tf.stack(labels, axis=2)
+    labels = tf.cast(labels, tf.float32)
+    # weighting of bin
+    w = tf.cast(bin_data['weights'], tf.float32)
+    labels *= tf.expand_dims(tf.expand_dims(w, axis=0), axis=0)
+    pred = tf.cast(outputs['pred'], tf.float32)
+    loss = tf.nn.softmax_cross_entropy_with_logits(
+            labels=labels, logits=pred)
+    return tf.reduce_mean(loss)
 
 
 def correlation(x, y):
@@ -1097,6 +1179,28 @@ cfg_mlp_wider = {
 
 }
 
+cfg_mlp_wider_dropout = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 1000, 'dropout' : .75},
+		2 : {'num_features' : 1000, 'dropout' : .75},
+		3 : {'num_features' : 40, 'activation' : 'identity'}
+	}
+
+
+
+}
+
+
+cfg_mlp_wider_1time = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 1000, 'dropout' : .75},
+		2 : {'num_features' : 1000, 'dropout' : .75},
+		3 : {'num_features' : 2, 'activation' : 'identity'}
+	}
+}
+
 def cfg_mlp_wider_discrete(num_classes):
 	return {
 	'hidden_depth' : 3,
@@ -1414,7 +1518,7 @@ cfg_short_conv_together = {
 		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
 	},
 #down to 5 x 12 x 4
-#this end stuff is where we should maybe join time steps
+#this end stuff is where we should maybe join_1timecorr1e-5b'time steps
 	'encode_together_depth' : 1,
 	'encode_together' : {
 		1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}, 'bypass' : 0}
@@ -1458,6 +1562,39 @@ cfg_short_conv_together_alt = {
 		3 : {'num_features' : 40, 'activation' : 'identity'}
 	}
 }
+
+cfg_short_conv_time1 = {
+	'size_1_before_concat_depth' : 1,
+
+	'size_1_before_concat' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+	},
+
+
+	'size_2_before_concat_depth' : 0,
+
+	'encode_depth' : 2,
+
+	'encode' : {
+		1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+		2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+	},
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+	'encode_together_depth' : 1,
+	'encode_together' : {
+		1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}, 'bypass' : 0}
+	},
+
+	'hidden_depth' : 3,
+	'hidden' : {
+		1: {'num_features' : 250, 'dropout' : .75},
+		2 : {'num_features' : 250, 'dropout' : .75},
+		3 : {'num_features' : 2, 'activation' : 'identity'}
+	}
+}
+
+
 
 
 cfg_short_conv_discretized = {

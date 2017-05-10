@@ -99,7 +99,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'choice_2',
-		'exp_id' : 'alt_drop',
+		'exp_id' : 'shorty_drop',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -110,7 +110,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.include_more_data,
-		'cfg' : modelsource.cfg_short_conv_together_alt,
+		'cfg' : modelsource.cfg_short_conv,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -120,7 +120,7 @@ params = {
 		'scale_down_width' : SCALE_DOWN_WIDTH,
 		'add_depth_gaussian' : True,
 		'include_pose' : False, 
-		'keep_prob' : .5
+		'keep_prob' : .75
 	},
 
 	'train_params' : {

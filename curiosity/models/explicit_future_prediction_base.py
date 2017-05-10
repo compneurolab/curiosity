@@ -191,6 +191,7 @@ class ShortLongFuturePredictionBase:
     def __init__(self, inputs, normalization_method = None, stats_file = None,
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
             time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
+		store_jerk = False,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -326,5 +327,23 @@ class ShortLongFuturePredictionBase:
         self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :6]
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
+
+	if store_jerk:
+		#jerk
+		pos_all = inputs_not_normed['object_data'][:, :, 0, 5:8]
+		vel_all = pos_all[:, 1:] - pos_all[:, :-1]
+		acc_all = vel_all[:, 1:] - vel_all[:, :-1]
+		jerk = acc_all[:, 1:] - acc_all[:, :-1]
+		assert(jerk.get_shape().as_list()[1] == 1)
+		jerk = jerk[:,0]
+		self.inputs['jerk'] = jerk
+
+
+
+
+
+
+
+
 
 
