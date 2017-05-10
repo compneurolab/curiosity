@@ -142,14 +142,15 @@ def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method 
 	concat_input = tf.concat(flattened_input, axis = 1)
 
 	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, train = kwargs['train'])
+	pred_shape = pred.get_shape().as_list()
 #	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
 #	if not include_pose:
 #		pred_shape[3] = 2
 #	print('num classes: ' + str(num_classes))
-#	if num_classes is not None:
-#		pred_shape.append(num_classes)
-#		print('here!')
-#	pred = tf.reshape(pred, pred_shape)
+	if num_classes is not None:
+		pred_shape.append(int(num_classes))
+		pred_shape[1] = int(pred_shape[1] / num_classes)
+		pred = tf.reshape(pred, pred_shape)
         retval = {'pred' : pred}
         retval.update(base_net.inputs)
         return retval, m.params
@@ -177,6 +178,29 @@ def correlation_jerk_loss(outputs, l2_coef = 1.):
         tv = outputs['jerk']
         n_entries = np.prod(tv.get_shape().as_list())
         return l2_coef * tf.nn.l2_loss(pred - tv) / n_entries - correlation(pred, tv) + 1
+
+
+
+def discretize(in_tensor, min_value, max_value, num_classes):
+	assert in_tensor.dtype == tf.float32
+	assert num_classes <= 256 #just making a little assumption here
+	shifted_tensor = tf.maximum(tf.minimum(in_tensor, max_value), min_value)
+	shifted_tensor = (in_tensor - min_value) / (max_value - min_value) * (num_classes - 1)
+	discrete_tensor = tf.cast(shifted_tensor, tf.uint8)
+	one_hotted = tf.one_hot(discrete_tensor, depth = num_classes)
+	return one_hotted
+
+def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5):
+	pred = outputs['pred']
+	jerk = outputs['jerk']
+	disc_jerk = discretize(jerk, min_value = min_value, max_value = max_value, num_classes = num_classes)
+	print('pred and jerk')
+	print((pred, disc_jerk))
+#	batch_size = pred.get_shape().as_list()[0]
+	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
+	return tf.reduce_mean(cross_ent)
+
+
 
 
 
@@ -211,6 +235,37 @@ cfg_alt_short_jerk = {
         }
 }
 
+
+cfg_class_jerk = {
+        'size_1_before_concat_depth' : 1,
+
+        'size_1_before_concat' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 24}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+
+        'size_2_before_concat_depth' : 0,
+
+        'encode_depth' : 2,
+
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}},
+                2 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : 34}, 'bypass' : 0},
+        },
+#down to 5 x 12 x 4
+#this end stuff is where we should maybe join time steps
+        'encode_together_depth' : 1,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 34}, 'bypass' : 0}
+        },
+
+        'hidden_depth' : 3,
+        'hidden' : {
+                1: {'num_features' : 250, 'dropout' : .75},
+                2 : {'num_features' : 250, 'dropout' : .75},
+                3 : {'num_features' : 3 * 40, 'activation' : 'identity'}
+        }
+}
 
 
 
