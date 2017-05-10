@@ -29,13 +29,15 @@ MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/mrowca'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
+BIN_PATH = '/mnt/fs0/datasets/two_world_dataset/'
 BIN_FILE = '/mnt/fs0/datasets/two_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
 L2_COEF = 200.
-EXP_ID = ['otrnn1', 'otrnn2', 'otrnn3', 'otrnn4']
+EXP_ID = ['bdf_60_60clip_no_normed', 'bdf_60_60clip_std_normed', 
+        'bdf_60_noclip_max_normed', 'bdf_60_noclip_std_normed']
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -112,7 +114,7 @@ load_params = [{
 
 model_params = [{
     'func' : modelsource.basic_jerk_model,
-    'cfg' : modelsource.cfg_class_jerk,
+    'cfg' : modelsource.cfg_class_jerk(60),
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
         'object_data' : 'screen_normalize', 
@@ -138,7 +140,7 @@ loss_params = [{
 
 learning_rate_params = [{
     'func': tf.train.exponential_decay,
-    'learning_rate': 1e-4,
+    'learning_rate': 1e-5,
     'decay_rate': 0.95,
     'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
     'staircase': True
@@ -235,6 +237,7 @@ for i, _ in enumerate(model_params):
     load_params[i]['exp_id'] = EXP_ID[i]
     
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
+    loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
