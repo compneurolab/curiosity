@@ -14,10 +14,10 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-#DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-#VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
-DATA_PATH = '/data/two_world_dataset/new_tfdata'
-VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
+DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
+VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+#DATA_PATH = '/data/two_world_dataset/new_tfdata'
+#VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
@@ -38,6 +38,7 @@ SCALE_DOWN_WIDTH = 94
 L2_COEF = 200.
 EXP_ID = ['bdf_60_60clip_no_normed', 'bdf_60_60clip_std_normed', 
         'bdf_60_noclip_max_normed', 'bdf_60_noclip_std_normed']
+LRS = [0.01, 0.001, 0.0001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -140,7 +141,7 @@ loss_params = [{
 
 learning_rate_params = [{
     'func': tf.train.exponential_decay,
-    'learning_rate': 1e-5,
+    'learning_rate': 1e-2,
     'decay_rate': 0.95,
     'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
     'staircase': True
@@ -168,7 +169,7 @@ validation_params = [{
                 'is_object_in_view', 'is_object_in_view2'],
             'shuffle' : True,
             'shuffle_seed' : 0,
-            'n_threads' : 2,
+            'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
             'is_there_subsetting_rule' : 'just_first',
             'is_in_view_subsetting_rule' : 'last_seen_and_first_not',
@@ -177,8 +178,8 @@ validation_params = [{
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : 0,
-            'capacity' : MODEL_BATCH_SIZE * 20,
-            'min_after_dequeue': MODEL_BATCH_SIZE * 15
+            'capacity' : MODEL_BATCH_SIZE * 12,
+            'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
         'targets' : {
             'func' : grab_all,
@@ -194,6 +195,7 @@ validation_params = [{
 }] * N_GPUS
 
 train_params =  {
+    'validate_first': False,
     'data_params' : {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
@@ -241,6 +243,7 @@ for i, _ in enumerate(model_params):
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
+    #learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
     'save_params' : save_params,
