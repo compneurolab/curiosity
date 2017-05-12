@@ -7,6 +7,7 @@ import explicit_future_prediction_base as fp_base
 import tensorflow as tf
 from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import numpy as np
+import cPickle
 
 
 def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False):
@@ -96,11 +97,36 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         return m.output
 
 
+def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method,
+                                        time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+                                        img_width = image_width)
+        m = ConvNetwithBypasses(**kwargs)
+        in_node = base_net.inputs['object_data_seen_1d']
+        in_shape = in_node.get_shape().as_list()
+        m.output = in_node
+        in_node = m.reshape([np.prod(in_shape[1:])])
+        act_node = base_net.inputs['actions_no_pos']
+        act_shape = act_node.get_shape().as_list()
+        batch_size = act_shape[0]
+        m.output = act_node
+        act_node = m.reshape([np.prod(act_shape[1:])])
+        depth_node = tf.reshape(base_net.inputs['depth_seen'], [batch_size, -1])
+        m.output = tf.concat([in_node, act_node, depth_node], axis = 1)
+        pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False, train = kwargs['train'])
+        pred_shape = pred.get_shape().as_list()
+        if num_classes is not None:
+                pred_shape.append(int(num_classes))
+                pred_shape[1] = int(pred_shape[1] / num_classes)
+                pred = tf.reshape(pred, pred_shape)
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
 
 
 
-
-def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, **kwargs):
+def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -200,9 +226,93 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
 
+def softmax_cross_entropy_loss_with_bins(inputs, outputs, bin_data_file, 
+        gpu_id = 0, clip_weight=None, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        gt = outputs['jerk']
+        # bin ground truth into n-bins
+        with open(bin_data_file) as f:
+            bin_data = cPickle.load(f)
+        # upper bound of bin
+        bins = bin_data['bins']
+        # weighting of bin
+        w = bin_data['weights']
+        assert len(w) == len(bins) + 1, 'len(weights) != len(bins) + 1'
+        w = tf.cast(w, tf.float32)
+        labels = []
+        for i in range(len(bins) + 1):
+            if i == 0:
+                label = tf.less(gt, bins[i])
+            elif i == len(bins):
+                label = tf.greater(gt, bins[i-1])
+            else:
+                label = tf.logical_and(tf.greater(gt, bins[i-1]), \
+                        tf.less(gt, bins[i]))
+            labels.append(label)
+        labels = tf.stack(labels, axis=2)
+        labels = tf.cast(labels, tf.float32)
+        if clip_weight is not None:
+            w = tf.minimum(w, clip_weight)
+        w = labels * tf.expand_dims(tf.expand_dims(w, axis=0), axis=0)
+        w = tf.reduce_sum(w, axis=2)
+        pred = tf.cast(outputs['pred'], tf.float32)
+        loss = tf.nn.softmax_cross_entropy_with_logits(
+                labels=labels, logits=pred)
+        return [tf.reduce_mean(w * loss)]
 
+def parallel_reduce_mean(losses, **kwargs):
+    with tf.variable_scope(tf.get_variable_scope()) as vscope:
+        for i, loss in enumerate(losses):
+            losses[i] = tf.reduce_mean(loss)
+        print(losses)
+        return losses
 
+class ParallelClipOptimizer(object):
+    def __init__(self, optimizer_class, clip=True, gpu_offset=0, *optimizer_args, **optimizer_kwargs):
+        self._optimizer = optimizer_class(*optimizer_args, **optimizer_kwargs)
+        self.clip = clip
+        self.gpu_offset = gpu_offset
 
+    def compute_gradients(self, *args, **kwargs):
+        gvs = self._optimizer.compute_gradients(*args, **kwargs)
+        if self.clip:
+            # gradient clipping. Some gradients returned are 'None' because
+            # no relation between the variable and loss; so we skip those.
+            gvs = [(tf.clip_by_value(grad, -1., 1.), var)
+                   for grad, var in gvs if grad is not None]
+        return gvs
+
+    def minimize(self, losses, global_step):
+        with tf.variable_scope(tf.get_variable_scope()) as vscope:
+            grads_and_vars = []
+            if isinstance(losses, list):
+                for i, loss in enumerate(losses):
+                    with tf.device('/gpu:%d' % i + self.gpu_offset):
+                        with tf.name_scope('gpu_' + str(i + self.gpu_offset)) \
+                                as gpu_scope:
+                            grads_and_vars.append(self.compute_gradients(loss))
+                            #tf.get_variable_scope().reuse_variables()
+                grads_and_vars = self.average_gradients(grads_and_vars)
+            else:
+                with tf.device('/gpu:%d' % self.gpu_offset):
+                    with tf.name_scope('gpu_' + str(self.gpu_offset)) as gpu_scope:
+                        grads_and_vars = self.compute_gradients(losses)
+            return self._optimizer.apply_gradients(grads_and_vars,
+                                               global_step=global_step)
+
+    def average_gradients(self, all_grads_and_vars):
+        average_grads_and_vars = []
+        for grads_and_vars in zip(*all_grads_and_vars):
+            grads = []
+            for g, _ in grads_and_vars:
+                grads.append(tf.expand_dims(g, axis=0))
+            grad = tf.concat(grads, axis=0)
+            grad = tf.reduce_mean(grad, axis=0)
+            # all variables are the same so we just use the first gpu variables
+            var = grads_and_vars[0][1]
+            grad_and_var = (grad, var)
+            average_grads_and_vars.append(grad_and_var)
+        return average_grads_and_vars
 
 cfg_alt_short_jerk = {
         'size_1_before_concat_depth' : 1,
@@ -236,7 +346,8 @@ cfg_alt_short_jerk = {
 }
 
 
-cfg_class_jerk = {
+def cfg_class_jerk(num_classes_per_dim):
+	return {
         'size_1_before_concat_depth' : 1,
 
         'size_1_before_concat' : {
@@ -263,13 +374,16 @@ cfg_class_jerk = {
         'hidden' : {
                 1: {'num_features' : 250, 'dropout' : .75},
                 2 : {'num_features' : 250, 'dropout' : .75},
-                3 : {'num_features' : 3 * 40, 'activation' : 'identity'}
+                3 : {'num_features' : 3 * num_classes_per_dim, 'activation' : 'identity'}
         }
 }
 
-
-
-
-
-
+cfg_class_jerk_bench = {
+	'hidden_depth' : 3,
+	'hidden' : {
+		1 : {'num_features' : 1000, 'dropout' : .75},
+		2 : {'num_features' : 1000, 'dropout' : .75},
+		3 : {'num_features' : 3 * 40, 'activation' : 'identity'}
+	}
+}
 

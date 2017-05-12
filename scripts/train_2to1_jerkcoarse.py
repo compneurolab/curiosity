@@ -31,7 +31,9 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
-L2_COEF = 0.
+L2_COEF = 200.
+NUM_CLASSES = 3,
+BIN_DATA_FILE = '/mnt/fs0/nhaber/cross_ent_bins/even_weighting_coarse.pkl'
 
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
@@ -66,7 +68,7 @@ def just_keep_everything(val_res):
 	keys = val_res[0].keys()
 	return dict((k, [d[k] for d in val_res]) for k in keys)
 
-SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
+SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk']
 
 def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 	retval = {}
@@ -76,7 +78,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.correlation_jerk_loss(outputs, l2_coef = L2_COEF)
+	retval['loss'] = modelsource.softmax_cross_entropy_jerk_loss(inputs, outputs, bin_data_file = BIN_DATA_FILE)
 	return retval
 
 
@@ -101,7 +103,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'jerk',
-		'exp_id' : 'just_corr',
+		'exp_id' : 'jerk_coarse_disc',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -112,7 +114,7 @@ params = {
 
 	'model_params' : {
 		'func' : modelsource.basic_jerk_model,
-		'cfg' : modelsource.cfg_alt_short_jerk,
+		'cfg' : modelsource.cfg_class_jerk(NUM_CLASSES),
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -121,7 +123,8 @@ params = {
 		'scale_down_height' : SCALE_DOWN_HEIGHT,
 		'scale_down_width' : SCALE_DOWN_WIDTH,
 		'add_depth_gaussian' : True,
-		'include_pose' : False
+		'include_pose' : False,
+		'num_classes' : NUM_CLASSES
 	},
 
 	'train_params' : {
@@ -159,8 +162,8 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.correlation_jerk_loss,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
+		'loss_per_case_func' : modelsource.softmax_cross_entropy_jerk_loss,
+		'loss_func_kwargs' : {'bin_data_file' : BIN_DATA_FILE},
 		'loss_per_case_func_params' : {}
 	},
 
