@@ -77,7 +77,8 @@ def just_keep_everything(val_res):
 
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
-def grab_all(inputs, outputs, num_to_save = 1, gpu_id = 0, **garbage_params):
+def grab_all(inputs, outputs, bin_file = BIN_FILE, 
+        num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred'].get_shape().as_list()[0]
     for k in SAVE_TO_GFS:
@@ -86,7 +87,7 @@ def grab_all(inputs, outputs, num_to_save = 1, gpu_id = 0, **garbage_params):
         else:
             retval[k] = outputs[k]
     retval['loss'] = modelsource.softmax_cross_entropy_loss_with_bins([], 
-            outputs, BIN_FILE, gpu_id=gpu_id)
+            outputs, bin_file, gpu_id=gpu_id)
     return retval
 
 save_params = [{
@@ -109,7 +110,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': False,
+    'do_restore': True,
     'load_query': None
 }] * N_GPUS
 
@@ -141,7 +142,7 @@ loss_params = [{
 
 learning_rate_params = [{
     'func': tf.train.exponential_decay,
-    'learning_rate': 1e-2,
+    'learning_rate': 1e-3,
     'decay_rate': 0.95,
     'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
     'staircase': True
@@ -186,11 +187,12 @@ validation_params = [{
             'targets' : [],
             'num_to_save' : MODEL_BATCH_SIZE,
             'gpu_id': 0,
+            'bin_file': BIN_FILE,
             },
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : 10,
+        'num_steps' : 50,
     },
 }] * N_GPUS
 
@@ -243,6 +245,7 @@ for i, _ in enumerate(model_params):
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
+    validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     #learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
