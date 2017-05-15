@@ -32,7 +32,7 @@ IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
 L2_COEF = 200.
-NUM_CLASSES = 3,
+NUM_CLASSES = 3
 BIN_DATA_FILE = '/mnt/fs0/nhaber/cross_ent_bins/even_weighting_coarse.pkl'
 
 if not os.path.exists(CACHE_DIR):
@@ -78,7 +78,7 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 			retval[k] = outputs[k][:num_to_save]
 		else:
 			retval[k] = outputs[k]
-	retval['loss'] = modelsource.softmax_cross_entropy_jerk_loss(inputs, outputs, bin_data_file = BIN_DATA_FILE)
+	retval['loss'] = modelsource.softmax_cross_entropy_loss_with_bins(outputs, bin_data_file = BIN_DATA_FILE)
 	return retval
 
 
@@ -103,7 +103,7 @@ params = {
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'jerk',
-		'exp_id' : 'jerk_coarse_disc',
+		'exp_id' : 'even_coarse',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
@@ -162,7 +162,7 @@ params = {
 	'loss_params' : {
 		'targets' : [],
 		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.softmax_cross_entropy_jerk_loss,
+		'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_with_bins,
 		'loss_func_kwargs' : {'bin_data_file' : BIN_DATA_FILE},
 		'loss_per_case_func_params' : {}
 	},

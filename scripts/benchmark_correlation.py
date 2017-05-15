@@ -198,7 +198,7 @@ params = {
 			},
 
 			'queue_params' : {
-				'queue_type' : 'fifo',
+				'queue_type' : 'random',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
 				'capacity' : 20 * MODEL_BATCH_SIZE

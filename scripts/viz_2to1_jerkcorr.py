@@ -1,5 +1,5 @@
 '''
-Correlation loss, 2 to 1
+Correlation + l2 loss, 2 to 1, validate_from_params script
 '''
 
 
@@ -24,7 +24,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/nhaber/jerk_corr'
+CACHE_DIR = '/mnt/fs0/nhaber'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
 IMG_HEIGHT = 160
@@ -95,19 +95,35 @@ def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
 #rms_1-6_fixed
 #nrmfx_5-2
 
+EXP_ID = 'jerk_corr'
+valid_data = True
+if valid_data:
+	MY_DATA_PATH = VALDATA_PATH
+	str_mod = '_valviz'
+else:
+	MY_DATA_PATH = DATA_PATH
+	str_mod = '_trviz'
+
+
 params = {
-	'save_params' : {
+	'load_params' : {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
 		'collname' : 'jerk',
-		'exp_id' : 'jerk_corr',
+		'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
         'cache_dir' : CACHE_DIR,
         'save_to_gfs' : SAVE_TO_GFS
+	},
+
+
+	'save_params' : {
+		'exp_id' : EXP_ID + str_mod,
+		'save_to_gfs' : SAVE_TO_GFS
 	},
 
 	'model_params' : {
@@ -124,66 +140,14 @@ params = {
 		'include_pose' : False
 	},
 
-	'train_params' : {
 
-		'data_params' : {
-			'func' : ShortLongSequenceDataProvider,
-			'data_path' : DATA_PATH,
-			'short_sources' : ['normals', 'normals2', 'images'],
-			'long_sources' : ['actions', 'object_data', 'reference_ids'],
-			'short_len' : SHORT_LEN,
-			'long_len' : LONG_LEN,
-			'min_len' : MIN_LEN,
-			'filters' : ['is_not_teleporting', 'is_object_there'],
-			'shuffle' : True,
-			'shuffle_seed' : 0,
-			'n_threads' : 1,
-			'batch_size' : DATA_BATCH_SIZE,
-			'file_grab_func' : table_norot_grab_func,
-			'is_there_subsetting_rule' : 'just_first'
-		},
-
-		'queue_params' : {
-			'queue_type' : 'random',
-			'batch_size' : MODEL_BATCH_SIZE,
-			'seed' : 0,
-			'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
-		},
-
-		'num_steps' : float('inf'),
-		'thres_loss' : float('inf')
-
-	},
-
-	'loss_params' : {
-		'targets' : [],
-		'agg_func' : tf.reduce_mean,
-		'loss_per_case_func' : modelsource.correlation_jerk_loss,
-		'loss_func_kwargs' : {'l2_coef' : L2_COEF},
-		'loss_per_case_func_params' : {}
-	},
-
-	'learning_rate_params': {
-		'func': tf.train.exponential_decay,
-		'learning_rate': 1e-5,
-		'decay_rate': .95,
-		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
-		'staircase': True
-	},
-
-	'optimizer_params': {
-		'func': optimizer.ClipOptimizer,
-		'optimizer_class': tf.train.AdamOptimizer,
-		'clip': True,
-	# 'momentum': .9
-	},
 
 
 	'validation_params' : {
 		'valid0' : {
 			'data_params' : {
 				'func' : ShortLongSequenceDataProvider,
-				'data_path' : VALDATA_PATH,
+				'data_path' : MY_DATA_PATH,
 				'short_sources' : ['normals', 'normals2', 'images'],
 				'long_sources' : ['actions', 'object_data', 'reference_ids'],
 				'short_len' : SHORT_LEN,
@@ -199,7 +163,7 @@ params = {
 			},
 
 			'queue_params' : {
-				'queue_type' : 'random',
+				'queue_type' : 'fifo',
 				'batch_size' : MODEL_BATCH_SIZE,
 				'seed' : 0,
 				'capacity' : 20 * MODEL_BATCH_SIZE
@@ -213,7 +177,7 @@ params = {
 			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
 			'agg_func' : just_keep_everything,
 			'online_agg_func' : append_it,
-			'num_steps' : 50
+			'num_steps' : 250
 		},
 
 #		'valid1' : {
@@ -264,7 +228,7 @@ params = {
 
 if __name__ == '__main__':
 	base.get_params()
-	base.train_from_params(**params)
+	base.test_from_params(**params)
 
 
 

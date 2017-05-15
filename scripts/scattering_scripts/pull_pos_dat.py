@@ -13,26 +13,19 @@ import tfutils.data as d
 import tfutils.base as b
 
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
-DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
+VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
 DATA_BATCH_SIZE = 256
 SHORT_LEN = 3
 LONG_LEN = 4
 MIN_LEN = 4
-SAVE_DIR = '/mnt/fs0/nhaber/jerk_stats'
-SAVE_LOC = os.path.join(SAVE_DIR, 'all_pulled4.pkl')
-JERK_SAVE_LOC = os.path.join(SAVE_DIR, 'jerks4.pkl')
+SAVE_DIR = '/mnt/fs0/nhaber/pos_dat_scattering'
+SAVE_LOC = os.path.join(SAVE_DIR, 'tr_pulled.pkl')
 VAL_SAVE_LOC = os.path.join(SAVE_DIR, 'val_pulled.pkl')
 
 
 if not os.path.exists(SAVE_DIR):
 	os.mkdir(SAVE_DIR)
-
-def table_norot_grab_func(path):
-        all_filenames = os.listdir(path)
-        print('got to file grabber!')
-        return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
 
 def pull_all_positions_references(val = False):
 	dat_input_path = DATA_PATH
@@ -47,12 +40,10 @@ def pull_all_positions_references(val = False):
 		short_len = SHORT_LEN,
 		long_len = LONG_LEN,
 		min_len = MIN_LEN,
-		filters = ['is_not_teleporting', 'is_object_there'],
+		filters = ['is_not_teleporting'],
 		shuffle = False,
 		n_threads = 1,
 		batch_size = DATA_BATCH_SIZE,
-		file_grab_func = table_norot_grab_func,
-		is_there_subsetting_rule = 'just_first'
 		)
 	sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                                 log_device_placement=False))
@@ -64,14 +55,13 @@ def pull_all_positions_references(val = False):
         tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(queue, enqueue_ops))
         tf.train.start_queue_runners(sess=sess)
         inputs = queue.dequeue_many(DATA_BATCH_SIZE)
-	to_save = {'pos' : [], 'reference_ids' : [], 'scrn_pos' : []}
-	for bn in range(115 * 20):#just tables, no just rot
+	to_save = {'object_data' : [], 'reference_ids' : []}
+	for bn in range(4000 - 6):#just tables, no just rot
 		print(bn)
 		res = sess.run(inputs)
-		to_save['pos'].append(res['object_data'][:, :, 0, 5:8])
-		to_save['scrn_pos'].append(res['object_data'][:, :, 0, 8:10])
+		to_save['object_data'].append(res['object_data'][:, :, 0])
 		to_save['reference_ids'].append(res['reference_ids'])
-		if bn % 115 == 0:
+		if bn % 100 == 0:
 			with open(save_loc, 'w') as stream:
 				cPickle.dump(to_save, stream)
 	with open(save_loc, 'w') as stream:
@@ -108,6 +98,7 @@ def save_jerks():
 
 if __name__ == '__main__':
 	b.get_params()
+	pull_all_positions_references(val = False)
 	pull_all_positions_references(val = True)
 #	save_jerks()
 
