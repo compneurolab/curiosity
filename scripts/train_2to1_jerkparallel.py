@@ -29,13 +29,16 @@ MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/mrowca'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
+BIN_PATH = '/mnt/fs0/datasets/two_world_dataset/'
 BIN_FILE = '/mnt/fs0/datasets/two_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
 SCALE_DOWN_HEIGHT = 40
 SCALE_DOWN_WIDTH = 94
 L2_COEF = 200.
-EXP_ID = ['otrnn1', 'otrnn2', 'otrnn3', 'otrnn4']
+EXP_ID = ['bdf_60_60clip_no_normed', 'bdf_60_60clip_std_normed', 
+        'bdf_60_noclip_max_normed', 'bdf_60_noclip_std_normed']
+LRS = [0.01, 0.001, 0.0001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -74,7 +77,8 @@ def just_keep_everything(val_res):
 
 SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
 
-def grab_all(inputs, outputs, num_to_save = 1, gpu_id = 0, **garbage_params):
+def grab_all(inputs, outputs, bin_file = BIN_FILE, 
+        num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred'].get_shape().as_list()[0]
     for k in SAVE_TO_GFS:
@@ -83,7 +87,7 @@ def grab_all(inputs, outputs, num_to_save = 1, gpu_id = 0, **garbage_params):
         else:
             retval[k] = outputs[k]
     retval['loss'] = modelsource.softmax_cross_entropy_loss_with_bins([], 
-            outputs, BIN_FILE, gpu_id=gpu_id)
+            outputs, bin_file, gpu_id=gpu_id)
     return retval
 
 save_params = [{
@@ -106,13 +110,13 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': False,
+    'do_restore': True,
     'load_query': None
 }] * N_GPUS
 
 model_params = [{
     'func' : modelsource.basic_jerk_model,
-    'cfg' : modelsource.cfg_class_jerk,
+    'cfg' : modelsource.cfg_class_jerk(60),
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
         'object_data' : 'screen_normalize', 
@@ -138,7 +142,7 @@ loss_params = [{
 
 learning_rate_params = [{
     'func': tf.train.exponential_decay,
-    'learning_rate': 1e-4,
+    'learning_rate': 1e-3,
     'decay_rate': 0.95,
     'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
     'staircase': True
@@ -166,7 +170,7 @@ validation_params = [{
                 'is_object_in_view', 'is_object_in_view2'],
             'shuffle' : True,
             'shuffle_seed' : 0,
-            'n_threads' : 2,
+            'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
             'is_there_subsetting_rule' : 'just_first',
             'is_in_view_subsetting_rule' : 'last_seen_and_first_not',
@@ -175,23 +179,25 @@ validation_params = [{
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : 0,
-            'capacity' : MODEL_BATCH_SIZE * 20,
-            'min_after_dequeue': MODEL_BATCH_SIZE * 15
+            'capacity' : MODEL_BATCH_SIZE * 12,
+            'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
         'targets' : {
             'func' : grab_all,
             'targets' : [],
             'num_to_save' : MODEL_BATCH_SIZE,
             'gpu_id': 0,
+            'bin_file': BIN_FILE,
             },
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : 10,
+        'num_steps' : 50,
     },
 }] * N_GPUS
 
 train_params =  {
+    'validate_first': False,
     'data_params' : {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
@@ -235,9 +241,12 @@ for i, _ in enumerate(model_params):
     load_params[i]['exp_id'] = EXP_ID[i]
     
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
+    loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
+    validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
+    #learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
     'save_params' : save_params,
@@ -247,7 +256,8 @@ params = {
     'loss_params' : loss_params,
     'learning_rate_params' : learning_rate_params,
     'optimizer_params': optimizer_params,
-    'validation_params' : validation_params
+    'validation_params' : validation_params,
+    'inter_op_parallelism_threads': 500,
 }
 
 if __name__ == '__main__':
