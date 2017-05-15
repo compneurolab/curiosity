@@ -419,9 +419,9 @@ def add_jerk(data):
                 prev_vel = 0
                 prev_acc = 0
             else:
-                cur_pos = prev_pos
-                cur_vel = prev_vel
-                cur_acc = prev_acc
+                prev_pos = cur_pos
+                prev_vel = cur_vel
+                prev_acc = cur_acc
     return data
 
 def remove_frames(data):
