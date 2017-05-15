@@ -12,7 +12,9 @@ if not os.path.exists(SAVE_DIR):
 	os.mkdir(SAVE_DIR)
 
 
-EVEN_WEIGHTING_COARSE = [-.0228, .228]
+EVEN_WEIGHTING_COARSE = [-.0228, .0228]
+THREE_TO_ONE = [3., 1., 3.]
+THREE_TO_ONE_SMALL = [1., .333, 1.]
 
 def make_even_weighting_bins(bin_cutoff_list, save_fn):
 	weights = [1.] * (len(bin_cutoff_list) + 1)
@@ -21,8 +23,14 @@ def make_even_weighting_bins(bin_cutoff_list, save_fn):
 		cPickle.dump(to_save, stream)
 	return to_save
 
-
+def make_bins(bin_cutoff_list, weights, save_fn):
+	to_save = {'bins' : bin_cutoff_list, 'weights' : weights}
+	with open(os.path.join(SAVE_DIR, save_fn), 'w') as stream:
+		cPickle.dump(to_save, stream)
+	return to_save
 
 
 if __name__ == '__main__':
 	saved = make_even_weighting_bins(EVEN_WEIGHTING_COARSE, 'even_weighting_coarse.pkl')
+	saved1 = make_bins(EVEN_WEIGHTING_COARSE, THREE_TO_ONE, 'three_to_one_coarse.pkl')
+	saved2 = make_bins(EVEN_WEIGHTING_COARSE, THREE_TO_ONE_SMALL, 'three_one_small_coarse.pkl')

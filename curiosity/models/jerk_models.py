@@ -126,7 +126,7 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
 
 
 def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
-    with tf.device('/gpu:%d' % gpu_id):
+#    with tf.device('/gpu:%d' % gpu_id):
 	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
 	base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
@@ -226,9 +226,9 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
 
-def softmax_cross_entropy_loss_with_bins(inputs, outputs, bin_data_file, 
+def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file, 
         gpu_id = 0, clip_weight=None, **kwargs):
-    with tf.device('/gpu:%d' % gpu_id):
+#    with tf.device('/gpu:%d' % gpu_id):
         gt = outputs['jerk']
         # bin ground truth into n-bins
         with open(bin_data_file) as f:
@@ -258,7 +258,7 @@ def softmax_cross_entropy_loss_with_bins(inputs, outputs, bin_data_file,
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
                 labels=labels, logits=pred)
-        return [tf.reduce_mean(w * loss)]
+       return tf.reduce_mean(loss)
 
 def parallel_reduce_mean(losses, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
@@ -313,6 +313,30 @@ class ParallelClipOptimizer(object):
             grad_and_var = (grad, var)
             average_grads_and_vars.append(grad_and_var)
         return average_grads_and_vars
+
+
+def gen_cfg_short_jerk(num_filters_before_concat = 24, num_filters_after_concat = 34, num_filters_together = 34, encode_depth = 2, encode_size = 7, hidden_depth = 3, hidden_num_features = 250):
+	cfg = {'size_1_before_concat_depth' : 1, 'size_2_before_concat_depth' : 0, 'encode_depth' : encode_depth, 'hidden_depth' : hidden_depth, 'hidden' : {}, 'encode' : {}}
+	cfg['size_1_before_concat'] = {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : num_filters_before_concat}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        }
+	for i in range(1, encode_depth + 1):
+		cfg['encode'][i] = {'conv' : {'filter_size' : encode_size, 'stride' : 2, 'num_filters' : num_filters_after_concat}}
+		if i > 1:
+			cfg['encode'][i]['bypass'] = 0
+	cfg['encode_together_depth'] = 1
+	cfg['encode_together'] = {
+                1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : num_filters_together}, 'bypass' : 0}
+        }
+	for i in range(1, hidden_depth):
+		cfg['hidden'][i] = {'num_features' : hidden_num_features, 'dropout' : .75}
+	cfg['hidden'][hidden_depth] = {'num_features' : 3, 'activation' : 'identity'}
+	return cfg
+
+
+
+
+
 
 cfg_alt_short_jerk = {
         'size_1_before_concat_depth' : 1,
@@ -378,12 +402,25 @@ def cfg_class_jerk(num_classes_per_dim):
         }
 }
 
-cfg_class_jerk_bench = {
+def cfg_class_jerk_bench(num_classes_per_dim):
+	return {
 	'hidden_depth' : 3,
 	'hidden' : {
 		1 : {'num_features' : 1000, 'dropout' : .75},
 		2 : {'num_features' : 1000, 'dropout' : .75},
-		3 : {'num_features' : 3 * 40, 'activation' : 'identity'}
+		3 : {'num_features' : 3 * num_classes_per_dim, 'activation' : 'identity'}
 	}
 }
+
+def gen_cfg_jerk_bench(depth, width, drop_keep, num_classes_per_dim = 1):
+	cfg = {'hidden_depth' : depth, 'hidden' : {}}
+	for i in range(1, depth):
+		cfg['hidden'][i] = {'num_features' : width, 'dropout' : drop_keep}
+	cfg['hidden'][depth] = {'num_features' : 3 * num_classes_per_dim, 'activation' : 'identity'}
+	return cfg
+
+
+
+
+
 

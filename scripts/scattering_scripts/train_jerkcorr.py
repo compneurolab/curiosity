@@ -16,32 +16,36 @@ from tfutils import base, optimizer
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 import curiosity.models.jerk_models as modelsource
 
-DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+
+#key params for rapid toggling
+EXP_ID_PREFIX = 'jc_normfix'
+model_func = modelsource.basic_jerk_model
+model_cfg_gen = modelsource.gen_cfg_short_jerk
+
+learning_rate = 1e-5
+#filters at end, encode depth, features in hidden, hidden depth
+some_cfg_tuples = [(34, 2, 250, 3), (34, 3, 500, 3), (34, 3, 2000, 4)]
+drop_keep = .75
+
+
+#key params we likely won't change often
+DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
+VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
+STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl' #should replace this but ok to get started
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/nhaber/jerk_corr'
-NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
-IMG_HEIGHT = 160
-IMG_WIDTH = 375
-SCALE_DOWN_HEIGHT = 40
-SCALE_DOWN_WIDTH = 94
+
+NUM_BATCHES_PER_EPOCH = 2 * 1000 #I think...
+IMG_HEIGHT = 128
+IMG_WIDTH = 170
+SCALE_DOWN_HEIGHT = 32
+SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-
-if not os.path.exists(CACHE_DIR):
-	os.mkdir(CACHE_DIR)
-
-def table_norot_grab_func(path):
-	all_filenames = os.listdir(path)
-	print('got to file grabber!')
-	return [os.path.join(path, fn) for fn in all_filenames if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn]
-
-
+COLLNAME = 'scatter'
 
 def append_it(x, y, step):
 	if x is None:
@@ -100,19 +104,19 @@ params = {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'future_prediction',
-		'collname' : 'jerk',
-		'exp_id' : 'jerk_corr',
+		'collname' : COLLNAME,
+#		'exp_id' : 'jerk_corr',
 		'save_valid_freq' : 2000,
         'save_filters_freq': 30000,
         'cache_filters_freq': 2000,
         'save_initial_filters' : False,
-        'cache_dir' : CACHE_DIR,
+#        'cache_dir' : CACHE_DIR,
         'save_to_gfs' : SAVE_TO_GFS
 	},
 
 	'model_params' : {
-		'func' : modelsource.basic_jerk_model,
-		'cfg' : modelsource.cfg_alt_short_jerk,
+		'func' : model_func,
+#		'cfg' : modelsource.cfg_alt_short_jerk,
 		'time_seen' : TIME_SEEN,
 		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'standard'},
 		'stats_file' : STATS_FILE,
@@ -134,13 +138,11 @@ params = {
 			'short_len' : SHORT_LEN,
 			'long_len' : LONG_LEN,
 			'min_len' : MIN_LEN,
-			'filters' : ['is_not_teleporting', 'is_object_there'],
+			'filters' : ['is_not_teleporting'],
 			'shuffle' : True,
 			'shuffle_seed' : 0,
 			'n_threads' : 1,
 			'batch_size' : DATA_BATCH_SIZE,
-			'file_grab_func' : table_norot_grab_func,
-			'is_there_subsetting_rule' : 'just_first'
 		},
 
 		'queue_params' : {
@@ -166,7 +168,7 @@ params = {
 	'learning_rate_params': {
 		'func': tf.train.exponential_decay,
 		'learning_rate': 1e-5,
-		'decay_rate': .95,
+		'decay_rate': 1.,
 		'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
 		'staircase': True
 	},
@@ -189,13 +191,11 @@ params = {
 				'short_len' : SHORT_LEN,
 				'long_len' : LONG_LEN,
 				'min_len' : MIN_LEN,
-				'filters' : ['is_not_teleporting', 'is_object_there'],
+				'filters' : ['is_not_teleporting'],
 				'shuffle' : True,
 				'shuffle_seed' : 0,
 				'n_threads' : 1,
 				'batch_size' : DATA_BATCH_SIZE,
-				'file_grab_func' : table_norot_grab_func,
-				'is_there_subsetting_rule' : 'just_first'
 			},
 
 			'queue_params' : {
@@ -261,9 +261,18 @@ params = {
 
 }
 
+#filters at end, encode depth, features in hidden, hidden depth
 
 if __name__ == '__main__':
-	base.get_params()
+	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+	cfg_version = int(sys.argv[2])
+	end_filters, encode_depth, hidden_num_features, hidden_depth = some_cfg_tuples[cfg_version]
+	cfg = model_cfg_gen(num_filters_together = end_filters, encode_depth = encode_depth, hidden_num_features = hidden_num_features, hidden_depth = hidden_depth)
+	params['model_params']['cfg'] = cfg
+	EXP_ID = EXP_ID_PREFIX + '_' + str(cfg_version)
+	params['save_params']['exp_id'] = EXP_ID
+	CACHE_DIR = os.path.join('/mnt/fs0/nhaber', EXP_ID)
+	params['save_params']['cache_dir'] = CACHE_DIR
 	base.train_from_params(**params)
 
 
