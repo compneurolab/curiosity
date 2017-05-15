@@ -13,6 +13,7 @@ from multiprocessing import Pool
 #SECOND_DATASET_LOCS = ['dataset0', 'dataset1', 'dataset2', 'dataset3']
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
+KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs0/datasets/three_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
 NEW_TFRECORD_TRAIN_LOC = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
@@ -37,6 +38,10 @@ OTHER_CAM_ROT = np.array([[1., 0., 0.], [0., np.cos(np.pi / 6.), np.sin(np.pi / 
 OTHER_CAM_POS = np.array([0., .5, 0.])
 MY_CM_CENTER = np.array([HEIGHT / 2., WIDTH / 2.])
 MY_F = np.diag([-134., 136.])
+
+#TODO:
+global LAST_both_ids
+LAST_both_ids = None
 
 def pos_to_screen_pos(pos, f, dist, cm_center):
         small_pos_array = np.array([pos[1], pos[0]])
@@ -168,15 +173,23 @@ def get_centers_of_mass(obj_array, ids):
         return cms
 
 def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators):
+        global LAST_both_ids
         action_ids = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
         retval = []
         for (frame_act_ids, frame_observed_objects) in zip(action_ids, observed_objects):
                 other_obj_ids = [i for i in frame_observed_objects if i not in frame_act_ids and i != -1 and frame_observed_objects[i][4] == False]
                 if None not in frame_act_ids:
-                    both_ids = frame_act_ids + other_obj_ids
+                    if len(other_obj_ids) < 1:
+                        both_ids = LAST_both_ids
+                    else:
+                        both_ids = frame_act_ids + other_obj_ids
                 else:
-                    both_ids = other_obj_ids
+                    if len(other_obj_ids) == 1:
+                        both_ids = LAST_both_ids
+                    else:
+                        both_ids = other_obj_ids
                 assert len(both_ids) == 2, 'More than one object found: ' + str(both_ids)
+                LAST_both_ids = both_ids
                 retval.append(both_ids)
         return retval
 
@@ -316,6 +329,8 @@ def safe_dict_append(my_dict, my_key, my_val):
                 my_dict[my_key] = [my_val]
 
 def get_reference_ids((file_num, bn)):
+        if PREFIX is not None:
+            file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
 def get_batch_data((file_num, bn), with_non_object_images = True):
@@ -442,14 +457,19 @@ def write_in_thread((file_num, batches, write_path, prefix)):
         prefix = file_num
     # Open writers 
     output_files = [os.path.join(write_path, attr_name, 
-        str(prefix) + ':' + str(batches[0]) + ':' + str(batches[1]) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
+        str(prefix) + ':' + str(batches[0]) + ':' + str(batches[-1]) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
+    if KEEP_EXISTING_FILES:
+        for i, output_file in enumerate(output_files):
+            if os.path.isfile(output_file):
+                print('Skipping file %s' % output_file)
+                return 
     writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) \
             for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
 
     for _, batch in enumerate(batches):
         batch_data_dict = get_batch_data((file_num, batch), with_non_object_images = True)
-        # Remove unneccessary data
-        batch_data_dict = remove_frames(batch_data_dict)
+        # TODO: Remove unneccessary data
+        #batch_data_dict = remove_frames(batch_data_dict)
         # Write batch
         write_stuff(batch_data_dict, writers)
     # Close writers
@@ -478,12 +498,12 @@ def do_write(all_images = True):
         num_batches = 0
         for file_num in range(len(my_files)):
             write_task = []
-            for batch_num in range(0, NUM_BATCHES, 2):
+            for batch_num in range(0, NUM_BATCHES, 4):
                 if my_rng.rand() > 0.1:
                     write_path = NEW_TFRECORD_TRAIN_LOC
                 else:
                     write_path = NEW_TFRECORD_VAL_LOC
-                write_task.append((file_num, range(batch_num, batch_num + 2), write_path, PREFIX))
+                write_task.append((file_num, range(batch_num, batch_num + 4), write_path, PREFIX))
                 num_batches += 1
             write_tasks.append(write_task)
 
