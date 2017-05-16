@@ -14,12 +14,12 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-VALDATA_PATH = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
+VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 4
+N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256
 TIME_SEEN = 3
@@ -28,16 +28,15 @@ LONG_LEN = 4
 MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/mrowca'
 NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl'
-BIN_PATH = '/mnt/fs0/datasets/two_world_dataset/'
-BIN_FILE = '/mnt/fs0/datasets/two_world_dataset/bin_data_file.pkl'
+STATS_FILE = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
+BIN_PATH = '/mnt/fs0/datasets/three_world_dataset/'
+BIN_FILE = '/mnt/fs0/datasets/three_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 160
 IMG_WIDTH = 375
-SCALE_DOWN_HEIGHT = 40
-SCALE_DOWN_WIDTH = 94
+SCALE_DOWN_HEIGHT = 32
+SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['bdf_60_60clip_no_normed', 'bdf_60_60clip_std_normed', 
-        'bdf_60_noclip_max_normed', 'bdf_60_noclip_std_normed']
+EXP_ID = ['map_jerk01', 'map_jerk001', 'map_jerk0001', 'map_jerk00001']
 LRS = [0.01, 0.001, 0.0001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
@@ -86,8 +85,8 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             retval[k] = outputs[k][:num_to_save]
         else:
             retval[k] = outputs[k]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_with_bins([], 
-            outputs, bin_file, gpu_id=gpu_id)
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_per_pixel( 
+            outputs, gpu_id=gpu_id)
     return retval
 
 save_params = [{
@@ -110,13 +109,13 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': True,
+    'do_restore': False,
     'load_query': None
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.basic_jerk_model,
-    'cfg' : modelsource.cfg_class_jerk(60),
+    'func' : modelsource.map_jerk_model,
+    'cfg' : modelsource.cfg_map_jerk(),
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
         'object_data' : 'screen_normalize', 
@@ -126,7 +125,7 @@ model_params = [{
     'image_width' : IMG_WIDTH,
     'scale_down_height' : SCALE_DOWN_HEIGHT,
     'scale_down_width' : SCALE_DOWN_WIDTH,
-    'add_depth_gaussian' : True,
+    'add_depth_gaussian' : False,
     'include_pose' : False,
     'num_classes': 60.,
     'gpu_id' : 0,
@@ -135,7 +134,7 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_with_bins,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_per_pixel,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0}, #{'l2_coef' : L2_COEF}
 }] * N_GPUS
@@ -161,8 +160,9 @@ validation_params = [{
         'data_params' : {
             'func' : ShortLongSequenceDataProvider,
             'data_path' : VALDATA_PATH,
-            'short_sources' : ['normals', 'normals2', 'images'],
-            'long_sources' : ['actions', 'object_data', 'reference_ids'],
+            'short_sources' : ['depths'], #'depths2', 'normals2', 'images'
+            'long_sources' : ['actions', 'objects', 'objects2', 
+                'object_data', 'reference_ids'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -201,8 +201,9 @@ train_params =  {
     'data_params' : {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
-        'short_sources' : ['normals', 'normals2', 'images'],
-        'long_sources' : ['actions', 'object_data', 'reference_ids'],
+        'short_sources' : ['depths'], #'depths2', 'normals2', 'images' 
+        'long_sources' : ['actions', 'objects', 'objects2',
+            'object_data', 'reference_ids'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,

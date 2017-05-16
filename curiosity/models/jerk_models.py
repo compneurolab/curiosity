@@ -123,6 +123,60 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
         retval.update(base_net.inputs)
         return retval, m.params
 
+def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        batch_size, time_seen = inputs['depths'].get_shape().as_list()[:2]
+        long_len = inputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+
+        inputs = base_net.inputs
+
+        size_1_attributes = ['depths'] #, 'depths2']
+        size_2_attributes = [] #['object_data_seen', 'actions_seen']
+        size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+        #size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
+        m = ConvNetwithBypasses(**kwargs)
+
+        encoded_input = []
+        reuse_weights = False
+        for t in range(time_seen):
+                size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                #size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                #assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
+                #concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
+                concat_inputs = size_1_encoding_before_concat[-1]
+                encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+                reuse_weights = True
+
+        num_encode_together = cfg.get('encode_together_depth')
+        if num_encode_together:
+                print('Encoding together!')
+                together_input = tf.concat(encoded_input, axis = 3)
+                encoded_input = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = size_1_encoding_before_concat, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]
+
+        #flatten and concat
+        #flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
+        #flattened_input.append(tf.reshape(inputs['object_data_seen_1d'], [batch_size, -1]))
+        #flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+        #flattened_input.append(tf.reshape(inputs['depth_seen'], [batch_size, -1]))
+
+        #assert len(flattened_input[0].get_shape().as_list()) == 2
+        #concat_input = tf.concat(flattened_input, axis = 1)
+
+        #pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, train = kwargs['train'])
+        #pred_shape = pred.get_shape().as_list()
+#       pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+#       if not include_pose:
+#               pred_shape[3] = 2
+#       print('num classes: ' + str(num_classes))
+        #if num_classes is not None:
+        #        pred_shape.append(int(num_classes))
+        #        pred_shape[1] = int(pred_shape[1] / num_classes)
+        #        pred = tf.reshape(pred, pred_shape)
+        pred = encoded_input[0]
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
 
 
 def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
@@ -226,9 +280,18 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
 
+def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        labels = tf.cast(outputs['depths_raw'][:,-1,:,:,0], tf.int32) # only predict the coarsest channel
+        logits = outputs['pred']
+        weight = outputs['jerk_map']
+        return [tf.reduce_mean(tf.expand_dims(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=labels, logits=logits), axis=3) * weight)]
+
 def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file, 
         gpu_id = 0, clip_weight=None, **kwargs):
-#    with tf.device('/gpu:%d' % gpu_id):
+    with tf.device('/gpu:%d' % gpu_id):
         gt = outputs['jerk']
         # bin ground truth into n-bins
         with open(bin_data_file) as f:
@@ -258,7 +321,7 @@ def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file,
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
                 labels=labels, logits=pred)
-       return tf.reduce_mean(loss)
+        return [tf.reduce_mean(loss)]
 
 def parallel_reduce_mean(losses, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
@@ -367,6 +430,28 @@ cfg_alt_short_jerk = {
                 2 : {'num_features' : 250, 'dropout' : .75},
                 3 : {'num_features' : 3, 'activation' : 'identity'}
         }
+}
+
+def cfg_map_jerk():
+    return {
+        'size_1_before_concat_depth' : 0,
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 3,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
 }
 
 
