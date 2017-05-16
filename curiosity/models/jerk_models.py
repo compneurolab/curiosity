@@ -284,7 +284,7 @@ def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
         labels = tf.cast(outputs['depths_raw'][:,-1,:,:,0], tf.int32) # only predict the coarsest channel
         logits = outputs['pred']
-        weight = outputs['jerk_map']
+        weight = tf.abs(outputs['jerk_map'])
         return [tf.reduce_mean(tf.expand_dims(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=labels, logits=logits), axis=3) * weight)]
@@ -438,17 +438,16 @@ def cfg_map_jerk():
 
         'encode_depth': 3,
         'encode' : {
-                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
-                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
-                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
                     #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
         },
 
-        'encode_together_depth' : 3,
+        'encode_together_depth' : 2,
         'encode_together' : {
-                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128}},
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
-                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
                     #, 'bypass' : 0}
         },
         'hidden_depth': 0,

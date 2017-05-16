@@ -1,5 +1,5 @@
 '''
-Now with new data provider, and 2->1 architecture.
+Now with new data provider, and 2->2 architecture.
 '''
 import numpy as np
 import os
@@ -19,20 +19,20 @@ VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 1
+N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 256
+MODEL_BATCH_SIZE = 64
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/mrowca'
-NUM_BATCHES_PER_EPOCH = 115 * 70 * 256 / MODEL_BATCH_SIZE
+NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
 BIN_PATH = '/mnt/fs0/datasets/three_world_dataset/'
 BIN_FILE = '/mnt/fs0/datasets/three_world_dataset/bin_data_file.pkl'
-IMG_HEIGHT = 160
-IMG_WIDTH = 375
+IMG_HEIGHT = 128
+IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
@@ -48,7 +48,7 @@ def table_norot_grab_func(path):
     rng.shuffle(all_filenames)
     print('got to file grabber!')
     return [os.path.join(path, fn) for fn in all_filenames \
-            if '.tfrecords' in fn and 'TABLE' in fn and ':ROT:' not in fn] \
+            if fn.endswith('.tfrecords') and fn.startswith('2:')] \
             #and 'FAST_LIFT' in fn]
 
 def append_it(x, y, step):
@@ -123,11 +123,11 @@ model_params = [{
     'stats_file' : STATS_FILE,
     'image_height' : IMG_HEIGHT,
     'image_width' : IMG_WIDTH,
-    'scale_down_height' : SCALE_DOWN_HEIGHT,
-    'scale_down_width' : SCALE_DOWN_WIDTH,
+    #'scale_down_height' : SCALE_DOWN_HEIGHT,
+    #'scale_down_width' : SCALE_DOWN_WIDTH,
     'add_depth_gaussian' : False,
     'include_pose' : False,
-    'num_classes': 60.,
+    #'num_classes': 60.,
     'gpu_id' : 0,
 }] * N_GPUS
 
@@ -161,25 +161,24 @@ validation_params = [{
             'func' : ShortLongSequenceDataProvider,
             'data_path' : VALDATA_PATH,
             'short_sources' : ['depths'], #'depths2', 'normals2', 'images'
-            'long_sources' : ['actions', 'objects', 'objects2', 
-                'object_data', 'reference_ids'],
+            'long_sources' : ['actions', 'objects', 'object_data', 'reference_ids'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
-            'filters' : ['is_not_teleporting', 'is_object_there', 
-                'is_object_in_view', 'is_object_in_view2'],
+            'filters' : ['is_not_teleporting', 'is_object_in_view'],
             'shuffle' : True,
             'shuffle_seed' : 0,
             'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
-            'is_there_subsetting_rule' : 'just_first',
-            'is_in_view_subsetting_rule' : 'last_seen_and_first_not',
+            'file_grab_func' : table_norot_grab_func,
+           # 'is_there_subsetting_rule' : 'just_first',
+            'is_in_view_subsetting_rule' : 'both_there',
             },
         'queue_params' : {
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : 0,
-            'capacity' : MODEL_BATCH_SIZE * 12,
+            'capacity' : MODEL_BATCH_SIZE * 20,
             'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
         'targets' : {
@@ -202,20 +201,18 @@ train_params =  {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
         'short_sources' : ['depths'], #'depths2', 'normals2', 'images' 
-        'long_sources' : ['actions', 'objects', 'objects2',
-            'object_data', 'reference_ids'],
+        'long_sources' : ['actions', 'objects', 'object_data', 'reference_ids'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
-        'filters' : ['is_not_teleporting', 'is_object_there', 
-            'is_object_in_view', 'is_object_in_view2'],
+        'filters' : ['is_not_teleporting', 'is_object_in_view'],
         'shuffle' : True,
         'shuffle_seed' : 0,
         'n_threads' : 4,
         'batch_size' : DATA_BATCH_SIZE,
         'file_grab_func' : table_norot_grab_func,
-        'is_there_subsetting_rule' : 'just_first',
-        'is_in_view_subsetting_rule' : 'last_seen_and_first_not',
+        #'is_there_subsetting_rule' : 'just_first',
+        'is_in_view_subsetting_rule' : 'both_there',
     },
         
     'queue_params' : {
@@ -242,12 +239,12 @@ for i, _ in enumerate(model_params):
     load_params[i]['exp_id'] = EXP_ID[i]
     
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
-    loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
+    #loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
-    validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
-    #learning_rate_params[i]['learning_rate'] = LRS[i]
+    #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
+    learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
     'save_params' : save_params,
