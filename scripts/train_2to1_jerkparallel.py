@@ -36,7 +36,7 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['map_jerk01', 'map_jerk001', 'map_jerk0001', 'map_jerk00001']
+EXP_ID = ['map_jerk_01', 'map_jerk_001', 'map_jerk_0001', 'map_jerk_00001']
 LRS = [0.01, 0.001, 0.0001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
@@ -118,7 +118,7 @@ model_params = [{
     'cfg' : modelsource.cfg_map_jerk(),
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
-        'object_data' : 'screen_normalize', 
+        #'object_data' : 'screen_normalize', 
         'actions' : 'standard'},
     'stats_file' : STATS_FILE,
     'image_height' : IMG_HEIGHT,

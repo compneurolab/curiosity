@@ -361,7 +361,7 @@ class ShortLongFuturePredictionBase:
                 self.inputs['jerk'] = jerk_all[:, 0]
                 self.inputs['jerk_all'] = jerk_all
 
-                pos_ids = inputs_not_normed['object_data'][:,:,:,0]
+                pos_ids = tf.cast(inputs_not_normed['object_data'][:,:,:,0], tf.int32) 
                 pos_ids = tf.unstack(pos_ids, axis=2)
                 jerk_all = tf.unstack(jerk_all, axis=1)
                 # velocity at t=0 equals position
@@ -371,11 +371,10 @@ class ShortLongFuturePredictionBase:
                 for objects_key in ['objects', 'objects2']:
                     if objects_key not in inputs_not_normed:
                         continue
-                    objects = tf.cast(inputs_not_normed[objects_key], tf.float32)
+                    objects = tf.cast(inputs_not_normed[objects_key], tf.int32)
                     shape = objects.get_shape().as_list()
                     objects = tf.unstack(objects, axis=len(shape)-1)
                     objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
-
                     # calculate jerk map
                     jerk_map = tf.zeros([shape[0], shape[2], shape[3], 3], tf.float32)
                     # calculate velocity maps

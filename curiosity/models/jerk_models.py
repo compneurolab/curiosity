@@ -285,9 +285,11 @@ def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, **kwargs):
         labels = tf.cast(outputs['depths_raw'][:,-1,:,:,0], tf.int32) # only predict the coarsest channel
         logits = outputs['pred']
         weight = tf.abs(outputs['jerk_map'])
-        return [tf.reduce_mean(tf.expand_dims(
+        
+        loss = tf.reduce_mean(tf.expand_dims(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=labels, logits=logits), axis=3) * weight)]
+            labels=labels, logits=logits), axis=3) * weight)
+        return [loss]
 
 def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file, 
         gpu_id = 0, clip_weight=None, **kwargs):
@@ -321,7 +323,7 @@ def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file,
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
                 labels=labels, logits=pred)
-        return [tf.reduce_mean(loss)]
+        return tf.reduce_mean(loss)
 
 def parallel_reduce_mean(losses, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
