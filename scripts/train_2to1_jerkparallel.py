@@ -188,7 +188,7 @@ validation_params = [{
         'targets' : {
             'func' : grab_all,
             'targets' : [],
-            'num_to_save' : MODEL_BATCH_SIZE,
+            'num_to_save' : 20, #MODEL_BATCH_SIZE,
             'gpu_id': 0,
             'bin_file': BIN_FILE,
             },
