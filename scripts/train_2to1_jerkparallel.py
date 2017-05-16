@@ -36,7 +36,7 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['map_jerk_01', 'map_jerk_001', 'map_jerk_0001', 'map_jerk_00001']
+EXP_ID = ['1map_jerk_01', '1map_jerk_001', '1map_jerk_0001', '1map_jerk_00001']
 LRS = [0.01, 0.001, 0.0001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
@@ -82,7 +82,11 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     batch_size = outputs['pred'].get_shape().as_list()[0]
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
-            retval[k] = outputs[k][:num_to_save]
+            if k == 'pred':
+                pred = outputs[k][:num_to_save]
+                retval[k] = tf.argmax(pred, axis=tf.rank(pred) - 1)
+            else:
+                retval[k] = outputs[k][:num_to_save]
         else:
             retval[k] = outputs[k]
     retval['loss'] = modelsource.softmax_cross_entropy_loss_per_pixel( 
