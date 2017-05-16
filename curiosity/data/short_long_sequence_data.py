@@ -61,6 +61,8 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
 	if is_in_view_subsetting_rule is not None:
 		if is_in_view_subsetting_rule == 'last_seen_and_first_not':
 			assert 'is_object_in_view' in filters and 'is_object_in_view2' in filters
+		elif is_in_view_subsetting_rule == 'both_there':
+			assert 'is_object_in_view' in filters or 'is_object_in_view2' in filters
 		else:
 			raise Exception('Not implemented yet!')
 
@@ -186,6 +188,10 @@ either_view[:, self.short_len: self.short_len + 1])
 			both_times = tf.cast(tf.tile(both_times, [1,self.long_len]), tf.int32)
 			data['is_object_in_view'] = both_times
 			data['is_object_in_view2'] = both_times
+		elif self.is_in_view_subsetting_rule == 'both_there':
+			for desc in ['is_object_in_view', 'is_object_in_view2']:
+				if desc in self.filters:
+					data[desc] = data[desc][:, :, 0] * data[desc][:, :, 1]
 		else:
 			raise Exception('Other types not implemented!')
         #and operation
