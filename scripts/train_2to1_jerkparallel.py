@@ -36,8 +36,12 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['hour_jerk_01', 'hour_jerk_001', 'hour_jerk_0001', 'hour_jerk_00001']
-LRS = [0.01, 0.001, 0.001, 0.00001]
+EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
+LRS = [0.001, 0.001, 0.001, 0.001]
+CFG = [modelsource.cfg_res_jerk(), 
+        modelsource.cfg_map_jerk(), 
+        modelsource.cfg_sym_jerk(), 
+        modelsource.cfg_bypass_jerk()]
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -74,7 +78,7 @@ def just_keep_everything(val_res):
     keys = val_res[0].keys()
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
-SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter']
+SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk_map', 'depths_raw']
 
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
@@ -85,6 +89,9 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             if k == 'pred':
                 pred = outputs[k][:num_to_save]
                 retval[k] = tf.argmax(pred, axis=tf.rank(pred) - 1)
+            elif k == 'depths_raw':
+                depths = outputs[k][:num_to_save]
+                retval[k] = depths[:,-1,:,:,0]
             else:
                 retval[k] = outputs[k][:num_to_save]
         else:
@@ -119,7 +126,7 @@ load_params = [{
 
 model_params = [{
     'func' : modelsource.map_jerk_model,
-    'cfg' : modelsource.cfg_map_jerk(),
+    'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
         #'object_data' : 'screen_normalize', 
@@ -145,7 +152,7 @@ loss_params = [{
 
 learning_rate_params = [{
     'func': tf.train.exponential_decay,
-    'learning_rate': 1e-3,
+    'learning_rate': LRS[0],
     'decay_rate': 0.95,
     'decay_steps': NUM_BATCHES_PER_EPOCH,  # exponential decay each epoch
     'staircase': True
@@ -250,7 +257,8 @@ for i, _ in enumerate(model_params):
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
     #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
-    learning_rate_params[i]['learning_rate'] = LRS[i]
+    model_params[i]['cfg'] = CFG[i]
+    #learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
     'save_params' : save_params,
