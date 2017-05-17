@@ -371,10 +371,18 @@ def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, eps = 0.01, **kwar
         labels = tf.cast(outputs['depths_raw'][:,-1,:,:,0], tf.int32) # only predict the coarsest channel
         logits = outputs['pred']
         weight = tf.abs(outputs['jerk_map']) + eps
-        
+
+        undersample = True
+        if undersample:
+            mask = tf.norm(outputs['jerk'], ord='euclidean', axis=1)
+            mask = tf.cast(tf.greater(mask, 0.05909), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+
         loss = tf.reduce_mean(tf.expand_dims(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=labels, logits=logits), axis=3) * weight)
+            labels=labels, logits=logits), axis=3) * weight * mask)
         return [loss]
 
 def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file, 
