@@ -375,7 +375,7 @@ def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, eps = 0.01, **kwar
         undersample = True
         if undersample:
             mask = tf.norm(outputs['jerk'], ord='euclidean', axis=1)
-            mask = tf.cast(tf.greater(mask, 0.05909), tf.float32)
+            mask = tf.cast(tf.greater(mask, 2.473), tf.float32)
             mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
         else:
             mask = 1

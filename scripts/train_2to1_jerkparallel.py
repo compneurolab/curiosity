@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_eps_05data', 
-'map_jerk_eps_05data', 
-'sym_jerk_eps_05data', 
-'bypass_jerk_eps_05data']
+EXP_ID = ['res_jerk_eps_01data', 
+'map_jerk_eps_01data', 
+'sym_jerk_eps_01data', 
+'bypass_jerk_eps_01data']
 LRS = [0.001, 0.001, 0.001, 0.001]
 CFG = [modelsource.cfg_res_jerk(), 
         modelsource.cfg_map_jerk(), 
