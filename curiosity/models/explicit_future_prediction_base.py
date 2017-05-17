@@ -228,7 +228,7 @@ class ShortLongFuturePredictionBase:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1]
+            assert time_seen == im_sh[1] - 1
         else:
             assert img_height is not None and img_width is not None
 

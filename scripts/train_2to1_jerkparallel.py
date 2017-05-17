@@ -36,8 +36,8 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['1map_jerk_01', '1map_jerk_001', '1map_jerk_0001', '1map_jerk_00001']
-LRS = [0.01, 0.001, 0.0001, 0.00001]
+EXP_ID = ['hour_jerk_01', 'hour_jerk_001', 'hour_jerk_0001', 'hour_jerk_00001']
+LRS = [0.01, 0.001, 0.001, 0.00001]
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -164,8 +164,9 @@ validation_params = [{
         'data_params' : {
             'func' : ShortLongSequenceDataProvider,
             'data_path' : VALDATA_PATH,
-            'short_sources' : ['depths'], #'depths2', 'normals2', 'images'
-            'long_sources' : ['actions', 'objects', 'object_data', 'reference_ids'],
+            'short_sources' : [], #'depths2', 'normals2', 'images'
+            'long_sources' : ['depths', 
+                'actions', 'objects', 'object_data', 'reference_ids'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -204,8 +205,9 @@ train_params =  {
     'data_params' : {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
-        'short_sources' : ['depths'], #'depths2', 'normals2', 'images' 
-        'long_sources' : ['actions', 'objects', 'object_data', 'reference_ids'],
+        'short_sources' : [], #'depths2', 'normals2', 'images' 
+        'long_sources' : ['depths', 
+            'actions', 'objects', 'object_data', 'reference_ids'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,

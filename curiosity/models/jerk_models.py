@@ -9,13 +9,76 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import numpy as np
 import cPickle
 
+def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
+        reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False, do_print = True):
+    m.output = input_node
+    deconv_nodes = [input_node]
+    # deconvolving
+    deconv_depth = cfg[desc + '_depth']
+    print('deconv depth: %d' % deconv_depth)
+    cfs0 = None
 
-def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False):
+    if bypass_nodes is None:
+        bypass_nodes = [m.output]
+
+    for i in range(1, deconv_depth + 1):
+        with tf.variable_scope(desc + str(i)) as scope:
+            if reuse_weights:
+                scope.reuse_variables()
+
+            bypass = cfg[desc][i].get('bypass')
+            if bypass:
+                if type(bypass) == list:
+                    bypass_node = [bypass_nodes[bp] for bp in bypass]
+                else:
+                    bypass_node = bypass_nodes[bypass]
+                m.add_bypass(bypass_node)
+
+            bn = cfg[desc][i]['deconv'].get('batch_normalize')
+            if bn:
+                norm_it = bn
+            else:
+                norm_it = batch_normalize
+
+            with tf.contrib.framework.arg_scope([m.deconv], 
+                    init='xavier', stddev=.01, bias=0, batch_normalize = norm_it):
+                cfs = cfg[desc][i]['deconv']['filter_size']
+                cfs0 = cfs
+                nf = cfg[desc][i]['deconv']['num_filters']
+                cs = cfg[desc][i]['deconv']['stride']
+                if 'output_shape' in cfg[desc][i]['deconv']:
+                    out_shape = cfg[desc][i]['deconv']['output_shape']
+                else:
+                    out_shape = None
+                if do_print:
+                    print('deconv in: ', m.output)
+                if no_nonlinearity_end and i == deconv_depth:
+                    m.deconv(nf, cfs, cs, activation = None, 
+                            fixed_output_shape=out_shape)
+                else:
+                    my_activation = cfg[desc][i].get('nonlinearity')
+                    if my_activation is None:
+                        my_activation = 'relu'
+                    m.deconv(nf, cfs, cs, activation = my_activation, 
+                            fixed_output_shape=out_shape)
+                    if do_print:
+                        print('deconv out:', m.output)
+                    #TODO add print function
+                    pool = cfg[desc][i].get('pool')
+                    if pool:
+                        pfs = pool['size']
+                        ps = pool['stride']
+                        m.pool(pfs, ps)
+                    deconv_nodes.append(m.output)
+                    bypass_nodes.append(m.output)
+    return deconv_nodes
+
+def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False, do_print=True):
         m.output = input_node
         encode_nodes = [input_node]
         #encoding
         encode_depth = cfg[desc + '_depth']
-        print('Encode depth: %d' % encode_depth)
+        print('conv depth: %d' % encode_depth)
         cfs0 = None
 
         if bypass_nodes is None:
@@ -48,8 +111,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                             cfs0 = cfs
                             nf = cfg[desc][i]['conv']['num_filters']
                             cs = cfg[desc][i]['conv']['stride']
-                            print('conv shape to shape')
-                            print(m.output)
+                            if do_print:
+                                print('conv in', m.output)
                             if no_nonlinearity_end and i == encode_depth:
                                 m.conv(nf, cfs, cs, activation = None)
                             else:
@@ -57,7 +120,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                                 if my_activation is None:
                                         my_activation = 'relu'
                                 m.conv(nf, cfs, cs, activation = my_activation)
-                            print(m.output)
+                            if do_print:
+                                print('conv out', m.output)
         #TODO add print function
                         pool = cfg[desc][i].get('pool')
                         if pool:
@@ -124,10 +188,19 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
         return retval, m.params
 
 def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
-        batch_size, time_seen = inputs['depths'].get_shape().as_list()[:2]
-        long_len = inputs['object_data'].get_shape().as_list()[1]
-        base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+        rinputs = {}
+        for k in inputs:
+            if k in ['depths', 'objects']:
+                rinputs[k] = tf.pad(inputs[k], 
+                        [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
+            else:
+                rinputs[k] = inputs[k]
+        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
+        time_seen -= 1
+        long_len = rinputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(rinputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
 
         inputs = base_net.inputs
 
@@ -139,20 +212,23 @@ def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = 
 
         encoded_input = []
         reuse_weights = False
+        do_print = True
         for t in range(time_seen):
-                size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
+                #size_1_encoding_before_concat = feedforward_conv_loop(size_1_input_per_time[t], m, cfg, desc = 'size_1_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
                 #size_2_encoding_before_concat = feedforward_conv_loop(size_2_input_per_time[t], m, cfg, desc = 'size_2_before_concat', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)
                 #assert size_1_encoding_before_concat[-1].get_shape().as_list()[:-1] == size_2_encoding_before_concat[-1].get_shape().as_list()[:-1], (size_1_encoding_before_concat[-1].get_shape().as_list()[:-1], size_2_encoding_before_concat[-1].get_shape().as_list()[:-1])
                 #concat_inputs = tf.concat([size_1_encoding_before_concat[-1], size_2_encoding_before_concat[-1]], axis = 3)
-                concat_inputs = size_1_encoding_before_concat[-1]
-                encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = size_1_encoding_before_concat, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1])
+                #concat_inputs = size_1_encoding_before_concat[-1]
+                concat_inputs = size_1_input_per_time[t]
+                encoded_input.append(feedforward_conv_loop(concat_inputs, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False, do_print=do_print)[-1])
+                do_print = False
                 reuse_weights = True
 
         num_encode_together = cfg.get('encode_together_depth')
         if num_encode_together:
                 print('Encoding together!')
                 together_input = tf.concat(encoded_input, axis = 3)
-                encoded_input = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = size_1_encoding_before_concat, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]
+                encoded_input = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]
 
         #flatten and concat
         #flattened_input = [tf.reshape(enc_in, [batch_size, -1]) for enc_in in encoded_input]
@@ -173,9 +249,15 @@ def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = 
         #        pred_shape.append(int(num_classes))
         #        pred_shape[1] = int(pred_shape[1] / num_classes)
         #        pred = tf.reshape(pred, pred_shape)
-        pred = encoded_input[0]
+
+        num_deconv = cfg.get('deconv_depth')
+        if num_deconv:
+            encoded_input = deconv_loop(encoded_input[-1], m, cfg, desc='deconv', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1:]
+
+        pred = encoded_input[-1]
         retval = {'pred' : pred}
         retval.update(base_net.inputs)
+        print('------NETWORK END-----')
         return retval, m.params
 
 
@@ -440,19 +522,26 @@ def cfg_map_jerk():
 
         'encode_depth': 3,
         'encode' : {
-                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
-                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
-                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
                     #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
         },
 
         'encode_together_depth' : 2,
         'encode_together' : {
-                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128}},
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}},
                     #, 'bypass' : 0}
         },
         'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+        }
 }
 
 
