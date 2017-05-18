@@ -21,7 +21,7 @@ VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 32
+MODEL_BATCH_SIZE = 64
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_map', 
-'map_jerk_map', 
-'sym_jerk_map', 
-'bypass_jerk_map']
+EXP_ID = ['res_jerk_bin', 
+'map_jerk_bin', 
+'sym_jerk_bin', 
+'bypass_jerk_bin']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 CFG = [modelsource.cfg_res_jerk(), 
@@ -89,15 +89,16 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_pixel_jerk( 
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_binary_jerk( 
             outputs, gpu_id=gpu_id)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k == 'pred':
                 pred = outputs[k]
 		shape = pred.get_shape().as_list()
-		pred = tf.reshape(pred, shape[0:3] + [3, shape[3] / 3])
-                retval[k] = tf.argmax(pred, axis=tf.rank(pred) - 1)[:num_to_save]
+		#pred = tf.reshape(pred, shape[0:3] + [3, shape[3] / 3])
+                retval[k] = tf.cast(tf.argmax(
+                    pred, axis=tf.rank(pred) - 1), tf.uint8)[:num_to_save]
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
@@ -162,7 +163,7 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_pixel_jerk,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_binary_jerk,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0}, #{'l2_coef' : L2_COEF}
 }] * N_GPUS

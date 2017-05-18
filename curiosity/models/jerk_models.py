@@ -366,6 +366,28 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
 
+def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+	labels = tf.cast(tf.not_equal(
+                tf.norm(outputs['jerk_map'], ord='euclidean', axis=3), 0), tf.int32)
+	shape = outputs['pred'].get_shape().as_list()
+	assert shape[3] == 2
+	logits = outputs['pred']
+
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        return [loss]
+
 def softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0, 
         min_value = -1.0, max_value = 1.0, num_classes=256, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
@@ -384,7 +406,6 @@ def softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0,
             mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
         else:
             mask = 1
-
 
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask) 
@@ -583,7 +604,7 @@ def cfg_bypass_jerk():
                 'bypass' : 0},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
                 'bypass' : 0},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 768},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2},
                 'bypass' : 0},
         }
 }
@@ -614,7 +635,7 @@ def cfg_sym_jerk():
                 'bypass' : 3},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
                 'bypass' : 2},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 768},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2},
                 'bypass' : 1},
         }
 }
@@ -643,7 +664,7 @@ def cfg_map_jerk():
         'deconv' : {
             1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 768}},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2}},
         }
 }
 
@@ -663,7 +684,7 @@ def cfg_res_jerk():
         'encode_together' : {
                 1 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 32}},
                 2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64}},
-		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 768}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 2}},
                     #, 'bypass' : 0}
         },
         'hidden_depth': 0,
