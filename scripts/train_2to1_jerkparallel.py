@@ -26,7 +26,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache/'
 NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
 BIN_PATH = '/mnt/fs0/datasets/three_world_dataset/'
@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_map_01data', 
-'map_jerk_map_01data', 
-'sym_jerk_map_01data', 
-'bypass_jerk_map_01data']
+EXP_ID = ['res_jerk_map', 
+'map_jerk_map', 
+'sym_jerk_map', 
+'bypass_jerk_map']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 CFG = [modelsource.cfg_res_jerk(), 
@@ -106,10 +106,10 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         else:
             retval[k] = outputs[k]
     #filter examples
-    filter_examples = True
+    filter_examples = False
     if filter_examples:
         thres = 0.5412
-        mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+        mask = tf.norm(outputs['jerk_all'][:num_to_save], ord='euclidean', axis=2)
         mask = tf.logical_or(tf.greater(mask[:,0], thres),
                 tf.greater(mask[:,1], thres))
         for k in SAVE_TO_GFS:
@@ -220,7 +220,7 @@ validation_params = [{
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : 50,
+        'num_steps' : 20,
     },
 }] * N_GPUS
 

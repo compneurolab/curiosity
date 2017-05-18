@@ -375,7 +375,7 @@ def softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0,
         assert shape[3] / 3 == num_classes
         logits = tf.reshape(outputs['pred'], shape[0:3] + [3, shape[3] / 3])
 
-        undersample = True
+        undersample = False
         if undersample:
             thres = 0.5412
             mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
