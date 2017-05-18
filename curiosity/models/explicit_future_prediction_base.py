@@ -228,7 +228,7 @@ class ShortLongFuturePredictionBase:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1] - 1
+            assert time_seen == im_sh[1]
         else:
             assert img_height is not None and img_width is not None
 
@@ -357,7 +357,8 @@ class ShortLongFuturePredictionBase:
 		if hack_jerk_norm:
 			print('doing hackish jerk norm!')
 			#jerk_all = tf.maximum(tf.minimum(jerk_all, 3.), -3.)/3.
-                        jerk_all = tf.clip_by_value(jerk_all, -0.6, 0.6) / 0.13130946
+                        #jerk_all = tf.clip_by_value(jerk_all, -0.6, 0.6) / 0.13130946
+                        jerk_all = tf.clip_by_value(jerk_all, -0.6, 0.6) / 0.6
                 self.inputs['jerk'] = jerk_all[:, 0]
                 self.inputs['jerk_all'] = jerk_all
 

@@ -21,12 +21,12 @@ VALDATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 64
+MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca'
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
 NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
 BIN_PATH = '/mnt/fs0/datasets/three_world_dataset/'
@@ -36,15 +36,17 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_eps_01data', 
-'map_jerk_eps_01data', 
-'sym_jerk_eps_01data', 
-'bypass_jerk_eps_01data']
+EXP_ID = ['res_jerk_map_01data', 
+'map_jerk_map_01data', 
+'sym_jerk_map_01data', 
+'bypass_jerk_map_01data']
+#EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 CFG = [modelsource.cfg_res_jerk(), 
         modelsource.cfg_map_jerk(), 
         modelsource.cfg_sym_jerk(), 
         modelsource.cfg_bypass_jerk()]
+CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -87,11 +89,15 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred'].get_shape().as_list()[0]
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_pixel_jerk( 
+            outputs, gpu_id=gpu_id)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k == 'pred':
-                pred = outputs[k][:num_to_save]
-                retval[k] = tf.argmax(pred, axis=tf.rank(pred) - 1)
+                pred = outputs[k]
+		shape = pred.get_shape().as_list()
+		pred = tf.reshape(pred, shape[0:3] + [3, shape[3] / 3])
+                retval[k] = tf.argmax(pred, axis=tf.rank(pred) - 1)[:num_to_save]
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
@@ -99,8 +105,16 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
                 retval[k] = outputs[k][:num_to_save]
         else:
             retval[k] = outputs[k]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_per_pixel( 
-            outputs, gpu_id=gpu_id)
+    #filter examples
+    filter_examples = True
+    if filter_examples:
+        thres = 0.5412
+        mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+        mask = tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres))
+        for k in SAVE_TO_GFS:
+            retval[k] = tf.gather(retval[k], tf.where(mask))
+
     return retval
 
 save_params = [{
@@ -148,7 +162,7 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_per_pixel,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_pixel_jerk,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0}, #{'l2_coef' : L2_COEF}
 }] * N_GPUS
@@ -253,7 +267,8 @@ for i, _ in enumerate(save_params):
 for i, _ in enumerate(model_params):
     save_params[i]['exp_id'] = EXP_ID[i]
     load_params[i]['exp_id'] = EXP_ID[i]
-    
+
+    save_params[i]['cache_dir'] = CACHE_DIRS[i]
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
     #loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
