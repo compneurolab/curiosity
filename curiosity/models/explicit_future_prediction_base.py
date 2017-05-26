@@ -228,7 +228,7 @@ class ShortLongFuturePredictionBase:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1]
+            assert time_seen == im_sh[1] - 1
         else:
             assert img_height is not None and img_width is not None
 
@@ -385,7 +385,7 @@ class ShortLongFuturePredictionBase:
                         pos_id = tf.expand_dims(tf.expand_dims(pos_id, 2), 2)
                         segment = tf.tile(tf.expand_dims(tf.cast(tf.equal(
                             pos_id, objects), tf.float32), 4), [1,1,1,1,3])
-                        jerk_map += segment[:,-1] * \
+                        jerk_map += segment[:,-2] * \
                                 tf.expand_dims(tf.expand_dims(jerk, 1), 1)
                         vel_maps += segment[:,:-1] * \
                                 tf.expand_dims(tf.expand_dims(vel[:,:-1], 2), 2)

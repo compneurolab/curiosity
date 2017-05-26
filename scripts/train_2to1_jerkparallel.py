@@ -26,7 +26,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
 NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
 BIN_PATH = '/mnt/fs0/datasets/three_world_dataset/'
@@ -36,16 +36,18 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_bin', 
-'map_jerk_bin', 
-'sym_jerk_bin', 
-'bypass_jerk_bin']
+EXP_ID = ['res_jerk_logistic', 
+'map_jerk_logistic', 
+'sym_jerk_logistic', 
+'bypass_jerk_logistic']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
-CFG = [modelsource.cfg_res_jerk(), 
-        modelsource.cfg_map_jerk(), 
-        modelsource.cfg_sym_jerk(), 
-        modelsource.cfg_bypass_jerk()]
+n_classes = 100
+buckets = 255
+CFG = [modelsource.cfg_res_jerk(n_classes), 
+        modelsource.cfg_map_jerk(n_classes), 
+        modelsource.cfg_sym_jerk(n_classes), 
+        modelsource.cfg_bypass_jerk(n_classes)]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 
 if not os.path.exists(CACHE_DIR):
@@ -89,16 +91,19 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_binary_jerk( 
-            outputs, gpu_id=gpu_id)
+    retval['loss'] = modelsource.discretized_mix_logistic_loss( 
+            outputs, gpu_id=gpu_id, buckets=buckets)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k == 'pred':
                 pred = outputs[k]
 		shape = pred.get_shape().as_list()
 		#pred = tf.reshape(pred, shape[0:3] + [3, shape[3] / 3])
-                retval[k] = tf.cast(tf.argmax(
-                    pred, axis=tf.rank(pred) - 1), tf.uint8)[:num_to_save]
+                #pred = tf.cast(tf.argmax(
+                #    pred, axis=tf.rank(pred) - 1), tf.uint8)[:num_to_save]
+		pred = sample_from_discretized_mix_logistic(pred, n_classes/10, 
+                        buckets=buckets)
+		retval[k] = pred
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
@@ -163,9 +168,10 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_binary_jerk,
+    'loss_per_case_func' : modelsource.discretized_mix_logistic_loss,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
-    'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0}, #{'l2_coef' : L2_COEF}
+    'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0, 'buckets': buckets}, 
+    #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 
 learning_rate_params = [{
@@ -181,7 +187,9 @@ optimizer_params = [{
     'optimizer_class': tf.train.AdamOptimizer,
     'clip': True,
     'gpu_offset': 0,
-    #'momentum': .9
+    #'momentum': .9,
+    'beta1': 0.95,
+    'beta2': 0.9995,
 }] * N_GPUS
 
 validation_params = [{
@@ -277,7 +285,7 @@ for i, _ in enumerate(model_params):
     validation_params[i]['valid0']['targets']['gpu_id'] = i
     #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['cfg'] = CFG[i]
-    #learning_rate_params[i]['learning_rate'] = LRS[i]
+    learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
     'save_params' : save_params,
@@ -290,6 +298,37 @@ params = {
     'validation_params' : validation_params,
     'inter_op_parallelism_threads': 500,
 }
+
+def int_shape(x):
+        return list(map(int, x.get_shape()))
+
+def sample_from_discretized_mix_logistic(l, nr_mix, buckets = 255.0):
+    ls = int_shape(l)
+    xs = ls[:-1] + [3]
+    # unpack parameters
+    logit_probs = l[:, :, :, :nr_mix]
+    l = tf.reshape(l[:, :, :, nr_mix:], xs + [nr_mix * 3])
+    # sample mixture indicator from softmax
+    sel = tf.one_hot(tf.argmax(logit_probs - tf.log(-tf.log(tf.random_uniform(
+        logit_probs.get_shape(), minval=1e-5, maxval=1. - 1e-5))), 3), depth=nr_mix, dtype=tf.float32)
+    sel = tf.reshape(sel, xs[:-1] + [1, nr_mix])
+    # select logistic parameters
+    means = tf.reduce_sum(l[:, :, :, :, :nr_mix] * sel, 4)
+    log_scales = tf.maximum(tf.reduce_sum(
+        l[:, :, :, :, nr_mix:2 * nr_mix] * sel, 4), -7.)
+    coeffs = tf.reduce_sum(tf.nn.tanh(
+        l[:, :, :, :, 2 * nr_mix:3 * nr_mix]) * sel, 4)
+    # sample from logistic & clip to interval
+    # we don't actually round to the nearest 8bit value when sampling
+    u = tf.random_uniform(means.get_shape(), minval=1e-5, maxval=1. - 1e-5)
+    x = means + tf.exp(log_scales) * (tf.log(u) - tf.log(1. - u))
+    x0 = tf.minimum(tf.maximum(x[:, :, :, 0], 0.), buckets) #-1.), 1.)
+    x1 = tf.minimum(tf.maximum(
+        x[:, :, :, 1] + coeffs[:, :, :, 0] * x0, 0.), buckets) #-1.), 1.)
+    x2 = tf.minimum(tf.maximum(
+        x[:, :, :, 2] + coeffs[:, :, :, 1] * x0 + coeffs[:, :, :, 2] * x1, 0.), buckets) #-1.), 1.)
+    return tf.concat([tf.reshape(x0, xs[:-1] + [1]), tf.reshape(x1, xs[:-1] + [1]), tf.reshape(x2, xs[:-1] + [1])], 3)
+
 
 if __name__ == '__main__':
     base.get_params()

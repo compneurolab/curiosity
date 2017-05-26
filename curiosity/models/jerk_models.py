@@ -207,7 +207,7 @@ def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 rinputs[k] = inputs[k]
        # preprocess input data         
         batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
-        #time_seen -= 1
+        time_seen -= 1
         long_len = rinputs['object_data'].get_shape().as_list()[1]
         base_net = fp_base.ShortLongFuturePredictionBase(
                 rinputs, store_jerk = True, 
@@ -365,6 +365,86 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 #	batch_size = pred.get_shape().as_list()[0]
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
+
+def int_shape(x):
+    return list(map(int, x.get_shape()))
+
+def log_sum_exp(x):
+    """ numerically stable log_sum_exp implementation that prevents overflow """
+    axis = len(x.get_shape()) - 1
+    m = tf.reduce_max(x, axis)
+    m2 = tf.reduce_max(x, axis, keep_dims=True)
+    return m + tf.log(tf.reduce_sum(tf.exp(x - m2), axis))
+
+def log_prob_from_logits(x):
+    """ numerically stable log_softmax implementation that prevents overflow """
+    axis = len(x.get_shape()) - 1
+    m = tf.reduce_max(x, axis, keep_dims=True)
+    return x - m - tf.log(tf.reduce_sum(tf.exp(x - m), axis, keep_dims=True))
+
+def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0, 
+        sum_all=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        x = (outputs['jerk_map'] + 1) / 2 * buckets
+        l = outputs['pred']
+        """ log-likelihood for mixture of discretized logistics, assumes the data has been rescaled to [-1,1] interval """
+        xs = int_shape(
+            x)  # true image (i.e. labels) to regress to, e.g. (B,32,32,3)
+        ls = int_shape(l)  # predicted distribution, e.g. (B,32,32,100)
+        # here and below: unpacking the params of the mixture of logistics
+        nr_mix = int(ls[-1] / 10)
+        logit_probs = l[:, :, :, :nr_mix]
+        l = tf.reshape(l[:, :, :, nr_mix:], xs + [nr_mix * 3])
+        means = l[:, :, :, :, :nr_mix]
+        log_scales = tf.maximum(l[:, :, :, :, nr_mix:2 * nr_mix], -7.)
+        coeffs = tf.nn.tanh(l[:, :, :, :, 2 * nr_mix:3 * nr_mix])
+        # here and below: getting the means and adjusting them based on preceding
+        # sub-pixels
+        x = tf.reshape(x, xs + [1]) + tf.zeros(xs + [nr_mix])
+        m2 = tf.reshape(means[:, :, :, 1, :] + coeffs[:, :, :, 0, :]
+                        * x[:, :, :, 0, :], [xs[0], xs[1], xs[2], 1, nr_mix])
+        m3 = tf.reshape(means[:, :, :, 2, :] + coeffs[:, :, :, 1, :] * x[:, :, :, 0, :] +
+                        coeffs[:, :, :, 2, :] * x[:, :, :, 1, :], [xs[0], xs[1], xs[2], 1, nr_mix])
+        means = tf.concat([tf.reshape(means[:, :, :, 0, :], [
+                          xs[0], xs[1], xs[2], 1, nr_mix]), m2, m3], 3)
+        centered_x = x - means
+        inv_stdv = tf.exp(-log_scales)
+        plus_in = inv_stdv * (centered_x + 0.5)#1. / buckets)
+        cdf_plus = tf.nn.sigmoid(plus_in)
+        min_in = inv_stdv * (centered_x - 0.5)#1. / buckets)
+        cdf_min = tf.nn.sigmoid(min_in)
+        # log probability for edge case of 0 (before scaling)
+        log_cdf_plus = plus_in - tf.nn.softplus(plus_in)
+        # log probability for edge case of 255 (before scaling)
+        log_one_minus_cdf_min = -tf.nn.softplus(min_in)
+        cdf_delta = cdf_plus - cdf_min  # probability for all other cases
+        mid_in = inv_stdv * centered_x
+        # log probability in the center of the bin, to be used in extreme cases
+        # (not actually used in our code)
+        log_pdf_mid = mid_in - log_scales - 2. * tf.nn.softplus(mid_in)
+
+        # now select the right output: left edge case, right edge case, normal
+        # case, extremely low prob case (doesn't actually happen for us)
+
+        # this is what we are really doing, but using the robust version below for extreme cases in other applications and to avoid NaN issue with tf.select()
+        # log_probs = tf.select(x < -0.999, log_cdf_plus, tf.select(x > 0.999, log_one_minus_cdf_min, tf.log(cdf_delta)))
+
+        # robust version, that still works if probabilities are below 1e-5 (which never happens in our code)
+        # tensorflow backpropagates through tf.select() by multiplying with zero instead of selecting: this requires use to use some ugly tricks to avoid potential NaNs
+        # the 1e-12 in tf.maximum(cdf_delta, 1e-12) is never actually used as output, it's purely there to get around the tf.select() gradient issue
+        # if the probability on a sub-pixel is below 1e-5, we use an approximation
+        # based on the assumption that the log-density is constant in the bin of
+        # the observed sub-pixel value
+        
+        #log_probs = tf.where(x < -0.999, log_cdf_plus, tf.where(x > 0.999, log_one_minus_cdf_min, tf.where(cdf_delta > 1e-5, tf.log(tf.maximum(cdf_delta, 1e-12)), log_pdf_mid - np.log(buckets / 2))))
+        log_probs = tf.log(tf.maximum(cdf_delta, 1e-12))
+
+        log_probs = tf.reduce_sum(log_probs, 3) + log_prob_from_logits(logit_probs)
+        if sum_all:
+            return [-tf.reduce_mean(log_sum_exp(log_probs))]
+        else:
+            return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
+
 
 def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
@@ -573,7 +653,7 @@ cfg_alt_short_jerk = {
         }
 }
 
-def cfg_bypass_jerk():
+def cfg_bypass_jerk(n_classes):
     return {
         'size_1_before_concat_depth' : 0,
 
@@ -604,12 +684,12 @@ def cfg_bypass_jerk():
                 'bypass' : 0},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
                 'bypass' : 0},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 'bypass' : 0},
         }
 }
 
-def cfg_sym_jerk():
+def cfg_sym_jerk(n_classes):
     return {
         'size_1_before_concat_depth' : 0,
 
@@ -635,12 +715,12 @@ def cfg_sym_jerk():
                 'bypass' : 3},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
                 'bypass' : 2},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 'bypass' : 1},
         }
 }
 
-def cfg_map_jerk():
+def cfg_map_jerk(n_classes):
     return {
         'size_1_before_concat_depth' : 0,
 
@@ -664,11 +744,11 @@ def cfg_map_jerk():
         'deconv' : {
             1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 2}},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes}},
         }
 }
 
-def cfg_res_jerk():
+def cfg_res_jerk(n_classes):
     return {
         'size_1_before_concat_depth' : 0,
 
@@ -684,7 +764,7 @@ def cfg_res_jerk():
         'encode_together' : {
                 1 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 32}},
                 2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64}},
-		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 2}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes}},
                     #, 'bypass' : 0}
         },
         'hidden_depth': 0,
