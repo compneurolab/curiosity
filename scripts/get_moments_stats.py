@@ -15,9 +15,9 @@ dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
-SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/five_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/five_world_dataset/new_tfdata_newobj'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/five_world_dataset/new_tfvaldata_newobj'
+SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/four_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/four_world_dataset/new_tfdata_newobj'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/four_world_dataset/new_tfvaldata_newobj'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks',
         'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2',
         'actions', 'actions2', 'object_data', 'object_data2', 
@@ -344,38 +344,21 @@ def get_reference_ids((file_num, bn)):
 def get_batch_data((file_num, bn), with_non_object_images = True):
         f = my_files[file_num]
         start = time.time()
-        #print('reading objects')
         objects = f['objects1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-        #print(time.time() - start)
-        #print('reading objects2')
         objects2 = f['objects2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-        #print(time.time() - start)
-        if with_non_object_images:
-                #print('reading images')
-                images = f['images1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                #print('reading normals')
-                normals = f['normals1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                #print('reading images2')
-                images2 = f['images2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                #print('reading normals2')
-                normals2 = f['normals2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                #print('reading depths')
-                depths = f['depths1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                #print('reading depths2')
-                depths2 = f['depths2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                #print(time.time() - start)
-                vels = f['velocities1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                vels2 = f['velocities2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                accs = f['accelerations1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                accs2 = f['accelerations2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                jerks = f['jerks1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                jerks2 = f['jerks2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-        #print('little processing')
+        #if with_non_object_images:
+                #images = f['images1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #normals = f['normals1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #images2 = f['images2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #normals2 = f['normals2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #depths = f['depths1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #depths2 = f['depths2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #vels = f['velocities1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #vels2 = f['velocities2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #accs = f['accelerations1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #accs2 = f['accelerations2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #jerks = f['jerks1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #jerks2 = f['jerks2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = [json.loads(act) for act in actions_raw]
         indicators = get_subset_indicators(actions_raw)
@@ -385,19 +368,9 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         object_data, is_object_there, is_object_in_view, object_data2, is_object_in_view2 = get_object_data(worldinfos, objects, objects2, actions_raw, indicators, coordinate_transformations)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
-        to_ret = {'objects' : objects, 'objects2': objects2, 'depths': depths, 'depths2': depths2, 'vels': vels, 'vels2': vels2, 'accs': accs, 'accs2': accs2, 'jerks': jerks, 'jerks2': jerks2,
-                'actions' : actions, 'actions2' : actions2, 'object_data' : object_data, 'object_data2' : object_data2, 
-                'agent_data' : agent_data, 'reference_ids' : reference_ids,
-                'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view,
-                'is_object_in_view2' : is_object_in_view2}
-        if with_non_object_images:
-                to_ret.update({'images' : images, 'normals' : normals, 'images2' : images2, 'normals2' : normals2})
+        to_ret = {'object_data' : object_data, 'object_data2' : object_data2}
         to_ret.update(indicators)
         to_ret = add_jerk(to_ret)
-        for i in range(BATCH_SIZE):
-                for k in to_ret:
-                        assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
-        #print(time.time() - start)
         return to_ret
 
 def add_jerk(data):
@@ -470,40 +443,31 @@ def write_in_thread((file_num, batches, write_path, prefix)):
     if prefix is None:
         prefix = file_num
     # Open writers 
-    output_files = [os.path.join(write_path, attr_name, 
-        str(prefix) + ':' + str(batches[0]) + ':' + str(batches[-1]) + '.tfrecords') for attr_name in ATTRIBUTE_NAMES]
-    if KEEP_EXISTING_FILES:
-        for i, output_file in enumerate(output_files):
-            if os.path.isfile(output_file):
-                print('Skipping file %s' % output_file)
-                return 
-    writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) \
-            for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
+    output_file = os.path.join(write_path, 'stats', str(prefix) + ':' + str(batches[0]) + ':' + str(batches[-1]) + '.pkl')
 
-    for _, batch in enumerate(batches):
+    directory = os.path.dirname(output_file)
+    if not os.path.exists(directory):
+            os.makedirs(directory)
+
+    write_dict = {'object_data': [], 'object_data2': [], 'is_not_teleporting': []}
+    for i, batch in enumerate(batches):
         batch_data_dict = get_batch_data((file_num, batch), with_non_object_images = True)
-        # TODO: Remove unneccessary data
-        #batch_data_dict = remove_frames(batch_data_dict)
-        # Write batch
-        write_stuff(batch_data_dict, writers)
-    # Close writers
-    for writer in writers.values():
-        writer.close()
+        for k in batch_data_dict:
+            if k in ['object_data', 'object_data2', 'is_not_teleporting']:
+                write_dict[k].append(batch_data_dict[k])
+
+        print(str(float(i) / len(batches) * 100.0) + ' %')
+    for k in write_dict:
+        write_dict[k] = np.array(write_dict[k])
+        shape = write_dict[k].shape
+        write_dict[k] = np.reshape(write_dict[k], list([shape[0] * shape[1]]) + list(shape[2:]))
+
+    f = open(output_file, 'w')
+    cPickle.dump(write_dict, f)
+
     return 0
 
 def do_write(all_images = True):
-        if not os.path.exists(NEW_TFRECORD_TRAIN_LOC):
-                os.mkdir(NEW_TFRECORD_TRAIN_LOC)
-        if not os.path.exists(NEW_TFRECORD_VAL_LOC):
-                os.mkdir(NEW_TFRECORD_VAL_LOC)
-
-        for nm in ATTRIBUTE_NAMES:
-                write_dir_train = os.path.join(NEW_TFRECORD_TRAIN_LOC, nm)
-                write_dir_val = os.path.join(NEW_TFRECORD_VAL_LOC, nm)
-                if not os.path.exists(write_dir_train):
-                        os.mkdir(write_dir_train)
-                if not os.path.exists(write_dir_val):
-                        os.mkdir(write_dir_val)
 	my_rng = np.random.RandomState(seed = 0)
         file_count = 0
 	
@@ -512,12 +476,12 @@ def do_write(all_images = True):
         num_batches = 0
         for file_num in range(len(my_files)):
             write_task = []
-            for batch_num in range(0, NUM_BATCHES, 4):
+            for batch_num in range(0, NUM_BATCHES, NUM_BATCHES):
                 if my_rng.rand() > 0.1:
                     write_path = NEW_TFRECORD_TRAIN_LOC
                 else:
                     write_path = NEW_TFRECORD_VAL_LOC
-                write_task.append((file_num, range(batch_num, batch_num + 4), write_path, PREFIX))
+                write_task.append((file_num, range(batch_num, batch_num + NUM_BATCHES), write_path, PREFIX))
                 num_batches += 1
             write_tasks.append(write_task)
 
@@ -528,7 +492,7 @@ def do_write(all_images = True):
             for wt in write_task:
                 write_in_thread(wt)
                 completed += 1 
-                print(str(float(completed) / num_batches) + ' %')
+                print(str(float(completed) / num_batches * 100.0) + ' %')
         print('DONE')
         #for _ in tqdm(p.imap(write_in_thread, write_tasks), desc='batch', total=len(write_tasks)):
         #    pass
