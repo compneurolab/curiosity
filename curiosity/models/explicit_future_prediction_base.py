@@ -337,8 +337,13 @@ class ShortLongFuturePredictionBase:
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
         for desc in ['normals', 'normals2', 'images', 'images2']:
             if desc in inputs_not_normed:
+                print('DAMIAN', inputs_not_normed[desc])
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
+        for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2']:
+            if desc in inputs_not_normed:
+                print('DAMIAN', inputs_not_normed[desc])
+                self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.int32)
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times

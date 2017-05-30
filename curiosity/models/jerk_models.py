@@ -200,7 +200,7 @@ def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = 
         # rescale inputs to be divisible by 8
         rinputs = {}
         for k in inputs:
-            if k in ['depths', 'objects']:
+            if k in ['depths', 'objects', 'jerks']:
                 rinputs[k] = tf.pad(inputs[k], 
                         [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
             else:
@@ -469,14 +469,20 @@ def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
         return [loss]
 
 def softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0, 
-        min_value = -1.0, max_value = 1.0, num_classes=256, **kwargs):
+        min_value = -1.0, max_value = 1.0, num_classes=256, 
+        segmented_jerk=True, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
-        labels = tf.cast(tf.round((outputs['jerk_map'] - min_value) / \
-                (max_value - min_value) * (num_classes - 1)), tf.int32)
+        if segmented_jerk:
+            labels = tf.cast(tf.round((outputs['jerk_map'] - min_value) / \
+                    (max_value - min_value) * (num_classes - 1)), tf.int32)
+        else:
+            labels = tf.cast(outputs['jerks'][:,-1], tf.int32)
         shape = outputs['pred'].get_shape().as_list()
         assert shape[3] / 3 == num_classes
         logits = tf.reshape(outputs['pred'], shape[0:3] + [3, shape[3] / 3])
 
+        print('DAMIAN', labels)
+        print('DAMIAN', logits)
         undersample = False
         if undersample:
             thres = 0.5412
