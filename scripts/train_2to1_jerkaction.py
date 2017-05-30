@@ -19,14 +19,14 @@ VALDATA_PATH = '/mnt/fs1/datasets/five_world_dataset/new_tfvaldata_newobj'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 4
+N_GPUS = 3
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
 NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/five_world_dataset/stats_std.pkl'
 BIN_PATH = '/mnt/fs1/datasets/five_world_dataset/'
@@ -36,18 +36,18 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_detailed4', 
-'map_jerk_detailed4',
-'sym_jerk_detailed4', 
-'bypass_jerk_detailed4']
+EXP_ID = ['wide_bypass_jerk_action', 
+'no_bypass_jerk_action',
+'deep_bypass_jerk_action', 
+'no_experiment_jerk_action']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [modelsource.cfg_res_jerk(n_classes), 
-        modelsource.cfg_map_jerk(n_classes), 
-        modelsource.cfg_sym_jerk(n_classes), 
-        modelsource.cfg_bypass_jerk(n_classes)]
+CFG = [ modelsource.cfg_wide_bypass_jerk_action(n_classes), 
+        modelsource.cfg_no_bypass_jerk_action(n_classes), 
+        modelsource.cfg_deep_bypass_jerk_action(n_classes), 
+        modelsource.cfg_deep_bypass_jerk_action(n_classes)]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 
 if not os.path.exists(CACHE_DIR):
@@ -152,7 +152,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.map_jerk_model,
+    'func' : modelsource.map_jerk_action_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {

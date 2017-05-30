@@ -337,19 +337,33 @@ class ShortLongFuturePredictionBase:
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
         for desc in ['normals', 'normals2', 'images', 'images2']:
             if desc in inputs_not_normed:
-                print('DAMIAN', inputs_not_normed[desc])
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
         for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2']:
             if desc in inputs_not_normed:
-                print('DAMIAN', inputs_not_normed[desc])
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.int32)
+                self.inputs[desc + '_normed'] = tf.cast(inputs_not_normed[desc], 
+                        tf.float32) / 255.
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times
         self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :6]
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
+
+        # create segmented action maps
+        objects = tf.cast(inputs_not_normed['objects'], tf.int32)
+        shape = objects.get_shape().as_list()
+        objects = tf.unstack(objects, axis=len(shape)-1)
+        objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+        forces = self.inputs['actions_no_pos']
+        action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
+        action_id = tf.cast(tf.reshape(tf.tile(action_id, 
+            [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+        actions = tf.cast(tf.equal(objects, action_id), tf.float32)
+        actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+        actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
+        self.inputs['actions_map'] = actions
 
 	if store_jerk:
 		#jerk
