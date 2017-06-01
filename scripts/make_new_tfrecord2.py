@@ -15,11 +15,13 @@ dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
-SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/five_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/five_world_dataset/new_tfdata_newobj'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/five_world_dataset/new_tfvaldata_newobj'
-ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks',
-        'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2',
+SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/six_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_newobj'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_newobj'
+ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks', 
+        'vels_curr', 'accs_curr', 'jerks_curr',
+        'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2', 
+        'vels_curr2', 'accs_curr2', 'jerks_curr2',
         'actions', 'actions2', 'object_data', 'object_data2', 
         'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 
         'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'is_object_in_view2']
@@ -27,7 +29,7 @@ HEIGHT = 128
 WIDTH = 170
 
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 14 + [(9,), (7,), (NUM_OBJECTS_EXPLICIT, 21), (NUM_OBJECTS_EXPLICIT, 21), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 20 + [(9,), (7,), (NUM_OBJECTS_EXPLICIT, 21), (NUM_OBJECTS_EXPLICIT, 21), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
 my_files = [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
@@ -375,6 +377,13 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
                 accs2 = f['accelerations2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 jerks = f['jerks1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 jerks2 = f['jerks2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                # current
+                vels_curr = f['velocities_current1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                vels_curr2 = f['velocities_current2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                accs_curr = f['accelerations_current1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                accs_curr2 = f['accelerations_current2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                jerks_curr = f['jerks_current1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                jerks_curr2 = f['jerks_current2'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         #print('little processing')
         actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = [json.loads(act) for act in actions_raw]
@@ -385,7 +394,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         object_data, is_object_there, is_object_in_view, object_data2, is_object_in_view2 = get_object_data(worldinfos, objects, objects2, actions_raw, indicators, coordinate_transformations)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
-        to_ret = {'objects' : objects, 'objects2': objects2, 'depths': depths, 'depths2': depths2, 'vels': vels, 'vels2': vels2, 'accs': accs, 'accs2': accs2, 'jerks': jerks, 'jerks2': jerks2,
+        to_ret = {'objects' : objects, 'objects2': objects2, 'depths': depths, 'depths2': depths2, 'vels': vels, 'vels2': vels2, 'accs': accs, 'accs2': accs2, 'jerks': jerks, 'jerks2': jerks2, 'vels_curr': vels_curr, 'vels_curr2': vels_curr2, 'accs_curr': accs_curr, 'accs_curr2': accs_curr2, 'jerks_curr': jerks_curr, 'jerks_curr2': jerks_curr2,
                 'actions' : actions, 'actions2' : actions2, 'object_data' : object_data, 'object_data2' : object_data2, 
                 'agent_data' : agent_data, 'reference_ids' : reference_ids,
                 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view,

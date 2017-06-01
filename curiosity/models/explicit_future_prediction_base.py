@@ -339,7 +339,9 @@ class ShortLongFuturePredictionBase:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
-        for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2']:
+        for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
+                'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
+                'accs_curr', 'accs_curr2']:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.int32)
                 self.inputs[desc + '_normed'] = tf.cast(inputs_not_normed[desc], 

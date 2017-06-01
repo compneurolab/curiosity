@@ -381,6 +381,11 @@ def map_jerk_action_model(inputs, cfg = None, time_seen = None,
         pred = encoded_input[-1]
         retval = {'pred' : pred}
         retval.update(base_net.inputs)
+        print('------BYPASSES-------')
+        for bypass_node in bypass_nodes:
+            print(bypass_node)
+        print(len(bypass_nodes))
+        retval['bypasses'] = bypasses
         print('------NETWORK END-----')
         return retval, m.params
 
@@ -917,6 +922,69 @@ def cfg_no_bypass_jerk_action(n_classes):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
                 },
             3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                },
+        }
+}
+
+def cfg_vgg_jerk_action(n_classes):
+    return {
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+        },
+
+        'main_encode_depth': 7,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}}
+        },
+
+        'encode_together_depth' : 5,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    }
+        },
+        'deconv_depth': 4,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 512},
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                },
+            4 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 },
         }
 }

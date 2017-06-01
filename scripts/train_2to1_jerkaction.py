@@ -19,9 +19,9 @@ VALDATA_PATH = '/mnt/fs1/datasets/five_world_dataset/new_tfvaldata_newobj'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 3
+N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 32
+MODEL_BATCH_SIZE = 16
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
@@ -36,7 +36,7 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['wide_bypass_jerk_action', 
+EXP_ID = ['vgg_jerk_action', 
 'no_bypass_jerk_action',
 'deep_bypass_jerk_action', 
 'no_experiment_jerk_action']
@@ -44,18 +44,19 @@ EXP_ID = ['wide_bypass_jerk_action',
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [ modelsource.cfg_wide_bypass_jerk_action(n_classes), 
+CFG = [ modelsource.cfg_vgg_jerk_action(n_classes), 
         modelsource.cfg_no_bypass_jerk_action(n_classes), 
         modelsource.cfg_deep_bypass_jerk_action(n_classes), 
         modelsource.cfg_deep_bypass_jerk_action(n_classes)]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
+SEED = 0
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
 
 def table_norot_grab_func(path):
     all_filenames = os.listdir(path)
-    rng = np.random.RandomState(seed=0)
+    rng = np.random.RandomState(seed=SEED)
     rng.shuffle(all_filenames)
     print('got to file grabber!')
     return [os.path.join(path, fn) for fn in all_filenames \
@@ -210,7 +211,7 @@ validation_params = [{
             'min_len' : MIN_LEN,
             'filters' : ['is_not_teleporting', 'is_object_in_view'],
             'shuffle' : True,
-            'shuffle_seed' : 0,
+            'shuffle_seed' : SEED,
             'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
             'file_grab_func' : table_norot_grab_func,
@@ -220,7 +221,7 @@ validation_params = [{
         'queue_params' : {
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
-            'seed' : 0,
+            'seed' : SEED,
             'capacity' : MODEL_BATCH_SIZE * 20,
             'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
@@ -251,7 +252,7 @@ train_params =  {
         'min_len' : MIN_LEN,
         'filters' : ['is_not_teleporting', 'is_object_in_view'],
         'shuffle' : True,
-        'shuffle_seed' : 0,
+        'shuffle_seed' : SEED,
         'n_threads' : 4,
         'batch_size' : DATA_BATCH_SIZE,
         'file_grab_func' : table_norot_grab_func,
@@ -262,7 +263,7 @@ train_params =  {
     'queue_params' : {
         'queue_type' : 'random',
         'batch_size' : MODEL_BATCH_SIZE,
-        'seed' : 0,
+        'seed' : SEED,
         'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
     },
     'num_steps' : float('inf'),
