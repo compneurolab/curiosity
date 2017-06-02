@@ -9,13 +9,78 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 import numpy as np
 import cPickle
 
+def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
+        reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False, do_print = True, return_bypass=False):
+    m.output = input_node
+    deconv_nodes = [input_node]
+    # deconvolving
+    deconv_depth = cfg[desc + '_depth']
+    print('deconv depth: %d' % deconv_depth)
+    cfs0 = None
 
-def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False):
+    if bypass_nodes is None:
+        bypass_nodes = [m.output]
+
+    for i in range(1, deconv_depth + 1):
+        with tf.variable_scope(desc + str(i)) as scope:
+            if reuse_weights:
+                scope.reuse_variables()
+
+            bypass = cfg[desc][i].get('bypass')
+            if bypass:
+                if type(bypass) == list:
+                    bypass_node = [bypass_nodes[bp] for bp in bypass]
+                else:
+                    bypass_node = bypass_nodes[bypass]
+                m.add_bypass(bypass_node)
+
+            bn = cfg[desc][i]['deconv'].get('batch_normalize')
+            if bn:
+                norm_it = bn
+            else:
+                norm_it = batch_normalize
+
+            with tf.contrib.framework.arg_scope([m.deconv], 
+                    init='xavier', stddev=.01, bias=0, batch_normalize = norm_it):
+                cfs = cfg[desc][i]['deconv']['filter_size']
+                cfs0 = cfs
+                nf = cfg[desc][i]['deconv']['num_filters']
+                cs = cfg[desc][i]['deconv']['stride']
+                if 'output_shape' in cfg[desc][i]['deconv']:
+                    out_shape = cfg[desc][i]['deconv']['output_shape']
+                else:
+                    out_shape = None
+                if do_print:
+                    print('deconv in: ', m.output)
+                if no_nonlinearity_end and i == deconv_depth:
+                    m.deconv(nf, cfs, cs, activation = None, 
+                            fixed_output_shape=out_shape)
+                else:
+                    my_activation = cfg[desc][i].get('nonlinearity')
+                    if my_activation is None:
+                        my_activation = 'relu'
+                    m.deconv(nf, cfs, cs, activation = my_activation, 
+                            fixed_output_shape=out_shape)
+                    if do_print:
+                        print('deconv out:', m.output)
+                    #TODO add print function
+                    pool = cfg[desc][i].get('pool')
+                    if pool:
+                        pfs = pool['size']
+                        ps = pool['stride']
+                        m.pool(pfs, ps)
+                    deconv_nodes.append(m.output)
+                    bypass_nodes.append(m.output)
+    if return_bypass:
+        return [deconv_nodes, bypass_nodes]
+    return deconv_nodes
+
+def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False, do_print=True, return_bypass=False):
         m.output = input_node
         encode_nodes = [input_node]
         #encoding
         encode_depth = cfg[desc + '_depth']
-        print('Encode depth: %d' % encode_depth)
+        print('conv depth: %d' % encode_depth)
         cfs0 = None
 
         if bypass_nodes is None:
@@ -48,8 +113,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                             cfs0 = cfs
                             nf = cfg[desc][i]['conv']['num_filters']
                             cs = cfg[desc][i]['conv']['stride']
-                            print('conv shape to shape')
-                            print(m.output)
+                            if do_print:
+                                print('conv in', m.output)
                             if no_nonlinearity_end and i == encode_depth:
                                 m.conv(nf, cfs, cs, activation = None)
                             else:
@@ -57,7 +122,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                                 if my_activation is None:
                                         my_activation = 'relu'
                                 m.conv(nf, cfs, cs, activation = my_activation)
-                            print(m.output)
+                            if do_print:
+                                print('conv out', m.output)
         #TODO add print function
                         pool = cfg[desc][i].get('pool')
                         if pool:
@@ -66,6 +132,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                             m.pool(pfs, ps)
                         encode_nodes.append(m.output)
                         bypass_nodes.append(m.output)
+        if return_bypass:
+            return [encode_nodes, bypass_nodes]
         return encode_nodes
 
 
@@ -147,6 +215,452 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
         retval.update(base_net.inputs)
         return retval, m.params
 
+def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
+        stats_file = None, obj_pic_dims = None, scale_down_height = None,
+        scale_down_width = None, add_depth_gaussian = False, include_pose = False,
+        num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
+    with tf.device('/gpu:%d' % gpu_id):
+        # rescale inputs to be divisible by 8
+        rinputs = {}
+        for k in inputs:
+            if k in ['depths', 'objects', 'vels', 'accs', 'jerks', 
+                    'vels_curr', 'accs_curr', 'actions_map']:
+                rinputs[k] = tf.pad(inputs[k],
+                        [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
+                # RESIZING IMAGES
+                rinputs[k] = tf.unstack(rinputs[k], axis=1)
+                for i, _ in enumerate(rinputs[k]):
+                    rinputs[k][i] = tf.image.resize_images(rinputs[k][i], [64, 88])
+                rinputs[k] = tf.stack(rinputs[k], axis=1)
+            else:
+                rinputs[k] = inputs[k]
+       # preprocess input data
+        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
+        time_seen -= 1
+        long_len = rinputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(
+                rinputs, store_jerk = True,
+                normalization_method = normalization_method,
+                time_seen = time_seen, stats_file = stats_file,
+                scale_down_height = scale_down_height,
+                scale_down_width = scale_down_width,
+                add_depth_gaussian = add_depth_gaussian)
+        inputs = base_net.inputs
+
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
+        # encode per time step
+        main_attributes = ['depths']
+        main_input_per_time = [tf.concat([inputs[nm][:, t] \
+                for nm in main_attributes], axis = 3) for t in range(time_seen)]
+
+        # initial bypass
+        bypass_nodes = [inputs['depths'][:, time_seen-1]]
+
+        # conditioning
+        if 'use_cond' in cfg:
+            use_cond = cfg['use_cond']
+        else:
+            use_cond = False
+        if use_cond:
+            print('Using CONDITIONING')
+            cond_attributes = ['actions_map']
+            if 'cond_scale_factor' in cfg:
+                scale_factor = cfg['cond_scale_factor']
+            else:
+                scale_factor = 1
+            for att in cond_attributes:
+                shape = inputs[att].get_shape().as_list()
+                inputs[att] = tf.unstack(inputs[att], axis=1)
+                for t, _ in enumerate(inputs[att]):
+                    inputs[att][t] = tf.image.resize_images(inputs[att][t],
+                            [shape[2]/scale_factor, shape[3]/scale_factor],
+                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+                inputs[att] = tf.stack(inputs[att], axis=1)
+            cond_input_per_time = [tf.concat([inputs[nm][:, t] \
+                    for nm in cond_attributes], axis = 3) for t in range(time_seen)]
+
+            encoded_input_cond = []
+            reuse_weights = False
+            for t in range(time_seen):
+                enc, bypass_nodes = feedforward_conv_loop(
+                        cond_input_per_time[t], m, cfg, desc = 'cond_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                encoded_input_cond.append(enc[-1])
+                reuse_weights = True
+
+        # main
+        encoded_input_main = []
+        reuse_weights = False
+        for t in range(time_seen):
+                enc, bypass_nodes = feedforward_conv_loop(
+                        main_input_per_time[t], m, cfg, desc = 'main_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                encoded_input_main.append(enc[-1])
+                reuse_weights = True
+
+        # concat main and cond
+        if use_cond:
+            reuse_weights = False
+            for t in range(time_seen):
+                enc = tf.concat([encoded_input_main[t], encoded_input_cond[t]], axis=3)
+            	enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                encoded_input_main[t] = enc[-1]
+                reuse_weights = True
+
+        # calculate 1st moments
+        moments = []
+        first_moments = []
+        reuse_weights = False
+        for t in range(time_seen-1):
+            if cfg['combine_moments'] == 'minus':
+                print('Using MINUS')
+                enc = encoded_input_main[t+1] - encoded_input_main[t]
+            elif cfg['combine_moments'] == 'concat':
+                print('Using CONCAT')
+                enc = tf.concat([encoded_input_main[t+1], encoded_input_main[t]], axis=3)
+                enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'combine_moments_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                enc = enc[-1]
+            enc, bypass_nodes = feedforward_conv_loop(
+                    enc, m, cfg, desc = 'moments_encode',
+                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                    batch_normalize = False, no_nonlinearity_end = False,
+                    do_print=(not reuse_weights), return_bypass = True)
+            first_moments.append(enc[-1])
+            reuse_weights = True
+        moments.append(first_moments)
+
+        # calculate 2nd moments while reusing weights
+        second_moments = []
+        reuse_weights = True
+        for t in range(time_seen-2):
+            if cfg['combine_moments'] == 'minus':
+                print('Using MINUS')
+                enc = moments[0][t+1] - moments[0][t]
+            elif cfg['combine_moments'] == 'concat':
+                print('Using CONCAT')
+                enc = tf.concat([moments[0][t+1], moments[0][t]], axis=3)
+                enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'combine_moments_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                enc = enc[-1]
+            else:
+                raise KeyError('Unknown combine_moments')
+            enc, bypass_nodes = feedforward_conv_loop(
+                    enc, m, cfg, desc = 'moments_encode',
+                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                    batch_normalize = False, no_nonlinearity_end = False,
+                    do_print=(not reuse_weights), return_bypass = True)
+            second_moments.append(enc[-1])
+            reuse_weights = True
+        moments.append(second_moments)
+
+        # predict next moments via residuals (delta moments)
+        next_moments = []
+        delta_moments = []
+        reuse_weights = False
+        for moment in moments:
+            next_moment = []
+            delta_moment = []
+            for t, _ in enumerate(moment):
+                dm, bypass_nodes = feedforward_conv_loop(
+                        moment[t], m, cfg, desc = 'delta_moments_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                if cfg['combine_delta'] == 'plus':
+                    print('Using PLUS')
+                    nm = moment[t] + dm[-1]
+                elif cfg['combine_delta'] == 'concat':
+                    print('Using CONCAT')
+                    nm = tf.concat([moment[t], dm[-1]], axis=3)
+                    nm, bypass_nodes = feedforward_conv_loop(
+                        nm, m, cfg, desc = 'combine_delta_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                    nm = nm[-1]
+                else:
+                    raise KeyError('Unknown combine_delta')
+                reuse_weights = True
+                delta_moment.append(dm[-1])
+                next_moment.append(nm)
+            next_moments.append(next_moment)
+            delta_moments.append(delta_moment)
+
+        # encode zero delta moments (pos -> vel)
+        delta_moment = []
+        reuse_weights = True
+        for t, _ in enumerate(encoded_input_main):
+            dm, bypass_nodes = feedforward_conv_loop(
+		    encoded_input_main[t], m, cfg, desc = 'delta_moments_encode',
+		    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+		    batch_normalize = False, no_nonlinearity_end = False,
+		    do_print=(not reuse_weights), return_bypass = True)
+            reuse_weights = True
+            delta_moment.append(dm[-1])
+        delta_moments.append(delta_moment)
+
+        num_deconv = cfg.get('deconv_depth')
+        reuse_weights = False
+        if num_deconv:
+            for moment in moments:
+                for t, _ in enumerate(moment):
+                    enc, bypass_nodes = deconv_loop(
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
+                    moment[t] = enc[-1]
+                    reuse_weights = True
+            for moment in next_moments:
+                for t, _ in enumerate(moment):
+                    enc, bypass_nodes = deconv_loop(
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
+                    moment[t] = enc[-1]
+                    reuse_weights = True
+            for moment in delta_moments:
+                for t, _ in enumerate(moment):
+                    enc, bypass_nodes = deconv_loop(
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
+                    moment[t] = enc[-1]
+                    reuse_weights = True
+        retval = {
+                'pred': delta_moments[1][0],
+                'pred_vel_1': moments[0][0],
+                'pred_next_vel_1': next_moments[0][0],
+                'pred_next_vel_2': next_moments[0][1],
+                'bypasses': bypass_nodes,
+                'moments': moments,
+                'delta_moments': delta_moments,
+                'next_moments': next_moments
+                }
+        retval.update(base_net.inputs)
+        #print('------BYPASSES-------')
+        #for bypass_node in bypass_nodes:
+        #    print(bypass_node)
+        #print(len(bypass_nodes))
+        print('------NETWORK END-----')
+        return retval, m.params
+
+def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None,
+        stats_file = None, obj_pic_dims = None, scale_down_height = None,
+        scale_down_width = None, add_depth_gaussian = False, include_pose = False,
+        num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
+    with tf.device('/gpu:%d' % gpu_id):
+        # rescale inputs to be divisible by 8
+        rinputs = {}
+        for k in inputs:
+            if k in ['depths', 'objects', 'jerks']:
+                rinputs[k] = tf.pad(inputs[k],
+                        [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
+            else:
+                rinputs[k] = inputs[k]
+       # preprocess input data
+        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
+        time_seen -= 1
+        long_len = rinputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(
+                rinputs, store_jerk = True,
+                normalization_method = normalization_method,
+                time_seen = time_seen, stats_file = stats_file,
+                scale_down_height = scale_down_height,
+                scale_down_width = scale_down_width,
+                add_depth_gaussian = add_depth_gaussian)
+        inputs = base_net.inputs
+
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
+        # encode per time step
+        size_1_attributes = ['depths']
+        size_1_input_per_time = [tf.concat([inputs[nm][:, t] \
+                for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+        encoded_input = []
+        bypass_nodes = []
+        reuse_weights = False
+        do_print = True
+        for t in range(time_seen):
+                enc, bypass_nodes = feedforward_conv_loop(
+                        size_1_input_per_time[t], m, cfg, desc = 'encode',
+                        bypass_nodes = None, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=do_print, return_bypass = True)
+                encoded_input.append(enc[-1])
+                do_print = False
+                reuse_weights = True
+        # encode across time
+        num_encode_together = cfg.get('encode_together_depth')
+        if num_encode_together:
+                print('Encoding across time')
+                together_input = tf.concat(encoded_input, axis = 3)
+                encoded_input, bypass_nodes = feedforward_conv_loop(
+                        together_input, m, cfg, desc = 'encode_together',
+                        bypass_nodes = bypass_nodes, reuse_weights = False,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print = True, return_bypass = True)
+                encoded_input = encoded_input[-1:]
+        # decode
+        num_deconv = cfg.get('deconv_depth')
+        if num_deconv:
+            encoded_input, bypass_nodes = deconv_loop(
+                    encoded_input[-1], m, cfg, desc='deconv',
+                    bypass_nodes = bypass_nodes, reuse_weights = False,
+                    batch_normalize = False, no_nonlinearity_end = False,
+                    do_print = True, return_bypass = True)
+            encoded_input = encoded_input[-1:]
+        # return prediction output
+        pred = encoded_input[-1]
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        print('------NETWORK END-----')
+        return retval, m.params
+
+def map_jerk_action_model(inputs, cfg = None, time_seen = None, 
+        normalization_method = None, 
+        stats_file = None, obj_pic_dims = None, scale_down_height = None, 
+        scale_down_width = None, add_depth_gaussian = False, include_pose = False, 
+        num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
+    with tf.device('/gpu:%d' % gpu_id):
+        # rescale inputs to be divisible by 8
+        rinputs = {}
+        for k in inputs:
+            if k in ['depths', 'objects', 'jerks', 'actions_map']:
+                rinputs[k] = tf.pad(inputs[k], 
+                        [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
+            else:
+                rinputs[k] = inputs[k]
+       # preprocess input data         
+        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
+        time_seen -= 1
+        long_len = rinputs['object_data'].get_shape().as_list()[1]
+        base_net = fp_base.ShortLongFuturePredictionBase(
+                rinputs, store_jerk = True, 
+                normalization_method = normalization_method,
+                time_seen = time_seen, stats_file = stats_file, 
+                scale_down_height = scale_down_height, 
+                scale_down_width = scale_down_width, 
+                add_depth_gaussian = add_depth_gaussian)
+        inputs = base_net.inputs
+
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
+        # encode per time step
+        main_attributes = ['depths']
+        main_input_per_time = [tf.concat([inputs[nm][:, t] \
+                for nm in main_attributes], axis = 3) for t in range(time_seen)]
+
+        cond_attributes = ['actions_map']
+        if 'cond_scale_factor' in cfg:
+            scale_factor = cfg['cond_scale_factor']
+        else:
+            scale_factor = 1
+        for att in cond_attributes:
+            shape = inputs[att].get_shape().as_list()
+            inputs[att] = tf.unstack(inputs[att], axis=1)
+            for t, _ in enumerate(inputs[att]):
+                inputs[att][t] = tf.image.resize_images(inputs[att][t],
+                        [shape[2]/scale_factor, shape[3]/scale_factor],
+                        method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            inputs[att] = tf.stack(inputs[att], axis=1)
+        cond_input_per_time = [tf.concat([inputs[nm][:, t] \
+                for nm in cond_attributes], axis = 3) for t in range(time_seen)]
+
+        encoded_input_cond = []
+        bypass_nodes = [inputs['depths'][:, time_seen-1]]
+        reuse_weights = False
+        do_print = True
+        for t in range(time_seen):
+                # size 1
+                enc, bypass_nodes = feedforward_conv_loop(
+                        cond_input_per_time[t], m, cfg, desc = 'cond_encode', 
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights, 
+                        batch_normalize = False, no_nonlinearity_end = False, 
+                        do_print=do_print, return_bypass = True)
+                encoded_input_cond.append(enc[-1])
+                reuse_weights = True
+        	do_print = False
+        
+        # size 2
+        encoded_input_main = []
+        reuse_weights = False
+        do_print = True
+        for t in range(time_seen):
+                enc, bypass_nodes = feedforward_conv_loop(
+                        main_input_per_time[t], m, cfg, desc = 'main_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=do_print, return_bypass = True)
+                encoded_input_main.append(enc[-1])
+                do_print = False
+                reuse_weights = True
+        # concat and encode per time
+        encoded_input = []
+        reuse_weights = False
+        do_print = True
+        for t in range(time_seen):
+            enc = tf.concat([encoded_input_main[t], encoded_input_cond[t]], axis=3)
+            enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=do_print, return_bypass = True)
+            encoded_input.append(enc[-1])
+            do_print = False
+            reuse_weights = True
+        # encode across time
+        num_encode_together = cfg.get('encode_together_depth')
+        if num_encode_together:
+                print('Encoding across time')
+                together_input = tf.concat(encoded_input, axis = 3)
+                encoded_input, bypass_nodes = feedforward_conv_loop(
+                        together_input, m, cfg, desc = 'encode_together', 
+                        bypass_nodes = bypass_nodes, reuse_weights = False, 
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print = True, return_bypass = True)
+                encoded_input = encoded_input[-1:]
+        # decode
+        num_deconv = cfg.get('deconv_depth')
+        if num_deconv:
+            encoded_input, bypass_nodes = deconv_loop(
+                    encoded_input[-1], m, cfg, desc='deconv', 
+                    bypass_nodes = bypass_nodes, reuse_weights = False, 
+                    batch_normalize = False, no_nonlinearity_end = False,
+                    do_print = True, return_bypass = True)
+            encoded_input = encoded_input[-1:]
+        # return prediction output
+        pred = encoded_input[-1]
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        print('------BYPASSES-------')
+        for bypass_node in bypass_nodes:
+            print(bypass_node)
+        print(len(bypass_nodes))
+        retval['bypasses'] = bypasses
+        print('------NETWORK END-----')
+        return retval, m.params
 
 
 
@@ -310,9 +824,257 @@ def discretized_loss(outputs, num_classes = 40, min_value = -.5, max_value = .5)
 	cross_ent = tf.nn.softmax_cross_entropy_with_logits(labels = disc_jerk, logits = pred)
 	return tf.reduce_mean(cross_ent)
 
+def int_shape(x):
+    return list(map(int, x.get_shape()))
+
+def log_sum_exp(x):
+    """ numerically stable log_sum_exp implementation that prevents overflow """
+    axis = len(x.get_shape()) - 1
+    m = tf.reduce_max(x, axis)
+    m2 = tf.reduce_max(x, axis, keep_dims=True)
+    return m + tf.log(tf.reduce_sum(tf.exp(x - m2), axis))
+
+def log_prob_from_logits(x):
+    """ numerically stable log_softmax implementation that prevents overflow """
+    axis = len(x.get_shape()) - 1
+    m = tf.reduce_max(x, axis, keep_dims=True)
+    return x - m - tf.log(tf.reduce_sum(tf.exp(x - m), axis, keep_dims=True))
+
+def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0, 
+        sum_all=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        x = (outputs['jerk_map'] + 1) / 2 * buckets
+        l = outputs['pred']
+        """ log-likelihood for mixture of discretized logistics, assumes the data has been rescaled to [-1,1] interval """
+        xs = int_shape(
+            x)  # true image (i.e. labels) to regress to, e.g. (B,32,32,3)
+        ls = int_shape(l)  # predicted distribution, e.g. (B,32,32,100)
+        # here and below: unpacking the params of the mixture of logistics
+        nr_mix = int(ls[-1] / 10)
+        logit_probs = l[:, :, :, :nr_mix]
+        l = tf.reshape(l[:, :, :, nr_mix:], xs + [nr_mix * 3])
+        means = l[:, :, :, :, :nr_mix]
+        log_scales = tf.maximum(l[:, :, :, :, nr_mix:2 * nr_mix], -7.)
+        coeffs = tf.nn.tanh(l[:, :, :, :, 2 * nr_mix:3 * nr_mix])
+        # here and below: getting the means and adjusting them based on preceding
+        # sub-pixels
+        x = tf.reshape(x, xs + [1]) + tf.zeros(xs + [nr_mix])
+        m2 = tf.reshape(means[:, :, :, 1, :] + coeffs[:, :, :, 0, :]
+                        * x[:, :, :, 0, :], [xs[0], xs[1], xs[2], 1, nr_mix])
+        m3 = tf.reshape(means[:, :, :, 2, :] + coeffs[:, :, :, 1, :] * x[:, :, :, 0, :] +
+                        coeffs[:, :, :, 2, :] * x[:, :, :, 1, :], [xs[0], xs[1], xs[2], 1, nr_mix])
+        means = tf.concat([tf.reshape(means[:, :, :, 0, :], [
+                          xs[0], xs[1], xs[2], 1, nr_mix]), m2, m3], 3)
+        centered_x = x - means
+        inv_stdv = tf.exp(-log_scales)
+        plus_in = inv_stdv * (centered_x + 0.5)#1. / buckets)
+        cdf_plus = tf.nn.sigmoid(plus_in)
+        min_in = inv_stdv * (centered_x - 0.5)#1. / buckets)
+        cdf_min = tf.nn.sigmoid(min_in)
+        # log probability for edge case of 0 (before scaling)
+        log_cdf_plus = plus_in - tf.nn.softplus(plus_in)
+        # log probability for edge case of 255 (before scaling)
+        log_one_minus_cdf_min = -tf.nn.softplus(min_in)
+        cdf_delta = cdf_plus - cdf_min  # probability for all other cases
+        mid_in = inv_stdv * centered_x
+        # log probability in the center of the bin, to be used in extreme cases
+        # (not actually used in our code)
+        log_pdf_mid = mid_in - log_scales - 2. * tf.nn.softplus(mid_in)
+
+        # now select the right output: left edge case, right edge case, normal
+        # case, extremely low prob case (doesn't actually happen for us)
+
+        # this is what we are really doing, but using the robust version below for extreme cases in other applications and to avoid NaN issue with tf.select()
+        # log_probs = tf.select(x < -0.999, log_cdf_plus, tf.select(x > 0.999, log_one_minus_cdf_min, tf.log(cdf_delta)))
+
+        # robust version, that still works if probabilities are below 1e-5 (which never happens in our code)
+        # tensorflow backpropagates through tf.select() by multiplying with zero instead of selecting: this requires use to use some ugly tricks to avoid potential NaNs
+        # the 1e-12 in tf.maximum(cdf_delta, 1e-12) is never actually used as output, it's purely there to get around the tf.select() gradient issue
+        # if the probability on a sub-pixel is below 1e-5, we use an approximation
+        # based on the assumption that the log-density is constant in the bin of
+        # the observed sub-pixel value
+        
+        #log_probs = tf.where(x < -0.999, log_cdf_plus, tf.where(x > 0.999, log_one_minus_cdf_min, tf.where(cdf_delta > 1e-5, tf.log(tf.maximum(cdf_delta, 1e-12)), log_pdf_mid - np.log(buckets / 2))))
+        log_probs = tf.log(tf.maximum(cdf_delta, 1e-12))
+
+        log_probs = tf.reduce_sum(log_probs, 3) + log_prob_from_logits(logit_probs)
+        if sum_all:
+            return [-tf.reduce_mean(log_sum_exp(log_probs))]
+        else:
+            return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
+
+
+def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+	labels = tf.cast(tf.not_equal(
+                tf.norm(outputs['jerk_map'], ord='euclidean', axis=3), 0), tf.int32)
+	shape = outputs['pred'].get_shape().as_list()
+	assert shape[3] == 2
+	logits = outputs['pred']
+
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        return [loss]
+
+def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
+        min_value = -1.0, max_value = 1.0, num_classes=256,
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+        shape = outputs['pred'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes
+
+        losses = []
+        # next moment losses
+        logits = outputs['next_moments'][0][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = outputs['vels'][:,2]
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        # current moments losses
+        logits = outputs['moments'][0][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = outputs['vels_curr'][:,1]
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        assert len(losses) == 2, ('loss length: %d' % len(losses))
+        losses = tf.stack(losses)
+        return [tf.reduce_mean(losses)]
+
+def multi_moment_softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0,
+        min_value = -1.0, max_value = 1.0, num_classes=256, use_pos_to_vel = True, 
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+        shape = outputs['pred'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes 
+        
+        losses = []
+        # delta moment losses
+        moments_labels = ['accs', 'jerks']
+        for i, moment in enumerate(outputs['delta_moments'][0:2]):
+            for t, _ in enumerate(moment):
+                logits = moment[t]
+                logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+                labels = outputs[moments_labels[i]][:,t-2+i]
+                loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=labels, logits=logits) * mask)
+                losses.append(loss)
+        assert len(losses) == 3, ('loss length: %d' % len(losses))
+        # next moment losses
+        moments_labels = ['vels', 'accs']
+        for i, moment in enumerate(outputs['next_moments'][0:2]):
+            for t, _ in enumerate(moment):
+                logits = moment[t]
+                logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+                labels = outputs[moments_labels[i]][:,t-2+i]
+                loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=labels, logits=logits) * mask)
+                losses.append(loss)
+        assert len(losses) == 6, ('loss length: %d' % len(losses))
+        # current moments losses
+        moments_labels = ['vels_curr', 'accs_curr']
+        for i, moment in enumerate(outputs['moments'][0:2]):
+            for t, _ in enumerate(moment):
+                logits = moment[t]
+                logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+                labels = outputs[moments_labels[i]][:,t+1+i]
+                loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=labels, logits=logits) * mask)
+                losses.append(loss)
+        assert len(losses) == 9, ('loss length: %d' % len(losses))
+        # delta moment losses (pos -> vel)
+        if use_pos_to_vel:
+            moments_labels = ['vels']
+            moment = outputs['delta_moments'][2]
+            for t, _ in enumerate(moment):
+                logits = moment[t]
+                logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+                labels = outputs[moments_labels[0]][:,t+1]
+                loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=labels, logits=logits) * mask)
+                losses.append(loss)
+            assert len(losses) == 12, ('loss length: %d' % len(losses))
+        losses = tf.stack(losses)
+        return [tf.reduce_mean(losses)]
+
+def softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0, 
+        min_value = -1.0, max_value = 1.0, num_classes=256, 
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        if segmented_jerk:
+            labels = tf.cast(tf.round((outputs['jerk_map'] - min_value) / \
+                    (max_value - min_value) * (num_classes - 1)), tf.int32)
+        else:
+            labels = tf.cast(outputs['jerks'][:,-1], tf.int32)
+        shape = outputs['pred'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes
+        logits = tf.reshape(outputs['pred'], shape[0:3] + [3, shape[3] / 3])
+
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask) 
+        return [loss]
+
+def softmax_cross_entropy_loss_per_pixel(outputs, gpu_id = 0, eps = 0.01, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        labels = tf.cast(outputs['depths_raw'][:,-1,:,:,0], tf.int32) # only predict the coarsest channel
+        logits = outputs['pred']
+        weight = tf.abs(outputs['jerk_map']) + eps
+
+        undersample = False
+        if undersample:
+            mask = tf.norm(outputs['jerk'], ord='euclidean', axis=1)
+            mask = tf.cast(tf.greater(mask, 2.473), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+
+        loss = tf.reduce_mean(tf.expand_dims(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=labels, logits=logits), axis=3) * weight * mask)
+        return [loss]
+
 def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file, 
         gpu_id = 0, clip_weight=None, **kwargs):
-#    with tf.device('/gpu:%d' % gpu_id):
+    with tf.device('/gpu:%d' % gpu_id):
         gt = outputs['jerk']
 	print(bin_data_file)
         # bin ground truth into n-bins
@@ -343,7 +1105,7 @@ def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file,
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
                 labels=labels, logits=pred)
-	return tf.reduce_mean(loss)
+        return tf.reduce_mean(loss)
 
 def parallel_reduce_mean(losses, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
@@ -499,6 +1261,484 @@ cfg_alt_short_jerk = {
                 2 : {'num_features' : 250, 'dropout' : .75},
                 3 : {'num_features' : 3, 'activation' : 'identity'}
         }
+}
+
+def cfg_deep_bypass_jerk_action(n_classes):
+    return {
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}
+                    },
+        },
+
+        'main_encode_depth': 3,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
+                    'bypass' : 0},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                    'bypass' : 0},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32},
+                    'bypass' : 0},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32},
+                    'bypass' : 0},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 12,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                3 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                4 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                5 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                6 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                7 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                8 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                9 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                10: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                11: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                12: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    'bypass' : 0},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                'bypass' : 0},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
+                'bypass' : 0},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                'bypass' : 0},
+        }
+}
+
+def cfg_no_bypass_jerk_action(n_classes):
+    return {
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}
+                    },
+        },
+
+        'main_encode_depth': 3,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                    },
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32},
+                    },
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 12,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                3 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                4 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                5 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                6 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                7 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                8 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                9 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                10: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                11: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                12: {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64},
+                    },
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                },
+        }
+}
+
+def cfg_mom_concat(n_classes, use_cond=False, method='sign'):
+    return {
+        'use_cond': use_cond,
+        # ONLY USED IF use_cond = True!!!
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+        },
+
+        # Encoding the inputs
+        'main_encode_depth': 8,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+        },
+
+        # ONLY USED IF use_cond = True!!!
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    #'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}
+                    }
+        },
+
+        # Calculate moments
+        'combine_moments': 'minus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_moments is 'concat'
+        'combine_moments_encode_depth' : 1,
+        'combine_moments_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 512},
+                    }
+        },
+        'moments_encode_depth' : 5,
+        'moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    }
+        },
+
+        # Predict next moments
+        'delta_moments_encode_depth' : 5,
+        'delta_moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    }
+        },
+        'combine_delta': 'plus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_delta is 'concat'
+        'combine_delta_encode_depth' : 1,
+        'combine_delta_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 512},
+                    }
+        },
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 512},
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                },
+            #4 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+            #    },
+        }
+}
+
+def cfg_vgg_jerk_action(n_classes):
+    return {
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+        },
+
+        'main_encode_depth': 7,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    },
+                7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}}
+        },
+
+        'encode_together_depth' : 5,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
+                    }
+        },
+        'deconv_depth': 4,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 512},
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                },
+            4 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                },
+        }
+}
+
+def cfg_wide_bypass_jerk_action(n_classes):
+    return {
+        'cond_scale_factor': 8,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}
+                    },
+        },
+
+        'main_encode_depth': 3,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                    'bypass' : 0},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                    'bypass' : 0},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_depth': 2,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                    'bypass' : 0},
+                #3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                #    'bypass' : 0},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 2,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256},
+                    'bypass' : 0},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256},
+                    'bypass' : 0},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                'bypass' : 0},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                'bypass' : 0},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                'bypass' : 0},
+        }
+}
+
+def cfg_bypass_jerk(n_classes):
+    return {
+        'size_1_before_concat_depth' : 0,
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                    'bypass' : 0},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                    'bypass' : 0},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 2,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 128},
+                    'bypass' : 0},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 128},
+                    'bypass' : 0},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                'bypass' : 0},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                'bypass' : 0},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                'bypass' : 0},
+        }
+}
+
+def cfg_sym_jerk(n_classes):
+    return {
+        'size_1_before_concat_depth' : 0,
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128}},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 2,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256}},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}, 
+                'bypass' : 3},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256},
+                'bypass' : 2},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                'bypass' : 1},
+        }
+}
+
+def cfg_map_jerk(n_classes):
+    return {
+        'size_1_before_concat_depth' : 0,
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 2,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256}},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 256}},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+
+        'deconv_depth': 3,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 256}},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes}},
+        }
+}
+
+def cfg_res_jerk(n_classes):
+    return {
+        'size_1_before_concat_depth' : 0,
+
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 32}},
+                    #'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        'encode_together_depth' : 3,
+        'encode_together' : {
+                1 : {'conv' : {'filter_size' : 7, 'stride' : 1, 'num_filters' : 32}},
+                2 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 64}},
+		3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes}},
+                    #, 'bypass' : 0}
+        },
+        'hidden_depth': 0,
+        'deconv_depth': 0,
 }
 
 

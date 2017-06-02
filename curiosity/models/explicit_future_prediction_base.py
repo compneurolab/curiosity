@@ -227,12 +227,12 @@ class ShortLongFuturePredictionBase:
             img_height = im_sh[2]
             img_width = im_sh[3]
             assert time_seen == im_sh[1]
-	elif 'depths' in inputs_not_normed:
+       elif 'depths' in inputs_not_normed:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1]
-        else:
+            assert time_seen == im_sh[1] - 1
+       else:
             assert img_height is not None and img_width is not None
 
         if add_gaussians:
@@ -324,19 +324,31 @@ class ShortLongFuturePredictionBase:
             if desc in inputs_not_normed:
                 objects = tf.cast(inputs_not_normed[desc], tf.int32)
                 objects = objects[:, :, :, :, 0:1] * (256**2) + objects[:, :, :, :, 1:2] * 256 + objects[:, :, :, :, 2:3]
+                objects = objects[:, :time_seen]
                 self.inputs[desc] = tf.cast(tf.equal(acted_on_ids, objects), tf.float32)
+
+        for desc in ['depths', 'depths2']:
+            if desc in inputs_not_normed:
+                self.inputs[desc + '_raw'] =  inputs_not_normed[desc]
+                depths = tf.cast(inputs_not_normed[desc], tf.float32)
+                depths = (depths[:,:,:,:,0:1] * 256 + depths[:,:,:,:,1:2] + \
+                        depths[:,:,:,:,2:3] / 256.0) / 1000.0 
+                depths /= 17.32 # normalization
+                depths = depths[:, :time_seen]
+                self.inputs[desc] = depths
 
         #forces us to not manually normalize, should be reasonable, makes for easier viz.
         for desc in ['normals', 'normals2', 'images', 'images2']:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
-	for desc in ['depths', 'depths2']:
-		if desc in inputs_not_normed:
-			flt_depths = tf.cast(inputs_not_normed[desc], tf.float32)
-			flt_depths = (256. * flt_depths[:, :, :, :, 0] + flt_depths[:, :, :, :, 1] + flt_depths[:, :, :, :, 2] / 256.) / 1000.
-			self.inputs[desc] = tf.minimum(flt_depths, depth_cutoff) / depth_cutoff
-
+       for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
+                'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
+                'accs_curr', 'accs_curr2']:
+            if desc in inputs_not_normed:
+                self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.int32)
+                self.inputs[desc + '_normed'] = tf.cast(inputs_not_normed[desc], 
+                        tf.float32) / 255.
 
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
@@ -345,25 +357,66 @@ class ShortLongFuturePredictionBase:
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
+        # create segmented action maps
+        objects = tf.cast(inputs_not_normed['objects'], tf.int32)
+        shape = objects.get_shape().as_list()
+        objects = tf.unstack(objects, axis=len(shape)-1)
+        objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+        forces = self.inputs['actions_no_pos']
+        action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
+        action_id = tf.cast(tf.reshape(tf.tile(action_id, 
+            [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+        actions = tf.cast(tf.equal(objects, action_id), tf.float32)
+        actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+        actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
+        self.inputs['actions_map'] = actions
+
 	if store_jerk:
 		#jerk
-		pos_all = inputs_not_normed['object_data'][:, :, 0, 5:8]
+                pos_all = inputs_not_normed['object_data'][:, :, :, 5:8]
 		vel_all = pos_all[:, 1:] - pos_all[:, :-1]
 		acc_all = vel_all[:, 1:] - vel_all[:, :-1]
-		jerk = acc_all[:, 1:] - acc_all[:, :-1]
-		assert(jerk.get_shape().as_list()[1] == 1)
-		jerk = jerk[:,0]
+		jerk_all = acc_all[:, 1:] - acc_all[:, :-1]
+		assert(jerk_all.get_shape().as_list()[1] == 1)
+		jerk_all = jerk_all[:,0]
 		if hack_jerk_norm:
 			print('doing hackish jerk norm!')
-			jerk = tf.maximum(tf.minimum(jerk, 3.), -3.)/3.
-		self.inputs['jerk'] = jerk
+			#jerk_all = tf.maximum(tf.minimum(jerk_all, 3.), -3.)/3.
+                        #jerk_all = tf.clip_by_value(jerk_all, -0.6, 0.6) / 0.13130946
+                        jerk_all = tf.clip_by_value(jerk_all, -0.6, 0.6) / 0.6
+                self.inputs['jerk'] = jerk_all[:, 0]
+                self.inputs['jerk_all'] = jerk_all
 
+                pos_ids = tf.cast(inputs_not_normed['object_data'][:,:,:,0], tf.int32) 
+                pos_ids = tf.unstack(pos_ids, axis=2)
+                jerk_all = tf.unstack(jerk_all, axis=1)
+                # velocity at t=0 equals position
+                vel_all = tf.concat([pos_all[:, 0:1], vel_all], axis=1)
+                vel_all = tf.unstack(vel_all, axis=2)
 
-
-
-
-
-
-
-
-
+                for objects_key in ['objects', 'objects2']:
+                    if objects_key not in inputs_not_normed:
+                        continue
+                    objects = tf.cast(inputs_not_normed[objects_key], tf.int32)
+                    shape = objects.get_shape().as_list()
+                    objects = tf.unstack(objects, axis=len(shape)-1)
+                    objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+                    # calculate jerk map
+                    jerk_map = tf.zeros([shape[0], shape[2], shape[3], 3], tf.float32)
+                    # calculate velocity maps
+                    vel_maps = tf.zeros([shape[0], shape[1]-1, shape[2], shape[3], 3], 
+                            tf.float32)
+                    for pos_id, jerk, vel in zip(pos_ids, jerk_all, vel_all):
+                        pos_id = tf.expand_dims(tf.expand_dims(pos_id, 2), 2)
+                        segment = tf.tile(tf.expand_dims(tf.cast(tf.equal(
+                            pos_id, objects), tf.float32), 4), [1,1,1,1,3])
+                        jerk_map += segment[:,-2] * \
+                                tf.expand_dims(tf.expand_dims(jerk, 1), 1)
+                        vel_maps += segment[:,:-1] * \
+                                tf.expand_dims(tf.expand_dims(vel[:,:-1], 2), 2)
+                    if objects_key is 'objects':
+                        self.inputs['jerk_map'] = jerk_map
+                        self.inputs['vel_map'] = vel_maps
+                    elif objects_key is 'objects2':
+                        self.inputs['jerk_map2'] = jerk_map
+                        self.inputs['vel_map2'] = vel_maps

@@ -14,48 +14,49 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs1/datasets/five_world_dataset/new_tfdata_newobj'
-VALDATA_PATH = '/mnt/fs1/datasets/five_world_dataset/new_tfvaldata_newobj'
+DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_newobj'
+VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_newobj'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 32
+MODEL_BATCH_SIZE = 64
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
-NUM_BATCHES_PER_EPOCH = 1000 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs1/datasets/five_world_dataset/stats_std.pkl'
-BIN_PATH = '/mnt/fs1/datasets/five_world_dataset/'
-BIN_FILE = '/mnt/fs1/datasets/five_world_dataset/bin_data_file.pkl'
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
+NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
+STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/stats_std.pkl'
+BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
+BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['res_jerk_detailed4', 
-'map_jerk_detailed4',
-'sym_jerk_detailed4', 
-'bypass_jerk_detailed4']
+EXP_ID = ['vel_model_cond_sign', 
+'vel_model_sign',
+'vel_model_cond_concat', 
+'vel_model_concat']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [modelsource.cfg_res_jerk(n_classes), 
-        modelsource.cfg_map_jerk(n_classes), 
-        modelsource.cfg_sym_jerk(n_classes), 
-        modelsource.cfg_bypass_jerk(n_classes)]
+CFG = [ modelsource.cfg_mom_concat(n_classes, use_cond=True, method='sign'),
+        modelsource.cfg_mom_concat(n_classes, use_cond=False, method='sign'), 
+        modelsource.cfg_mom_concat(n_classes, use_cond=True, method='concat'), 
+        modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
+SEED = 0
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
 
 def table_norot_grab_func(path):
     all_filenames = os.listdir(path)
-    rng = np.random.RandomState(seed=0)
+    rng = np.random.RandomState(seed=SEED)
     rng.shuffle(all_filenames)
     print('got to file grabber!')
     return [os.path.join(path, fn) for fn in all_filenames \
@@ -86,17 +87,18 @@ def just_keep_everything(val_res):
     keys = val_res[0].keys()
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
-SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk_map', 'depths_raw', 'jerks']
+SAVE_TO_GFS = ['object_data_future', 'pred_vel_1', 'pred_next_vel_1', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk_map', 'depths_raw', 'jerks', 'vels']
 
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
-    batch_size = outputs['pred'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_pixel_jerk( 
-            outputs, gpu_id=gpu_id, segmented_jerk=False, buckets=buckets)
+    batch_size = outputs['pred_vel_1'].get_shape().as_list()[0]
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_vel( 
+            outputs, gpu_id=gpu_id, segmented_jerk=False,
+            buckets=buckets)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
-            if k == 'pred':
+            if k in ['pred_vel_1', 'pred_next_vel_1']:
                 pred = outputs[k]
 		shape = pred.get_shape().as_list()
 		pred = tf.reshape(pred, shape[0:3] + [3, shape[3] / 3])
@@ -108,7 +110,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
-            elif k == 'jerks':
+            elif k in ['jerks', 'vels']:
                 jerks = outputs[k][:num_to_save]
                 retval[k] = jerks[:,-1]
             else:
@@ -152,7 +154,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.map_jerk_model,
+    'func' : modelsource.mom_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -172,7 +174,7 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_pixel_jerk,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_vel,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0, 
         'buckets': buckets, 'segmented_jerk': False}, 
@@ -203,14 +205,15 @@ validation_params = [{
             'func' : ShortLongSequenceDataProvider,
             'data_path' : VALDATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
-            'long_sources' : ['depths', 'jerks', 
+            'long_sources' : ['depths', 
+                'jerks', 'accs', 'vels', 'accs_curr', 'vels_curr',
                 'actions', 'objects', 'object_data', 'reference_ids'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
             'filters' : ['is_not_teleporting', 'is_object_in_view'],
             'shuffle' : True,
-            'shuffle_seed' : 0,
+            'shuffle_seed' : SEED,
             'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
             'file_grab_func' : table_norot_grab_func,
@@ -220,7 +223,7 @@ validation_params = [{
         'queue_params' : {
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
-            'seed' : 0,
+            'seed' : SEED,
             'capacity' : MODEL_BATCH_SIZE * 20,
             'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
@@ -244,14 +247,15 @@ train_params =  {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
         'short_sources' : [], #'depths2', 'normals2', 'images' 
-        'long_sources' : ['depths', 'jerks',
+        'long_sources' : ['depths',
+            'jerks', 'accs', 'vels', 'accs_curr', 'vels_curr',            
             'actions', 'objects', 'object_data', 'reference_ids'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
         'filters' : ['is_not_teleporting', 'is_object_in_view'],
         'shuffle' : True,
-        'shuffle_seed' : 0,
+        'shuffle_seed' : SEED,
         'n_threads' : 4,
         'batch_size' : DATA_BATCH_SIZE,
         'file_grab_func' : table_norot_grab_func,
@@ -262,7 +266,7 @@ train_params =  {
     'queue_params' : {
         'queue_type' : 'random',
         'batch_size' : MODEL_BATCH_SIZE,
-        'seed' : 0,
+        'seed' : SEED,
         'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
     },
     'num_steps' : float('inf'),
