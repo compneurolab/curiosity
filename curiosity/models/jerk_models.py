@@ -97,6 +97,30 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         return m.output
 
 
+def just_actions_bench(inputs, cfg = None, num_classes = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
+        base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method,
+                                        time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
+                                        img_width = image_width)
+        m = ConvNetwithBypasses(**kwargs)
+        act_node = base_net.inputs['actions_no_pos']
+        act_shape = act_node.get_shape().as_list()
+        batch_size = act_shape[0]
+        m.output = act_node
+        act_node = m.reshape([np.prod(act_shape[1:])])
+        pred = hidden_loop_with_bypasses(m.output, m, cfg, reuse_weights = False, train = kwargs['train'])
+        pred_shape = pred.get_shape().as_list()
+        if num_classes is not None:
+                pred_shape.append(int(num_classes))
+                pred_shape[1] = int(pred_shape[1] / num_classes)
+                pred = tf.reshape(pred, pred_shape)
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
+
+
+
+
+
 def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, normalization_method = None, stats_file = None, add_gaussians = True, image_height = None, image_width = None, **kwargs):
         base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method,
                                         time_seen = time_seen, stats_file = stats_file, add_gaussians = add_gaussians, img_height = image_height,
@@ -125,17 +149,77 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
 
 
 
-def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+
+def stripped_down_depths_model(inputs, cfg = None, normalization_method = None, stats_file = None, num_classes = None, depth_cutoff = None, 
+					include_action = True, **kwargs):
+	batch_size, time_seen = inputs['depths'].get_shape().as_list()[:2]
+	long_len  = inputs['object_data'].get_shape().as_list()[1]
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file,
+				add_gaussians = False, depth_cutoff = depth_cutoff)
+	inputs = base_net.inputs
+	img_attributes = ['depths', 'depths2']
+	input_per_time = [tf.concat([tf.expand_dims(inputs[nm][:, t], axis = 3) for nm in img_attributes], axis = 3) for t in range(time_seen)]
+	m = ConvNetwithBypasses(**kwargs)
+
+	reuse_weights = False
+	encoding = []	
+	for t in range(time_seen):
+		encoding.append(feedforward_conv_loop(input_per_time[t], m, cfg, desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False,
+							no_nonlinearity_end = False)[-1])
+		reuse_weights = True
+
+	num_encode_together = cfg.get('encode_together_depth')
+	if num_encode_together:
+		print('Encoding together!')
+		together_input = tf.concat(encoding, axis = 3)
+		encoding = feedforward_conv_loop(together_input, m, cfg, desc = 'encode_together', bypass_nodes = [input_per_time[-1]], reuse_weights = False, batch_normalize = False,
+								no_nonlinearity_end = False)[-1]
+
+	flattened_input = [tf.reshape(encoding, [batch_size, -1])]
+	if include_action:
+		flattened_input.append(tf.reshape(inputs['actions_no_pos'], [batch_size, -1]))
+
+
+	assert len(flattened_input[0].get_shape().as_list()) == 2
+	concat_input = tf.concat(flattened_input, axis = 1)
+
+	pred = hidden_loop_with_bypasses(concat_input, m, cfg, reuse_weights = False, train = kwargs['train'])
+	pred_shape = pred.get_shape().as_list()
+#	pred_shape = base_net.inputs['object_data_future'].get_shape().as_list()
+#	if not include_pose:
+#		pred_shape[3] = 2
+#	print('num classes: ' + str(num_classes))
+	if num_classes is not None:
+		pred_shape.append(int(num_classes))
+		pred_shape[1] = int(pred_shape[1] / num_classes)
+		pred = tf.reshape(pred, pred_shape)
+        retval = {'pred' : pred}
+        retval.update(base_net.inputs)
+        return retval, m.params
+	
+
+
+
+
+
+def basic_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None, stats_file = None, obj_pic_dims = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False, include_pose = False, num_classes = None, keep_prob = None, depths_not_normals_images = False, depth_cutoff = None, gpu_id = 0, **kwargs):
 #    with tf.device('/gpu:%d' % gpu_id):
-	batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
+	if depths_not_normals_images:
+		batch_size, time_seen = inputs['depths'].get_shape().as_list()[:2]
+	else:
+		batch_size, time_seen = inputs['normals'].get_shape().as_list()[:2]
 	long_len = inputs['object_data'].get_shape().as_list()[1]
-	base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian)
+	base_net = fp_base.ShortLongFuturePredictionBase(inputs, store_jerk = True, normalization_method = normalization_method, time_seen = time_seen, stats_file = stats_file, scale_down_height = scale_down_height, scale_down_width = scale_down_width, add_depth_gaussian = add_depth_gaussian, depth_cutoff = depth_cutoff)
 
 	inputs = base_net.inputs
 
-	size_1_attributes = ['normals', 'normals2', 'images']
-	size_2_attributes = ['object_data_seen', 'actions_seen']
-	size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+	if depths_not_normals_images:
+		size_1_attributes = ['depths', 'depths2']
+		size_1_input_per_time = [tf.concat([tf.expand_dims(inputs[nm][:, t], axis = 3)  for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+	else:
+		size_1_attributes = ['normals', 'normals2', 'images']
+		size_1_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_1_attributes], axis = 3) for t in range(time_seen)]
+	size_2_attributes = ['object_data_seen', 'actions_seen']	
 	size_2_input_per_time = [tf.concat([inputs[nm][:, t] for nm in size_2_attributes], axis = 3) for t in range(time_seen)]
 	m = ConvNetwithBypasses(**kwargs)
 
@@ -199,11 +283,11 @@ def correlation(x, y):
 
 
 
-def correlation_jerk_loss(outputs, l2_coef = 1.):
+def correlation_jerk_loss(outputs, l2_coef = 1., corr_coef = 1.):
         pred = outputs['pred']
         tv = outputs['jerk']
         n_entries = np.prod(tv.get_shape().as_list())
-        return l2_coef * tf.nn.l2_loss(pred - tv) / n_entries - correlation(pred, tv) + 1
+        return l2_coef * tf.nn.l2_loss(pred - tv) / n_entries - corr_coef * (correlation(pred, tv) + 1)
 
 
 
@@ -230,6 +314,7 @@ def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file,
         gpu_id = 0, clip_weight=None, **kwargs):
 #    with tf.device('/gpu:%d' % gpu_id):
         gt = outputs['jerk']
+	print(bin_data_file)
         # bin ground truth into n-bins
         with open(bin_data_file) as f:
             bin_data = cPickle.load(f)
@@ -258,7 +343,7 @@ def softmax_cross_entropy_loss_with_bins(outputs, bin_data_file,
         pred = tf.cast(outputs['pred'], tf.float32)
         loss = tf.nn.softmax_cross_entropy_with_logits(
                 labels=labels, logits=pred)
-       return tf.reduce_mean(loss)
+	return tf.reduce_mean(loss)
 
 def parallel_reduce_mean(losses, **kwargs):
     with tf.variable_scope(tf.get_variable_scope()) as vscope:
@@ -315,7 +400,7 @@ class ParallelClipOptimizer(object):
         return average_grads_and_vars
 
 
-def gen_cfg_short_jerk(num_filters_before_concat = 24, num_filters_after_concat = 34, num_filters_together = 34, encode_depth = 2, encode_size = 7, hidden_depth = 3, hidden_num_features = 250):
+def gen_cfg_short_jerk(num_filters_before_concat = 24, num_filters_after_concat = 34, num_filters_together = 34, encode_depth = 2, encode_size = 7, hidden_depth = 3, hidden_num_features = 250, num_classes = 1):
 	cfg = {'size_1_before_concat_depth' : 1, 'size_2_before_concat_depth' : 0, 'encode_depth' : encode_depth, 'hidden_depth' : hidden_depth, 'hidden' : {}, 'encode' : {}}
 	cfg['size_1_before_concat'] = {
                 1 : {'conv' : {'filter_size' : 7, 'stride' : 2, 'num_filters' : num_filters_before_concat}, 'pool' : {'size' : 3, 'stride' : 2, 'type' : 'max'}},
@@ -330,8 +415,55 @@ def gen_cfg_short_jerk(num_filters_before_concat = 24, num_filters_after_concat 
         }
 	for i in range(1, hidden_depth):
 		cfg['hidden'][i] = {'num_features' : hidden_num_features, 'dropout' : .75}
+	cfg['hidden'][hidden_depth] = {'num_features' : 3 * num_classes, 'activation' : 'identity'}
+	return cfg
+
+
+def gen_cfg_no_explicit(num_filters_encode = [20, 20], num_filters_together = 34, encode_depth = 2, encode_size = 7, hidden_depth = 3, hidden_num_features = 250):
+	cfg = {'encode_depth' : encode_depth, 'hidden_depth' : hidden_depth, 'hidden' : {}, 'encode' : {}}
+	print('numbers of things')
+	print(len(num_filters_encode))
+	print(encode_depth)
+	for i in range(1, encode_depth + 1):
+		cfg['encode'][i] = {'conv' : {'filter_size' : encode_size, 'stride' : 2, 'num_filters' : num_filters_encode[i - 1]}}
+		if i > 1:
+			cfg['encode'][i]['bypass'] = 0
+	cfg['encode_together_depth'] = 1
+	cfg['encode_together'] = {
+                1 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : num_filters_together}, 'bypass' : 0}
+        }
+	for i in range(1, hidden_depth):
+		cfg['hidden'][i] = {'num_features' : hidden_num_features, 'dropout' : .75}
 	cfg['hidden'][hidden_depth] = {'num_features' : 3, 'activation' : 'identity'}
 	return cfg
+
+def gen_cfg_no_explicit_alt(encode_num_filters = [4, 8, 16, 32], 
+				encode_pool = [True, False, False, False], 
+				encode_size = [7, 7, 7, 3],
+				encode_bypasses = [None, None, None, 0],
+				encode_stride = [2, 2, 2, 2],
+				together_num_filters = [32],
+				together_size = [1],
+				together_max_pool = [False],
+				together_bypasses = [0],
+				hidden_num_features = [2000, 2000]):
+	cfg = {'encode_depth' : len(encode_num_filters), 'encode_together_depth' : len(together_num_filters), 
+				'hidden_depth' : len(hidden_num_features), 'hidden' : {}, 'encode' : {}, 'encode_together' : {}}
+	for i in range(1,cfg['encode_depth'] + 1):
+		cfg['encode'][i] = {'conv' : {'filter_size' : encode_size[i-1], 'stride' : encode_stride[i-1], 'num_filters' : encode_num_filters[i - 1]}, 'bypass' : encode_bypasses[i-1]}
+		if encode_pool[i-1]:
+			cfg['encode'][i]['pool'] = {'size' : 3, 'stride' : 2, 'type' : 'max'}
+	for i in range(1, len(together_num_filters) + 1):
+		cfg['encode_together'][i] = {'conv' : {'filter_size' : together_size[i - 1], 
+						'stride' : 1, 'num_filters' : together_num_filters[i-1]},
+						'bypass' : together_bypasses[i-1]}
+		if together_max_pool[i-1]:
+			cfg['encode_together'][i]['pool'] = {'size' : 3, 'stride' : 2, 'type' : 'max'}
+	for i in range(1, cfg['hidden_depth']):
+		cfg['hidden'][i] = {'num_features' : hidden_num_features[i-1], 'dropout' : .75}
+	cfg['hidden'][cfg['hidden_depth']] = {'num_features' : 3, 'activation' : 'identity'}
+	return cfg
+
 
 
 

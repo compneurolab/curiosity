@@ -97,7 +97,10 @@ class FuturePredictionBaseModel:
 
         if 'normals' in inputs_not_normed:
             image_shape = inputs_not_normed['normals'].get_shape().as_list()
+	elif 'depths' in inputs_not_normed:
+	    image_shape = inputs_not_normed['depths'].get_shape().as_list()
         else:
+	    print('CMON: ' + str(inputs_not_normed.keys()))
             assert img_height is not None and img_width is not None
             #requires object_data in there...
             obj_data_shape = inputs_not_normed['object_data'].get_shape().as_list()
@@ -191,7 +194,7 @@ class ShortLongFuturePredictionBase:
     def __init__(self, inputs, normalization_method = None, stats_file = None,
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
             time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
-		store_jerk = False, hack_jerk_norm = True,
+		store_jerk = False, hack_jerk_norm = True, depth_cutoff = None,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -221,6 +224,11 @@ class ShortLongFuturePredictionBase:
 
         if 'normals' in inputs_not_normed:
             im_sh = inputs_not_normed['normals'].get_shape().as_list()
+            img_height = im_sh[2]
+            img_width = im_sh[3]
+            assert time_seen == im_sh[1]
+	elif 'depths' in inputs_not_normed:
+            im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
             assert time_seen == im_sh[1]
@@ -322,6 +330,13 @@ class ShortLongFuturePredictionBase:
         for desc in ['normals', 'normals2', 'images', 'images2']:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
+
+	for desc in ['depths', 'depths2']:
+		if desc in inputs_not_normed:
+			flt_depths = tf.cast(inputs_not_normed[desc], tf.float32)
+			flt_depths = (256. * flt_depths[:, :, :, :, 0] + flt_depths[:, :, :, :, 1] + flt_depths[:, :, :, :, 2] / 256.) / 1000.
+			self.inputs[desc] = tf.minimum(flt_depths, depth_cutoff) / depth_cutoff
+
 
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
