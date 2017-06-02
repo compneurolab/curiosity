@@ -195,6 +195,8 @@ class ShortLongFuturePredictionBase:
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
             time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
 		store_jerk = False, hack_jerk_norm = True, depth_cutoff = None,
+		get_actions_map = False,
+		get_segmentation = False,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -353,23 +355,28 @@ class ShortLongFuturePredictionBase:
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times
-        self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :6]
+        self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :, :6]
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
         # create segmented action maps
-        objects = tf.cast(inputs_not_normed['objects'], tf.int32)
-        shape = objects.get_shape().as_list()
-        objects = tf.unstack(objects, axis=len(shape)-1)
-        objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
-        forces = self.inputs['actions_no_pos']
-        action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
-        action_id = tf.cast(tf.reshape(tf.tile(action_id, 
-            [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
-        actions = tf.cast(tf.equal(objects, action_id), tf.float32)
-        actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
-        actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
-        self.inputs['actions_map'] = actions
+	if get_actions_map or get_segmentation:
+        	objects = tf.cast(inputs_not_normed['objects'], tf.int32)
+        	shape = objects.get_shape().as_list()
+        	objects = tf.unstack(objects, axis=len(shape)-1)
+        	objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+        	forces = self.inputs['actions_no_pos']
+        	action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
+        	action_id = tf.cast(tf.reshape(tf.tile(action_id, 
+            		[1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+        	actions = tf.cast(tf.equal(objects, action_id), tf.float32)
+        	actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+       		actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
+        	self.inputs['actions_map'] = actions
+
+	
+
+
 
 	if store_jerk:
 		#jerk

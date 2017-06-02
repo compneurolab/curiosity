@@ -16,8 +16,8 @@ PREFIX = int(sys.argv[2])
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/six_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_newobj'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_newobj'
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks', 
         'vels_curr', 'accs_curr', 'jerks_curr',
         'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2', 
@@ -29,7 +29,7 @@ HEIGHT = 128
 WIDTH = 170
 
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 20 + [(9,), (7,), (NUM_OBJECTS_EXPLICIT, 21), (NUM_OBJECTS_EXPLICIT, 21), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 20 + [(2, 9), (2, 7), (NUM_OBJECTS_EXPLICIT, 21), (NUM_OBJECTS_EXPLICIT, 21), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,)]
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
 my_files = [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
@@ -293,23 +293,33 @@ def get_actions(actions, coordinate_transformations):
         ret_list2 = []
         for (act, (rot_mat, agent_pos)) in zip(actions, coordinate_transformations):
                 if 'actions' in act and len(act['actions']) and 'teleport_to' not in act['actions'][0]:
-                        act_data = act['actions'][0]
-                        force = transform_to_local(act_data['force'], rot_mat)
-                        torque = transform_to_local(act_data['torque'], rot_mat)
-                        force2 = transform_to_local(force, OTHER_CAM_ROT)
-                        torque2 = transform_to_local(torque, OTHER_CAM_ROT)
-                        pos = np.array(act_data['action_pos'])
-                        if len(pos) != 2:
-                                pos = np.array([-100., -100.])
-                        pos[0] = float(HEIGHT) / float(HEIGHT) * pos[0]
-                        pos[1] = float(WIDTH) / float(WIDTH) * pos[1]
-                        idx = np.array([float(act_data['id'])])
-                        assert len(force) == 3 and len(torque) == 3 and len(pos) == 2 and len(idx) == 1, (len(force), len(torque), len(pos), len(idx))
-                        ret_list.append(np.concatenate([force, torque, pos, idx]).astype(np.float32))
-                        ret_list2.append(np.concatenate([force2, torque2, idx]).astype(np.float32))
+			fr_act_data = []
+			fr_act_data2 = []
+			for act_data in act['actions']:
+                       		act_data = act['actions'][0]
+                        	force = transform_to_local(act_data['force'], rot_mat)
+                        	torque = transform_to_local(act_data['torque'], rot_mat)
+                        	force2 = transform_to_local(force, OTHER_CAM_ROT)
+                        	torque2 = transform_to_local(torque, OTHER_CAM_ROT)
+                        	pos = np.array(act_data['action_pos'])
+                        	if len(pos) != 2:
+                                	pos = np.array([-100., -100.])
+                        	pos[0] = float(HEIGHT) / float(HEIGHT) * pos[0]
+                        	pos[1] = float(WIDTH) / float(WIDTH) * pos[1]
+                        	idx = np.array([float(act_data['id'])])
+                        	assert len(force) == 3 and len(torque) == 3 and len(pos) == 2 and len(idx) == 1, (len(force), len(torque), len(pos), len(idx))
+                        	fr_act_data.append(np.concatenate([force, torque, pos, idx]).astype(np.float32))
+                        	fr_act_data2.append(np.concatenate([force2, torque2, idx]).astype(np.float32))
+			if len(act['actions']) == 1:
+				fr_act_data.append(np.zeros(9, dtype = np.float32))
+				fr_act_data2.append(np.zeros(7, dtype = np.float32))
+			fr_act_data = np.array(fr_act_data)
+			fr_act_data2 = np.array(fr_act_data2)
+			ret_list.append(fr_act_data)
+			ret_list2.append(fr_act_data2)
                 else:
-                        ret_list.append(np.zeros(9, dtype = np.float32))
-                        ret_list2.append(np.zeros(7, dtype = np.float32))
+                        ret_list.append(np.zeros((2,9), dtype = np.float32))
+                        ret_list2.append(np.zeros((2,7), dtype = np.float32))
         return ret_list, ret_list2
 
 def get_subset_indicators(actions):
