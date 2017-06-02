@@ -365,14 +365,18 @@ class ShortLongFuturePredictionBase:
         	shape = objects.get_shape().as_list()
         	objects = tf.unstack(objects, axis=len(shape)-1)
         	objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+	if get_actions_map:
         	forces = self.inputs['actions_no_pos']
-        	action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
-        	action_id = tf.cast(tf.reshape(tf.tile(action_id, 
-            		[1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
-        	actions = tf.cast(tf.equal(objects, action_id), tf.float32)
-        	actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
-       		actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
-        	self.inputs['actions_map'] = actions
+		actions_map_list = []
+        	for i in range(2):
+			action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,i,8], axis=2)
+        		action_id = tf.cast(tf.reshape(tf.tile(action_id, 
+            				[1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+        		actions = tf.cast(tf.equal(objects, action_id), tf.float32)
+        		actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+       			actions *= tf.expand_dims(tf.expand_dims(forces[:, :, i, :], 2), 2)
+			actions_map_list.append(tf.expand_dims(actions, -1))
+        	self.inputs['actions_map'] = tf.concat(actions_map_list, -1)
 
 	
 
