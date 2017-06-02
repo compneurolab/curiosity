@@ -240,6 +240,7 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         else:
             use_cond = False
         if use_cond:
+            print('Using CONDITIONING')
             cond_attributes = ['actions_map']
             if 'cond_scale_factor' in cfg:
                 scale_factor = cfg['cond_scale_factor']
@@ -303,6 +304,12 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
             elif cfg['combine_moments'] == 'concat':
                 print('Using CONCAT')
                 enc = tf.concat([encoded_input_main[t+1], encoded_input_main[t]], axis=3)
+                enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'combine_moments_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                enc = enc[-1]
             enc, bypass_nodes = feedforward_conv_loop(
                     enc, m, cfg, desc = 'moments_encode',
                     bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
@@ -322,6 +329,12 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
             elif cfg['combine_moments'] == 'concat':
                 print('Using CONCAT')
                 enc = tf.concat([moments[0][t+1], moments[0][t]], axis=3)
+                enc, bypass_nodes = feedforward_conv_loop(
+                        enc, m, cfg, desc = 'combine_moments_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                enc = enc[-1]
             else:
                 raise KeyError('Unknown combine_moments')
             enc, bypass_nodes = feedforward_conv_loop(
@@ -351,7 +364,13 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
                     nm = moment[t] + dm[-1]
                 elif cfg['combine_delta'] == 'concat':
                     print('Using CONCAT')
-                    nm = tf.concat(moment[t], dm[-1], axis=3)
+                    nm = tf.concat([moment[t], dm[-1]], axis=3)
+                    nm, bypass_nodes = feedforward_conv_loop(
+                        nm, m, cfg, desc = 'combine_delta_encode',
+                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True)
+                    nm = nm[-1]
                 else:
                     raise KeyError('Unknown combine_delta')
                 reuse_weights = True
@@ -379,42 +398,45 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
             for moment in moments:
                 for t, _ in enumerate(moment):
                     enc, bypass_nodes = deconv_loop(
-                    moment[t], m, cfg, desc='deconv',
-                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print = True, return_bypass = True)
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
                     moment[t] = enc[-1]
                     reuse_weights = True
             for moment in next_moments:
                 for t, _ in enumerate(moment):
                     enc, bypass_nodes = deconv_loop(
-                    moment[t], m, cfg, desc='deconv',
-                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print = True, return_bypass = True)
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
                     moment[t] = enc[-1]
                     reuse_weights = True
             for moment in delta_moments:
                 for t, _ in enumerate(moment):
                     enc, bypass_nodes = deconv_loop(
-                    moment[t], m, cfg, desc='deconv',
-                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print = True, return_bypass = True)
+                            moment[t], m, cfg, desc='deconv',
+                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print = True, return_bypass = True)
                     moment[t] = enc[-1]
                     reuse_weights = True
         retval = {
-                'pred': delta_moments[0][0],
+                'pred': delta_moments[1][0],
+                'pred_vel_1': moments[0][0],
+                'pred_next_vel_1': next_moments[0][0],
+                'pred_next_vel_2': next_moments[0][1],
                 'bypasses': bypass_nodes,
                 'moments': moments,
                 'delta_moments': delta_moments,
                 'next_moments': next_moments
                 }
         retval.update(base_net.inputs)
-        print('------BYPASSES-------')
-        for bypass_node in bypass_nodes:
-            print(bypass_node)
-        print(len(bypass_nodes))
+        #print('------BYPASSES-------')
+        #for bypass_node in bypass_nodes:
+        #    print(bypass_node)
+        #print(len(bypass_nodes))
         print('------NETWORK END-----')
         return retval, m.params
 
@@ -819,6 +841,41 @@ def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
         return [loss]
+
+def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
+        min_value = -1.0, max_value = 1.0, num_classes=256, use_pos_to_vel = True,
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+        shape = outputs['pred'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes
+
+        losses = []
+        # next moment losses
+        logits = outputs['next_moments'][0][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = outputs['vels'][:,2]
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        # current moments losses
+        logits = outputs['moments'][0][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = outputs['vels_curr'][:,1]
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        assert len(losses) == 2, ('loss length: %d' % len(losses))
+        losses = tf.stack(losses)
+        return [tf.reduce_mean(losses)]
 
 def multi_moment_softmax_cross_entropy_loss_pixel_jerk(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256, use_pos_to_vel = True, 
@@ -1258,11 +1315,18 @@ def cfg_mom_concat(n_classes, use_cond=False, method='sign'):
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
                     },
                 3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
-                    'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}}
+                    #'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}
+                    }
         },
 
         # Calculate moments
         'combine_moments': 'minus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_moments is 'concat'
+        'combine_moments_encode_depth' : 1,
+        'combine_moments_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 512},
+                    }
+        },
         'moments_encode_depth' : 5,
         'moments_encode' : {
                 1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
@@ -1278,7 +1342,6 @@ def cfg_mom_concat(n_classes, use_cond=False, method='sign'):
         },
 
         # Predict next moments
-        'combine_delta': 'plus' if method is 'sign' else 'concat',
         'delta_moments_encode_depth' : 5,
         'delta_moments_encode' : {
                 1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
@@ -1292,7 +1355,13 @@ def cfg_mom_concat(n_classes, use_cond=False, method='sign'):
                 5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 512},
                     }
         },
-
+        'combine_delta': 'plus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_delta is 'concat'
+        'combine_delta_encode_depth' : 1,
+        'combine_delta_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 512},
+                    }
+        },
 
         'deconv_depth': 3,
         'deconv' : {
