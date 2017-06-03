@@ -24,8 +24,8 @@ import cPickle
 # D_TYPE = tf.uint8
 # SHAPE = [160, 375, 3]
 
-DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfdata'
-VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
+DATA_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
+VALIDATION_DATA_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata'
 #ATTRIBUTE = 'agent_data'
 #DTYPE_STRING = True
 #RAW_TYPE = tf.float32
@@ -36,10 +36,15 @@ VALIDATION_DATA_LOC = '/mnt/fs0/datasets/two_world_dataset/new_tfvaldata'
 #RAW_TYPE = tf.int32
 #RAW_SHAPE = [11,]
 
-ATTRIBUTE = 'is_object_in_view2'
+#ATTRIBUTE = 'is_object_in_view2'
+#DTYPE_STRING = True
+#RAW_TYPE = tf.int32
+#RAW_SHAPE = [11,]
+
+ATTRIBUTE = 'actions2'
 DTYPE_STRING = True
-RAW_TYPE = tf.int32
-RAW_SHAPE = [11,]
+RAW_TYPE = tf.float32
+RAW_SHAPE = [2,7]
 
 
 to_write = {}

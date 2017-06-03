@@ -377,7 +377,16 @@ class ShortLongFuturePredictionBase:
        			actions *= tf.expand_dims(tf.expand_dims(forces[:, :, i, :], 2), 2)
 			actions_map_list.append(tf.expand_dims(actions, -1))
         	self.inputs['actions_map'] = tf.concat(actions_map_list, -1)
-
+	if get_segmentation:
+		segmentation_list = []
+		action_ids = inputs_not_normed['actions'][:, :, :, 8]
+		for i in range(2):
+			action_id_pic = tf.expand_dims(action_ids[:, :, i], axis = 2)
+			action_id_pic = tf.cast(tf.reshape(tf.tile(action_id, [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+			segmentation = tf.equal(objects, action_id_pic)
+			segmentation_list.append(tf.expand_dims(segmentation, -1))
+		self.inputs['segmentation'] = tf.concat(segmentation_list, -1)
+		self.inputs['action_ids'] = action_ids
 	
 
 
