@@ -14,15 +14,15 @@ import tfutils.data as d
 import tfutils.base as b
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 import numpy as np
-DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
+DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
 NUM_BATCHES = 4 * 1000 - 8
 BATCH_SIZE = 256.
 ATTRIBUTES = ['actions', 'agent_data', 'depths2', 'images2', 'is_not_dropping', 
 			'is_not_waiting', 'is_object_in_view2', 'normals', 'object_data', 'objects',
 			 'reference_ids', 'depths', 'images', 'is_acting', 'is_not_teleporting', 
 			'is_object_in_view', 'is_object_there', 'normals2', 'object_data2', 'objects2']
-STATS_SAVE_LOC = '/mnt/fs0/datasets/three_world_dataset/stats.pkl'
-STATS_FIXED_SAVE_LOC = '/mnt/fs0/datasets/three_world_dataset/stats_std.pkl'
+STATS_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats.pkl'
+STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std.pkl'
 import cPickle
 
 
@@ -112,6 +112,7 @@ def whoops_gotta_square_root_std():
 
 
 if __name__ == '__main__':
+	get_stats()
 	whoops_gotta_square_root_std()
 
 

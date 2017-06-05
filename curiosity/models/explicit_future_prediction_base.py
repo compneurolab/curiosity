@@ -97,7 +97,10 @@ class FuturePredictionBaseModel:
 
         if 'normals' in inputs_not_normed:
             image_shape = inputs_not_normed['normals'].get_shape().as_list()
+	elif 'depths' in inputs_not_normed:
+	    image_shape = inputs_not_normed['depths'].get_shape().as_list()
         else:
+	    print('CMON: ' + str(inputs_not_normed.keys()))
             assert img_height is not None and img_width is not None
             #requires object_data in there...
             obj_data_shape = inputs_not_normed['object_data'].get_shape().as_list()
@@ -191,7 +194,9 @@ class ShortLongFuturePredictionBase:
     def __init__(self, inputs, normalization_method = None, stats_file = None,
             objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
             time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
-		store_jerk = False, hack_jerk_norm = True,
+		store_jerk = False, hack_jerk_norm = True, depth_cutoff = None,
+		get_actions_map = False,
+		get_segmentation = False,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -224,12 +229,12 @@ class ShortLongFuturePredictionBase:
             img_height = im_sh[2]
             img_width = im_sh[3]
             assert time_seen == im_sh[1]
-        elif 'depths' in inputs_not_normed:
+       elif 'depths' in inputs_not_normed:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
             assert time_seen == im_sh[1] - 1
-        else:
+       else:
             assert img_height is not None and img_width is not None
 
         if add_gaussians:
@@ -339,7 +344,7 @@ class ShortLongFuturePredictionBase:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
-        for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
+       for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
                 'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
                 'accs_curr', 'accs_curr2']:
             if desc in inputs_not_normed:
@@ -347,25 +352,44 @@ class ShortLongFuturePredictionBase:
                 self.inputs[desc + '_normed'] = tf.cast(inputs_not_normed[desc], 
                         tf.float32) / 255.
 
+
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times
-        self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :6]
+        self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :, :6]
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
         # create segmented action maps
-        objects = tf.cast(inputs_not_normed['objects'], tf.int32)
-        shape = objects.get_shape().as_list()
-        objects = tf.unstack(objects, axis=len(shape)-1)
-        objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
-        forces = self.inputs['actions_no_pos']
-        action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,8], axis=2)
-        action_id = tf.cast(tf.reshape(tf.tile(action_id, 
-            [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
-        actions = tf.cast(tf.equal(objects, action_id), tf.float32)
-        actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
-        actions *= tf.expand_dims(tf.expand_dims(forces, 2), 2)
-        self.inputs['actions_map'] = actions
+	if get_actions_map or get_segmentation:
+        	objects = tf.cast(inputs_not_normed['objects'], tf.int32)
+        	shape = objects.get_shape().as_list()
+        	objects = tf.unstack(objects, axis=len(shape)-1)
+        	objects = objects[0] * (256**2) + objects[1] * 256 + objects[2]
+	if get_actions_map:
+        	forces = self.inputs['actions_no_pos']
+		actions_map_list = []
+        	for i in range(2):
+			action_id = tf.expand_dims(inputs_not_normed['actions'][:,:,i,8], axis=2)
+        		action_id = tf.cast(tf.reshape(tf.tile(action_id, 
+            				[1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+        		actions = tf.cast(tf.equal(objects, action_id), tf.float32)
+        		actions = tf.tile(tf.expand_dims(actions, axis=4), [1,1,1,1,6])
+       			actions *= tf.expand_dims(tf.expand_dims(forces[:, :, i, :], 2), 2)
+			actions_map_list.append(tf.expand_dims(actions, -1))
+        	self.inputs['actions_map'] = tf.concat(actions_map_list, -1)
+	if get_segmentation:
+		segmentation_list = []
+		action_ids = inputs_not_normed['actions'][:, :, :, 8]
+		for i in range(2):
+			action_id_pic = tf.expand_dims(action_ids[:, :, i], axis = 2)
+			action_id_pic = tf.cast(tf.reshape(tf.tile(action_id, [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+			segmentation = tf.equal(objects, action_id_pic)
+			segmentation_list.append(tf.expand_dims(segmentation, -1))
+		self.inputs['segmentation'] = tf.concat(segmentation_list, -1)
+		self.inputs['action_ids'] = action_ids
+	
+
+
 
 	if store_jerk:
 		#jerk

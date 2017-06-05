@@ -215,175 +215,6 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
         retval.update(base_net.inputs)
         return retval, m.params
 
-def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method = None,
-        stats_file = None, obj_pic_dims = None, scale_down_height = None,
-        scale_down_width = None, add_depth_gaussian = False, include_pose = False,
-        num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
-    print('------NETWORK START-----')
-    with tf.device('/gpu:%d' % gpu_id):
-        # rescale inputs to be divisible by 8
-        rinputs = {}
-        for k in inputs:
-            if k in ['depths', 'objects', 'vels', 'accs', 'jerks',
-                    'vels_curr', 'accs_curr', 'actions_map']:
-                rinputs[k] = tf.pad(inputs[k],
-                        [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
-                # RESIZING IMAGES
-                rinputs[k] = tf.unstack(rinputs[k], axis=1)
-                for i, _ in enumerate(rinputs[k]):
-                    rinputs[k][i] = tf.image.resize_images(rinputs[k][i], [64, 88])
-                rinputs[k] = tf.stack(rinputs[k], axis=1)
-            else:
-                rinputs[k] = inputs[k]
-       # preprocess input data
-        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
-        time_seen -= 1
-        long_len = rinputs['object_data'].get_shape().as_list()[1]
-        base_net = fp_base.ShortLongFuturePredictionBase(
-                rinputs, store_jerk = True,
-                normalization_method = normalization_method,
-                time_seen = time_seen, stats_file = stats_file,
-                scale_down_height = scale_down_height,
-                scale_down_width = scale_down_width,
-                add_depth_gaussian = add_depth_gaussian)
-        inputs = base_net.inputs
-
-        # init network
-        m = ConvNetwithBypasses(**kwargs)
-        # encode per time step
-        main_attributes = ['depths', 'vels_curr', 'segmentation_map']
-        main_input_per_time = [tf.concat([inputs[nm][:, t] \
-                for nm in main_attributes], axis = 3) for t in range(time_seen)]
-
-        # initial bypass
-        bypass_nodes = [inputs['depths'][:, time_seen-1]]
-
-        # conditioning
-        if 'use_cond' in cfg:
-            use_cond = cfg['use_cond']
-        else:
-            use_cond = False
-        if use_cond:
-            print('Using CONDITIONING')
-            cond_attributes = ['actions_map']
-            if 'cond_scale_factor' in cfg:
-                scale_factor = cfg['cond_scale_factor']
-            else:
-                scale_factor = 1
-            for att in cond_attributes:
-                shape = inputs[att].get_shape().as_list()
-                inputs[att] = tf.unstack(inputs[att], axis=1)
-                for t, _ in enumerate(inputs[att]):
-                    inputs[att][t] = tf.image.resize_images(inputs[att][t],
-                            [shape[2]/scale_factor, shape[3]/scale_factor],
-                            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-                inputs[att] = tf.stack(inputs[att], axis=1)
-            cond_input_per_time = [tf.concat([inputs[nm][:, t] \
-                    for nm in cond_attributes], axis = 3) for t in range(time_seen)]
-
-            encoded_input_cond = []
-            reuse_weights = False
-            for t in range(time_seen):
-                enc, bypass_nodes = feedforward_conv_loop(
-                        cond_input_per_time[t], m, cfg, desc = 'cond_encode',
-                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                        batch_normalize = False, no_nonlinearity_end = False,
-                        do_print=(not reuse_weights), return_bypass = True)
-                encoded_input_cond.append(enc[-1])
-                reuse_weights = True
-
-        # main
-        encoded_input_main = []
-        reuse_weights = False
-        for t in range(time_seen):
-                enc, bypass_nodes = feedforward_conv_loop(
-                        main_input_per_time[t], m, cfg, desc = 'main_encode',
-                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                        batch_normalize = False, no_nonlinearity_end = False,
-                        do_print=(not reuse_weights), return_bypass = True)
-                encoded_input_main.append(enc[-1])
-                reuse_weights = True
-
-        # concat main and cond
-        if use_cond:
-            reuse_weights = False
-            for t in range(time_seen):
-                enc = tf.concat([encoded_input_main[t], encoded_input_cond[t]], axis=3)
-                enc, bypass_nodes = feedforward_conv_loop(
-                        enc, m, cfg, desc = 'encode',
-                        bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                        batch_normalize = False, no_nonlinearity_end = False,
-                        do_print=(not reuse_weights), return_bypass = True)
-                encoded_input_main[t] = enc[-1]
-                reuse_weights = True
-
-        # predict next moments via residuals (delta moments)
-        next_moments = []
-        delta_moments = []
-        reuse_weights = False
-        # caluclate 1st next moments
-        for t in range(time_seen-1):
-            next_moment = []
-            delta_moment = []
-            dm, bypass_nodes = feedforward_conv_loop(
-                    encoded_input_main[t], m, cfg, desc = 'delta_moments_encode',
-                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print=(not reuse_weights), return_bypass = True)
-            if cfg['combine_delta'] == 'plus':
-                print('Using PLUS')
-                nm = moment[t] + dm[-1]
-            elif cfg['combine_delta'] == 'concat':
-                print('Using CONCAT')
-                nm = tf.concat([moment[t], dm[-1]], axis=3)
-                nm, bypass_nodes = feedforward_conv_loop(
-                    nm, m, cfg, desc = 'combine_delta_encode',
-                    bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print=(not reuse_weights), return_bypass = True)
-                nm = nm[-1]
-            else:
-                raise KeyError('Unknown combine_delta')
-            reuse_weights = True
-            delta_moment.append(dm[-1])
-            next_moment.append(nm)
-        next_moments.append(next_moment)
-        delta_moments.append(delta_moment)
-
-        num_deconv = cfg.get('deconv_depth')
-        reuse_weights = False
-        if num_deconv:
-            for moment in next_moments:
-                for t, _ in enumerate(moment):
-                    enc, bypass_nodes = deconv_loop(
-                            moment[t], m, cfg, desc='deconv',
-                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                            batch_normalize = False, no_nonlinearity_end = False,
-                            do_print = True, return_bypass = True)
-                    moment[t] = enc[-1]
-                    reuse_weights = True
-            for moment in delta_moments:
-                for t, _ in enumerate(moment):
-                    enc, bypass_nodes = deconv_loop(
-                            moment[t], m, cfg, desc='deconv',
-                            bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
-                            batch_normalize = False, no_nonlinearity_end = False,
-                            do_print = True, return_bypass = True)
-                    moment[t] = enc[-1]
-                    reuse_weights = True
-        retval = {
-                'pred': delta_moments[1][0],
-                'pred_vel_1': moments[0][0],
-                'pred_next_vel_1': next_moments[0][0],
-                'pred_next_vel_2': next_moments[0][1],
-                'bypasses': bypass_nodes,
-                'delta_moments': delta_moments,
-                'next_moments': next_moments
-                }
-        retval.update(base_net.inputs)
-        print('------NETWORK END-----')
-        return retval, m.params
-
 def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
         scale_down_width = None, add_depth_gaussian = False, include_pose = False,
@@ -632,6 +463,29 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         #print(len(bypass_nodes))
         print('------NETWORK END-----')
         return retval, m.params
+
+
+def simplest_segmentation(inputs, cfg = None, normalization_method = None, stats_file = None, gpu_id = 0, **kwargs):
+	with tf.device('/gpu:%d' % gpu_id):
+		inputs = fp_base.ShortLongFuturePredictionBase(
+				inputs,
+				normalization_method = normalization_method,
+				time_seen = 1,
+				get_segmentation = True
+			).inputs
+		m = ConvNetwithBypasses(**kwargs)
+		depths = inputs['depths'][:, 0] #just one timestep, get rid of that dim 1 index
+		enc, bypass_nodes = feedforward_conv_loop(depths, m, cfg, desc = 'encode',
+						 bypass_nodes = None,
+						reuse_weights = False,
+						batch_normalize = False,
+						no_nonlinearity_end = True,
+						return_bypass = True)
+		retval = {'pred' : enc[-1]}
+		retval.update(inputs)
+		return retval, m.params
+
+
 
 def map_jerk_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,

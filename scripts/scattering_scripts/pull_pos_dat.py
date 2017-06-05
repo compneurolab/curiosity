@@ -20,8 +20,8 @@ SHORT_LEN = 3
 LONG_LEN = 4
 MIN_LEN = 4
 SAVE_DIR = '/mnt/fs0/nhaber/pos_dat_scattering'
-SAVE_LOC = os.path.join(SAVE_DIR, 'tr_pulled.pkl')
-VAL_SAVE_LOC = os.path.join(SAVE_DIR, 'val_pulled.pkl')
+SAVE_LOC = os.path.join(SAVE_DIR, 'tr_pulled_subset.pkl')
+VAL_SAVE_LOC = os.path.join(SAVE_DIR, 'val_pulled_subset.pkl')
 
 
 if not os.path.exists(SAVE_DIR):
@@ -40,7 +40,8 @@ def pull_all_positions_references(val = False):
 		short_len = SHORT_LEN,
 		long_len = LONG_LEN,
 		min_len = MIN_LEN,
-		filters = ['is_not_teleporting'],
+		filters = ['is_not_teleporting', 'is_object_in_view', 'is_object_in_view2'],
+		is_in_view_subsetting_rule = 'both_there',
 		shuffle = False,
 		n_threads = 1,
 		batch_size = DATA_BATCH_SIZE,

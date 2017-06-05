@@ -1,0 +1,157 @@
+'''
+Viz for correlation loss 1 to 1 benchmark for scatter dataset
+'''
+
+
+import numpy as np
+import os
+import tensorflow as tf
+import sys
+sys.path.append('tfutils')
+sys.path.append('curiosity')
+import numpy as np
+import copy
+
+
+from tfutils import base, optimizer
+from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
+import curiosity.models.jerk_models as modelsource
+
+
+#key params for rapid toggling
+EXP_ID_PREFIX = 'bench_jc_norm_2000_4'
+model_func = modelsource.basic_jerk_bench
+model_cfg_gen = modelsource.gen_cfg_jerk_bench
+learning_rate = 1e-5
+widths = [1000, 2000, 3000]
+drop_keep = .75
+depths = [2, 3, 4, 5]
+train_data = False
+cfg = model_cfg_gen(depth = 4, width = 2000, drop_keep = drop_keep)
+
+#key params we likely won't change often
+
+if train_data:
+	TEST_DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfdata_newobj'
+	EXP_ID = EXP_ID_PREFIX + '_trviz'
+else:
+	TEST_DATA_PATH = '/mnt/fs0/datasets/three_world_dataset/new_tfvaldata_newobj'
+	EXP_ID = EXP_ID_PREFIX + '_valviz'
+STATS_FILE = '/mnt/fs0/datasets/two_world_dataset/statistics/stats_again.pkl' #should replace this but ok to get started
+DATA_BATCH_SIZE = 256
+MODEL_BATCH_SIZE = 256
+TIME_SEEN = 3
+SHORT_LEN = TIME_SEEN
+LONG_LEN = 4
+MIN_LEN = 4
+
+NUM_BATCHES_PER_EPOCH = 4 * 1000 #I think...
+IMG_HEIGHT = 128
+IMG_WIDTH = 170
+SCALE_DOWN_HEIGHT = 32
+SCALE_DOWN_WIDTH = 43
+L2_COEF = 200.
+COLLNAME = 'scatter'
+
+
+def append_it(x, y, step):
+	if x is None:
+		x = []
+	x.append(y)
+	return x
+
+def just_keep_everything(val_res):
+	keys = val_res[0].keys()
+	return dict((k, [d[k] for d in val_res]) for k in keys)
+
+SAVE_TO_GFS = ['object_data_future', 'pred', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk']
+
+def grab_all(inputs, outputs, num_to_save = 1, **garbage_params):
+	retval = {}
+	batch_size = outputs['pred'].get_shape().as_list()[0]
+	for k in SAVE_TO_GFS:
+		if k != 'reference_ids':
+			retval[k] = outputs[k][:num_to_save]
+		else:
+			retval[k] = outputs[k]
+	retval['loss'] = modelsource.correlation_jerk_loss(outputs, l2_coef = L2_COEF)
+	return retval
+
+
+params = {
+	'load_params' : {
+		'host' : 'localhost',
+		'port' : 27017,
+		'dbname' : 'future_prediction',
+		'collname' : COLLNAME,
+		'exp_id' : EXP_ID_PREFIX,
+		'save_valid_freq' : 2000,
+        'save_filters_freq': 30000,
+        'cache_filters_freq': 2000,
+        'save_initial_filters' : False,
+#        'cache_dir' : CACHE_DIR,
+        'save_to_gfs' : SAVE_TO_GFS
+	},
+
+	'save_params' : {
+		'exp_id' : EXP_ID,
+		'save_to_gfs' : SAVE_TO_GFS
+	},
+
+	'model_params' : {
+		'func' : model_func,
+		'cfg' : cfg,
+		'time_seen' : TIME_SEEN,
+		'normalization_method' : {'object_data' : 'screen_normalize', 'actions' : 'minmax'},
+		'image_height' : IMG_HEIGHT,
+		'image_width' : IMG_WIDTH,
+		'scale_down_height' : SCALE_DOWN_HEIGHT,
+		'scale_down_width' : SCALE_DOWN_WIDTH,
+		'stats_file' : STATS_FILE
+	},
+
+	'validation_params' : {
+		'valid0' : {
+			'data_params' : {
+				'func' : ShortLongSequenceDataProvider,
+				'data_path' : TEST_DATA_PATH,
+				'short_sources' : [],
+				'long_sources' : ['actions', 'object_data', 'reference_ids'],
+				'short_len' : SHORT_LEN,
+				'long_len' : LONG_LEN,
+				'min_len' : MIN_LEN,
+				'filters' : ['is_not_teleporting'],
+				'shuffle' : True,
+				'shuffle_seed' : 0,
+				'n_threads' : 1,
+				'batch_size' : DATA_BATCH_SIZE,
+			},
+
+			'queue_params' : {
+				'queue_type' : 'fifo',
+				'batch_size' : MODEL_BATCH_SIZE,
+				'seed' : 0,
+				'capacity' : 20 * MODEL_BATCH_SIZE
+			},
+
+			'targets' : {
+				'func' : grab_all,
+				'targets' : [],
+				'num_to_save' : MODEL_BATCH_SIZE,
+			},
+			# 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
+			'agg_func' : just_keep_everything,
+			'online_agg_func' : append_it,
+			'num_steps' : 250
+		},
+
+	}
+
+}
+
+
+if __name__ == '__main__':
+	base.get_params()
+	base.test_from_params(**params)
+
+
