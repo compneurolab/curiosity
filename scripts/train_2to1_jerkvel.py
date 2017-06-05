@@ -21,7 +21,7 @@ VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_newobj'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 64
+MODEL_BATCH_SIZE = 50
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
@@ -49,7 +49,7 @@ CFG = [ modelsource.cfg_mom_concat(n_classes, use_cond=True, method='sign'),
         modelsource.cfg_mom_concat(n_classes, use_cond=True, method='concat'), 
         modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 0
+SEED = 2
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -149,7 +149,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': False,
+    'do_restore': True,
     'load_query': None
 }] * N_GPUS
 
