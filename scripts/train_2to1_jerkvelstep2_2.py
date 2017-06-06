@@ -36,16 +36,18 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['vel_model_act_vel_seg_bypass_crelu', 
-'vel_model_act_vel_seg_flat_crelu',
+EXP_ID = ['velmod_avs_byp_crelu', 
+'velmod_avs_fl_crelu',
 'vel_model_vel_flat', 
 'vel_model_vel_seg_flat']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [ modelsource.cfg_mom_flat_bypass(n_classes, use_cond=True, method='concat'),
-        modelsource.cfg_mom_flat_concat(n_classes, use_cond=True, method='concat'), 
+CFG = [ modelsource.cfg_mom_flat_bypass(n_classes, use_cond=True, method='concat',
+                nonlin='crelu'),
+        modelsource.cfg_mom_flat_concat(n_classes, use_cond=True, method='concat',
+                nonlin='crelu'), 
         modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat'), 
         modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat')]
 USE_VEL = [True, True, True, True]

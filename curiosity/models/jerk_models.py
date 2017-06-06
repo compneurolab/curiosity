@@ -1596,7 +1596,7 @@ def cfg_no_bypass_jerk_action(n_classes):
         }
 }
 
-def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign'):
+def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign', nonlin='relu'):
     return {
         'use_cond': use_cond,
         # ONLY USED IF use_cond = True!!!
@@ -1658,25 +1658,25 @@ def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign'):
         'delta_moments_encode_depth' : 11,
         'delta_moments_encode' : {
                 1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': [0,1], 'nonlinearity': 'crelu'},
+                    'bypass': [0,1], 'nonlinearity': nonlin},
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 10, 'nonlinearity': 'crelu'},
+                    'bypass': 10, 'nonlinearity': nonlin},
                 4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 12, 'nonlinearity': 'crelu'},
+                    'bypass': 12, 'nonlinearity': nonlin},
                 6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': [0,1], 'nonlinearity': 'crelu'},
+                    'bypass': [0,1], 'nonlinearity': nonlin},
                 8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 9 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 10, 'nonlinearity': 'crelu'},
+                    'bypass': 10, 'nonlinearity': nonlin},
                 10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'bypass': 12},
 
@@ -1698,7 +1698,7 @@ def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign'):
         }
 }
 
-def cfg_mom_flat_concat(n_classes, use_cond=False, method='sign'):
+def cfg_mom_flat_concat(n_classes, use_cond=False, method='sign', nonlin='relu'):
     return {
         'use_cond': use_cond,
         # ONLY USED IF use_cond = True!!!
@@ -1760,25 +1760,25 @@ def cfg_mom_flat_concat(n_classes, use_cond=False, method='sign'):
         'delta_moments_encode_depth' : 11,
         'delta_moments_encode' : {
                 1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 9 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'nonlinearity': 'crelu'},
+                    'nonlinearity': nonlin},
                 11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     },
 
