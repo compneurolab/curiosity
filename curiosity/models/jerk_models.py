@@ -217,7 +217,8 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
 
 def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
-        scale_down_width = None, add_depth_gaussian = False, include_pose = False,
+        scale_down_width = None, add_depth_gaussian = False, add_gaussians = False,
+        use_segmentation = False, use_vel = False, include_pose = False,
         num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -225,7 +226,7 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         rinputs = {}
         for k in inputs:
             if k in ['depths', 'objects', 'vels', 'accs', 'jerks',
-                    'vels_curr', 'accs_curr', 'actions_map']:
+                    'vels_curr', 'accs_curr', 'actions_map', 'segmentation_map']:
                 rinputs[k] = tf.pad(inputs[k],
                         [[0,0], [0,0], [0,0], [3,3], [0,0]], "CONSTANT")
                 # RESIZING IMAGES
@@ -245,14 +246,23 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
                 time_seen = time_seen, stats_file = stats_file,
                 scale_down_height = scale_down_height,
                 scale_down_width = scale_down_width,
-                add_depth_gaussian = add_depth_gaussian)
+                add_depth_gaussian = add_depth_gaussian,
+                add_gaussians = add_gaussians,
+                get_hacky_segmentation_map = True,
+                get_actions_map = True)
         inputs = base_net.inputs
 
         # init network
         m = ConvNetwithBypasses(**kwargs)
         # encode per time step
-        main_attributes = ['depths', 'vels_curr', 'segmentation_map']
-        main_input_per_time = [tf.concat([inputs[nm][:, t] \
+        main_attributes = ['depths']
+        if use_vel:
+            print('Using current velocities as input')
+            main_attributes.append('vels_curr')
+        if use_segmentation:
+            print('Using segmentations as input')
+            main_attributes.append('segmentation_map')
+        main_input_per_time = [tf.concat([tf.cast(inputs[nm][:, t], tf.float32) \
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
 
         # initial bypass
@@ -264,8 +274,9 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         else:
             use_cond = False
         if use_cond:
-            print('Using CONDITIONING')
+            print('Using ACTION CONDITIONING')
             cond_attributes = ['actions_map']
+            inputs['actions_map'] = tf.reduce_sum(inputs['actions_map'], axis=-1)
             if 'cond_scale_factor' in cfg:
                 scale_factor = cfg['cond_scale_factor']
             else:
@@ -321,21 +332,21 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         next_moments = []
         delta_moments = []
         reuse_weights = False
+        next_moment = []
+        delta_moment = []
         # caluclate 1st next moments
         for t in range(time_seen-1):
-            next_moment = []
-            delta_moment = []
             dm, bypass_nodes = feedforward_conv_loop(
-                    encoded_input_main[t], m, cfg, desc = 'delta_moments_encode',
+                    encoded_input_main[t+1], m, cfg, desc = 'delta_moments_encode',
                     bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
                     batch_normalize = False, no_nonlinearity_end = False,
                     do_print=(not reuse_weights), return_bypass = True)
             if cfg['combine_delta'] == 'plus':
                 print('Using PLUS')
-                nm = moment[t] + dm[-1]
+                nm = encoded_input_main[t+1] + dm[-1]
             elif cfg['combine_delta'] == 'concat':
                 print('Using CONCAT')
-                nm = tf.concat([moment[t], dm[-1]], axis=3)
+                nm = tf.concat([encoded_input_main[t+1], dm[-1]], axis=3)
                 nm, bypass_nodes = feedforward_conv_loop(
                     nm, m, cfg, desc = 'combine_delta_encode',
                     bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
@@ -349,7 +360,6 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
             next_moment.append(nm)
         next_moments.append(next_moment)
         delta_moments.append(delta_moment)
-
         num_deconv = cfg.get('deconv_depth')
         reuse_weights = False
         if num_deconv:
@@ -372,8 +382,6 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
                     moment[t] = enc[-1]
                     reuse_weights = True
         retval = {
-                'pred': delta_moments[1][0],
-                'pred_vel_1': moments[0][0],
                 'pred_next_vel_1': next_moments[0][0],
                 'pred_next_vel_2': next_moments[0][1],
                 'bypasses': bypass_nodes,
@@ -386,7 +394,8 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
 
 def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
-        scale_down_width = None, add_depth_gaussian = False, include_pose = False,
+        scale_down_width = None, add_depth_gaussian = False, add_gaussians = False, 
+        include_pose = False,
         num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -414,7 +423,9 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
                 time_seen = time_seen, stats_file = stats_file,
                 scale_down_height = scale_down_height,
                 scale_down_width = scale_down_width,
-                add_depth_gaussian = add_depth_gaussian)
+                add_depth_gaussian = add_depth_gaussian,
+                add_gaussians = add_gaussians,
+                get_actions_map = True)
         inputs = base_net.inputs
 
         # init network
@@ -1097,7 +1108,7 @@ def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
 
 def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
-        segmented_jerk=True, **kwargs):
+        segmented_jerk=True, use_current_vel_loss = True, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
         if undersample:
@@ -1108,7 +1119,7 @@ def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
             mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
         else:
             mask = 1
-        shape = outputs['pred'].get_shape().as_list()
+        shape = outputs['pred_next_vel_1'].get_shape().as_list()
         assert shape[3] / 3 == num_classes
 
         losses = []
@@ -1119,14 +1130,16 @@ def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
         losses.append(loss)
-        # current moments losses
-        logits = outputs['moments'][0][0]
-        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
-        labels = outputs['vels_curr'][:,1]
-        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+        assert len(losses) == 1, ('loss length: %d' % len(losses))
+        if use_current_vel_loss:
+            # current moments losses
+            logits = outputs['moments'][0][0]
+            logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+            labels = outputs['vels_curr'][:,1]
+            loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
-        losses.append(loss)
-        assert len(losses) == 2, ('loss length: %d' % len(losses))
+            losses.append(loss)
+            assert len(losses) == 2, ('loss length: %d' % len(losses))
         losses = tf.stack(losses)
         return [tf.reduce_mean(losses)]
 
