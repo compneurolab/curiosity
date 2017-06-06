@@ -19,14 +19,14 @@ VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 4
+N_GPUS = 2
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 50
+MODEL_BATCH_SIZE = 64
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std.pkl'
 BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
@@ -36,19 +36,20 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['vel_model_act_concat', 
-'vel_model_concat',
-'vel_model_act_concat_2losses', 
-'vel_model_concat_2losses']
+EXP_ID = ['vel_model_act_vel_seg_bypass_crelu', 
+'vel_model_act_vel_seg_flat_crelu',
+'vel_model_vel_flat', 
+'vel_model_vel_seg_flat']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [ modelsource.cfg_mom_concat(n_classes, use_cond=True, method='sign'),
-        modelsource.cfg_mom_concat(n_classes, use_cond=False, method='sign'), 
-        modelsource.cfg_mom_concat(n_classes, use_cond=True, method='concat'), 
+CFG = [ modelsource.cfg_mom_flat_bypass(n_classes, use_cond=True, method='concat'),
+        modelsource.cfg_mom_flat_concat(n_classes, use_cond=True, method='concat'), 
+        modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat'), 
         modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat')]
-SECOND_LOSS = [False, False, True, True]
+USE_VEL = [True, True, True, True]
+USE_SEG = [True, True, True, True]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 0
 
@@ -88,12 +89,12 @@ def just_keep_everything(val_res):
     keys = val_res[0].keys()
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
-SAVE_TO_GFS = ['object_data_future', 'pred_vel_1', 'pred_next_vel_1', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk_map', 'depths_raw', 'jerks', 'vels']
+SAVE_TO_GFS = ['object_data_future', 'pred_next_vel_1', 'object_data_seen_1d', 'reference_ids', 'master_filter', 'jerk_map', 'vels']
 
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
-    batch_size = outputs['pred_vel_1'].get_shape().as_list()[0]
+    batch_size = outputs['pred_next_vel_1'].get_shape().as_list()[0]
     retval['loss'] = modelsource.softmax_cross_entropy_loss_vel( 
             outputs, gpu_id=gpu_id, segmented_jerk=False, use_current_vel_loss=False,
             buckets=buckets)
@@ -111,9 +112,12 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
-            elif k in ['jerks', 'vels']:
+            elif k in ['jerks']:
                 jerks = outputs[k][:num_to_save]
                 retval[k] = jerks[:,-1]
+            elif k in ['vels']:
+                vels = outputs[k][:num_to_save]
+                retval[k] = vels[:,2]
             else:
                 retval[k] = outputs[k][:num_to_save]
         else:
@@ -155,18 +159,20 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.mom_model,
+    'func' : modelsource.mom_model_step2,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
         #'object_data' : 'screen_normalize', 
-        'actions' : 'standard'},
+        'actions' : 'minmax'},
     'stats_file' : STATS_FILE,
     'image_height' : IMG_HEIGHT,
     'image_width' : IMG_WIDTH,
     #'scale_down_height' : SCALE_DOWN_HEIGHT,
     #'scale_down_width' : SCALE_DOWN_WIDTH,
     'add_depth_gaussian' : False,
+    'use_vel': False,
+    'use_segmentation': False,
     'include_pose' : False,
     #'num_classes': 60.,
     'gpu_id' : 0,
@@ -289,13 +295,14 @@ for i, _ in enumerate(model_params):
 
     save_params[i]['cache_dir'] = CACHE_DIRS[i]
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
-    loss_params[i]['loss_func_kwargs']['use_current_vel_loss'] = SECOND_LOSS[i]
     #loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
     optimizer_params[i]['gpu_offset'] = i
     validation_params[i]['valid0']['targets']['gpu_id'] = i
     #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['cfg'] = CFG[i]
+    model_params[i]['use_vel'] = USE_VEL[i]
+    model_params[i]['use_segmentation'] = USE_SEG[i]
     learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {

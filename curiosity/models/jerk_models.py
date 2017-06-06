@@ -121,6 +121,8 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                                 my_activation = cfg[desc][i].get('nonlinearity')
                                 if my_activation is None:
                                         my_activation = 'relu'
+                                else:
+                                        print('NONLIN: ' + my_activation)
                                 m.conv(nf, cfs, cs, activation = my_activation)
                             if do_print:
                                 print('conv out', m.output)
@@ -258,7 +260,7 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         main_attributes = ['depths']
         if use_vel:
             print('Using current velocities as input')
-            main_attributes.append('vels_curr')
+            main_attributes.append('vels_curr_normed')
         if use_segmentation:
             print('Using segmentations as input')
             main_attributes.append('segmentation_map')
@@ -266,7 +268,7 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
 
         # initial bypass
-        bypass_nodes = [inputs['depths'][:, time_seen-1]]
+        bypass_nodes = [inputs['depths'][:, 1], inputs['vels_curr_normed'][:, 1]]
 
         # conditioning
         if 'use_cond' in cfg:
@@ -390,6 +392,10 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
                 }
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
+        print('------BYPASSES-------')
+        for i, bypass_node in enumerate(bypass_nodes):
+            print(i, bypass_node)
+        print(len(bypass_nodes))
         return retval, m.params
 
 def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
@@ -446,6 +452,7 @@ def mom_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         if use_cond:
             print('Using CONDITIONING')
             cond_attributes = ['actions_map']
+            inputs['actions_map'] = tf.reduce_sum(inputs['actions_map'], axis=-1)
             if 'cond_scale_factor' in cfg:
                 scale_factor = cfg['cond_scale_factor']
             else:
@@ -1108,7 +1115,7 @@ def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
 
 def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
-        segmented_jerk=True, use_current_vel_loss = True, **kwargs):
+        segmented_jerk=True, use_current_vel_loss=True, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
         if undersample:
@@ -1585,6 +1592,210 @@ def cfg_no_bypass_jerk_action(n_classes):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
                 },
             3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                },
+        }
+}
+
+def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign'):
+    return {
+        'use_cond': use_cond,
+        # ONLY USED IF use_cond = True!!!
+        'cond_scale_factor': 4,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+        },
+
+        # Encoding the inputs
+        'main_encode_depth': 4,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        # ONLY USED IF use_cond = True!!!
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    #'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}
+                    }
+        },
+
+        # Calculate moments
+        'combine_moments': 'minus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_moments is 'concat'
+        'combine_moments_encode_depth' : 1,
+        'combine_moments_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 128},
+                    }
+        },
+        'moments_encode_depth' : 5,
+        'moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    }
+        },
+
+        # Predict next moments
+        'delta_moments_encode_depth' : 11,
+        'delta_moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': [0,1], 'nonlinearity': 'crelu'},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': 10, 'nonlinearity': 'crelu'},
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': 12, 'nonlinearity': 'crelu'},
+                6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': [0,1], 'nonlinearity': 'crelu'},
+                8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                9 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': 10, 'nonlinearity': 'crelu'},
+                10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'bypass': 12},
+
+        },
+        'combine_delta': 'plus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_delta is 'concat'
+        'combine_delta_encode_depth' : 1,
+        'combine_delta_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 128},
+                    }
+        },
+
+        'deconv_depth': 2,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                'bypass': 10},
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                'bypass': [0,1]},
+        }
+}
+
+def cfg_mom_flat_concat(n_classes, use_cond=False, method='sign'):
+    return {
+        'use_cond': use_cond,
+        # ONLY USED IF use_cond = True!!!
+        'cond_scale_factor': 4,
+        'cond_encode_depth': 1,
+        'cond_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+        },
+
+        # Encoding the inputs
+        'main_encode_depth': 4,
+        'main_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                     'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}},
+        },
+
+        # ONLY USED IF use_cond = True!!!
+        'encode_depth': 3,
+        'encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128}
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    #'pool': {'size' : 2, 'stride' : 2, 'type' : 'max'}
+                    }
+        },
+
+        # Calculate moments
+        'combine_moments': 'minus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_moments is 'concat'
+        'combine_moments_encode_depth' : 1,
+        'combine_moments_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 128},
+                    }
+        },
+        'moments_encode_depth' : 5,
+        'moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    }
+        },
+
+        # Predict next moments
+        'delta_moments_encode_depth' : 11,
+        'delta_moments_encode' : {
+                1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                9 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    'nonlinearity': 'crelu'},
+                11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                    },
+
+        },
+        'combine_delta': 'plus' if method is 'sign' else 'concat',
+        # ONLY USED IF combine_delta is 'concat'
+        'combine_delta_encode_depth' : 1,
+        'combine_delta_encode' : {
+                1 : {'conv' : {'filter_size': 3, 'stride': 1, 'num_filters' : 128},
+                    }
+        },
+
+        'deconv_depth': 2,
+        'deconv' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 },
         }
 }

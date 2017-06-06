@@ -391,8 +391,8 @@ class ShortLongFuturePredictionBase:
         if get_hacky_segmentation_map:
             # couch == id 23 and microwave == id 24
             segmentation_list = [
-                    tf.expand_dims(tf.cast(tf.equal(objects, 23), tf.int32) * 1, -1),
-                    tf.expand_dims(tf.cast(tf.equal(objects, 24), tf.int32) * 2, -1)]
+                    tf.expand_dims(tf.cast(tf.equal(objects, 23), tf.float32) * 0.5, -1),
+                    tf.expand_dims(tf.cast(tf.equal(objects, 24), tf.float32) * 1, -1)]
             self.inputs['segmentation_map'] = tf.reduce_sum(tf.concat(
                 segmentation_list, -1), axis=-1, keep_dims=True)
 

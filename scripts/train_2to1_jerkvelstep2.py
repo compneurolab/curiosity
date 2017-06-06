@@ -112,9 +112,12 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             elif k == 'depths_raw':
                 depths = outputs[k][:num_to_save]
                 retval[k] = depths[:,-1,:,:,0]
-            elif k in ['jerks', 'vels']:
+            elif k in ['jerks']:
                 jerks = outputs[k][:num_to_save]
                 retval[k] = jerks[:,-1]
+            elif k in ['vels']:
+                vels = outputs[k][:num_to_save]
+                retval[k] = vels[:,2]
             else:
                 retval[k] = outputs[k][:num_to_save]
         else:

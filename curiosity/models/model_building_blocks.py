@@ -84,6 +84,8 @@ class ConvNetwithBypasses(ConvNet):
 			print('activation: ' + k)
 			if k == 'relu':
 				for_out.append(tf.nn.relu(in_layer, name='relu'))
+                        elif k == 'crelu':
+                                for_out.append(tf.nn.crelu(in_layer, name='crelu'))
 			elif k == 'tanh':
 				for_out.append(tf.tanh(in_layer, name = 'tanh'))
 			elif k == 'concat_square':
