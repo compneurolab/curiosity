@@ -14,15 +14,15 @@ import tfutils.data as d
 import tfutils.base as b
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 import numpy as np
-DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
+DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
 NUM_BATCHES = 4 * 1000 - 8
 BATCH_SIZE = 256.
 ATTRIBUTES = ['actions', 'agent_data', 'depths2', 'images2', 'is_not_dropping', 
 			'is_not_waiting', 'is_object_in_view2', 'normals', 'object_data', 'objects',
 			 'reference_ids', 'depths', 'images', 'is_acting', 'is_not_teleporting', 
 			'is_object_in_view', 'is_object_there', 'normals2', 'object_data2', 'objects2']
-STATS_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats.pkl'
-STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std.pkl'
+STATS_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_fixed.pkl'
+STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 import cPickle
 
 
@@ -89,15 +89,19 @@ def get_stats():
 	stats = dict((k, get_batch_stats(inputs[k])) for k in inputs)
 	for bn in range(NUM_BATCHES):
 		print(bn)
+		print('retrieving stats')
 		batch_stats = sess.run(stats)
+		print('stats retrieved')
 		if bn == 0:
 			stats_so_far = batch_stats
 		else:
 			for k in stats_so_far:
 				stats_so_far[k] = update_stats(stats_so_far[k], batch_stats[k], float(bn))
 		if bn % 10 == 0:
+			print('about to write')
 			with open(STATS_SAVE_LOC, 'w') as stream:
 				cPickle.dump(stats_so_far, stream)
+			print('written')
 	with open(STATS_SAVE_LOC, 'w') as stream:
 		cPickle.dump(stats_so_far, stream)
 

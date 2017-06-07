@@ -16,8 +16,8 @@ PREFIX = int(sys.argv[2])
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/six_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata'
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks', 
         'vels_curr', 'accs_curr', 'jerks_curr',
         'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2', 
@@ -185,7 +185,7 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
                 if None not in frame_act_ids:
                     if len(other_obj_ids) < 1:
                         if LAST_both_ids is None:
-                            both_ids = frame_act_ids + [-1]
+                            both_ids = frame_act_ids + [None]
                         else:
                             both_ids = LAST_both_ids
                     else:
@@ -193,7 +193,7 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
                 else:
                     if len(other_obj_ids) == 1:
                         if LAST_both_ids is None:
-                            both_ids = other_obj_ids + [-1]
+                            both_ids = other_obj_ids + [None]
                         else:
                             both_ids = LAST_both_ids
                     else:
@@ -296,7 +296,6 @@ def get_actions(actions, coordinate_transformations):
 			fr_act_data = []
 			fr_act_data2 = []
 			for act_data in act['actions']:
-                       		act_data = act['actions'][0]
                         	force = transform_to_local(act_data['force'], rot_mat)
                         	torque = transform_to_local(act_data['torque'], rot_mat)
                         	force2 = transform_to_local(force, OTHER_CAM_ROT)
