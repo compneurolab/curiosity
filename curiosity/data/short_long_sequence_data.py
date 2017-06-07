@@ -169,7 +169,10 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         min_len = tf.constant(self.min_len, dtype = tf.int32)
         for f in self.filters:
             data[f] = tf.cast(data[f], tf.int32)
+	    shp = data[f].get_shape().as_list()
             data[f] = tf.squeeze(data[f])
+	    if shp[1] == 1:
+		data[f] = tf.expand_dims(data[f], 1)
 	    print(f)
 	    print(data[f])
 	if 'is_object_there' in self.filters:
