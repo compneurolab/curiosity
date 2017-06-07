@@ -220,7 +220,8 @@ def basic_jerk_bench(inputs, cfg = None, num_classes = None, time_seen = None, n
 def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
         scale_down_width = None, add_depth_gaussian = False, add_gaussians = False,
-        use_segmentation = False, use_vel = False, include_pose = False,
+        use_segmentation = False, use_vel = False, include_pose = False, 
+        use_only_t1 = True,
         num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -297,6 +298,8 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
             encoded_input_cond = []
             reuse_weights = False
             for t in range(time_seen):
+                if use_only_t1 and t != 1:
+                    continue
                 enc, bypass_nodes = feedforward_conv_loop(
                         cond_input_per_time[t], m, cfg, desc = 'cond_encode',
                         bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
@@ -309,6 +312,8 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         encoded_input_main = []
         reuse_weights = False
         for t in range(time_seen):
+                if use_only_t1 and t != 1:
+                    continue
                 enc, bypass_nodes = feedforward_conv_loop(
                         main_input_per_time[t], m, cfg, desc = 'main_encode',
                         bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
@@ -321,6 +326,8 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         if use_cond:
             reuse_weights = False
             for t in range(time_seen):
+                if use_only_t1 and t != 0:
+                    continue
                 enc = tf.concat([encoded_input_main[t], encoded_input_cond[t]], axis=3)
                 enc, bypass_nodes = feedforward_conv_loop(
                         enc, m, cfg, desc = 'encode',
@@ -338,17 +345,23 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         delta_moment = []
         # caluclate 1st next moments
         for t in range(time_seen-1):
+            if use_only_t1:
+                if t != 0:
+                    continue
+                enco = encoded_input_main[t]
+            else:
+                enco = encoded_input_main[t+1]
             dm, bypass_nodes = feedforward_conv_loop(
-                    encoded_input_main[t+1], m, cfg, desc = 'delta_moments_encode',
+                    enco, m, cfg, desc = 'delta_moments_encode',
                     bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
                     batch_normalize = False, no_nonlinearity_end = False,
                     do_print=(not reuse_weights), return_bypass = True)
             if cfg['combine_delta'] == 'plus':
                 print('Using PLUS')
-                nm = encoded_input_main[t+1] + dm[-1]
+                nm = enco + dm[-1]
             elif cfg['combine_delta'] == 'concat':
                 print('Using CONCAT')
-                nm = tf.concat([encoded_input_main[t+1], dm[-1]], axis=3)
+                nm = tf.concat([enco, dm[-1]], axis=3)
                 nm, bypass_nodes = feedforward_conv_loop(
                     nm, m, cfg, desc = 'combine_delta_encode',
                     bypass_nodes = bypass_nodes, reuse_weights = reuse_weights,
@@ -385,7 +398,7 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
                     reuse_weights = True
         retval = {
                 'pred_next_vel_1': next_moments[0][0],
-                'pred_next_vel_2': next_moments[0][1],
+                #'pred_next_vel_2': next_moments[0][1],
                 'bypasses': bypass_nodes,
                 'delta_moments': delta_moments,
                 'next_moments': next_moments
@@ -1662,11 +1675,11 @@ def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign', nonlin='relu')
                 2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'nonlinearity': nonlin},
                 3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 10, 'nonlinearity': nonlin},
+                    'bypass': 4, 'nonlinearity': nonlin},
                 4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'nonlinearity': nonlin},
                 5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 12, 'nonlinearity': nonlin},
+                    'bypass': 6, 'nonlinearity': nonlin},
                 6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'nonlinearity': nonlin},
                 7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
@@ -1674,11 +1687,11 @@ def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign', nonlin='relu')
                 8 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'nonlinearity': nonlin},
                 9 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 10, 'nonlinearity': nonlin},
+                    'bypass': 4, 'nonlinearity': nonlin},
                 10 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
                     'nonlinearity': nonlin},
                 11 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
-                    'bypass': 12},
+                    'bypass': 6},
 
         },
         'combine_delta': 'plus' if method is 'sign' else 'concat',
@@ -1692,7 +1705,7 @@ def cfg_mom_flat_bypass(n_classes, use_cond=False, method='sign', nonlin='relu')
         'deconv_depth': 2,
         'deconv' : {
             1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
-                'bypass': 10},
+                'bypass': 4},
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 'bypass': [0,1]},
         }

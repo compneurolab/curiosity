@@ -14,8 +14,8 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata'
-VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata'
+DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
+VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
@@ -28,7 +28,7 @@ LONG_LEN = 4
 MIN_LEN = 4
 CACHE_DIR = '/mnt/fs0/mrowca/cache/'
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std.pkl'
+STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
 BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 128
@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['vel_model_act_concat', 
-'vel_model_concat',
-'vel_model_act_concat_2losses', 
-'vel_model_concat_2losses']
+EXP_ID = ['vel_model_act_concat2', 
+'vel_model_concat2',
+'vel_model_act_concat_2losses2', 
+'vel_model_concat_2losses2']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
@@ -50,7 +50,7 @@ CFG = [ modelsource.cfg_mom_concat(n_classes, use_cond=True, method='sign'),
         modelsource.cfg_mom_concat(n_classes, use_cond=False, method='concat')]
 SECOND_LOSS = [False, False, True, True]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 0
+SEED = 4
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
