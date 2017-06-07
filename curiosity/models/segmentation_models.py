@@ -471,7 +471,9 @@ def simplest_segmentation(inputs, cfg = None, normalization_method = None, stats
 				inputs,
 				normalization_method = normalization_method,
 				time_seen = 1,
-				get_segmentation = True
+				add_gaussians = False,
+				get_segmentation = True,
+				stats_file = stats_file
 			).inputs
 		m = ConvNetwithBypasses(**kwargs)
 		depths = inputs['depths'][:, 0] #just one timestep, get rid of that dim 1 index
@@ -818,6 +820,17 @@ def correlation(x, y):
         corr = tf.truediv(numerator, denominator)
         return corr
 
+
+def segmentation_2class_loss(outputs, gpu_id = 0):
+        with tf.device('/gpu:%d' % gpu_id):
+		segmentation = outputs['segmentation'][:, 0]
+		#simplifying, so that we are just looking for both objects at once
+		assert len(segmentation.get_shape().as_list()) == 4, segmentation.get_shape().as_list()
+		segmentation = tf.one_hot(tf.reduce_sum(segmentation, axis = 3), depth = 2)
+		pred = outputs['pred']
+		loss = tf.nn.softmax_cross_entropy_with_logits(
+                	labels=segmentation, logits=pred)
+		return tf.reduce_mean(loss)
 
 
 def correlation_jerk_loss(outputs, l2_coef = 1., corr_coef = 1.):
@@ -1249,7 +1262,12 @@ def gen_cfg_no_explicit_alt(encode_num_filters = [4, 8, 16, 32],
 	cfg['hidden'][cfg['hidden_depth']] = {'num_features' : 3, 'activation' : 'identity'}
 	return cfg
 
-
+def gen_cfg_res_preserving_conv(num_filters = [4, 4, 4, 2], sizes = [3, 3, 3, 3], bypasses = [None, None, 0, 0]):
+	cfg = {'encode_depth' : len(num_filters), 'encode' : {}}
+	for i, (nf, sz, byp) in enumerate(zip(num_filters, sizes, bypasses)):
+		cfg['encode'][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : 1, 'num_filters' : nf},
+					'bypass' : byp}
+	return cfg
 
 
 

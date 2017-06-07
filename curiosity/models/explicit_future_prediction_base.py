@@ -228,13 +228,11 @@ class ShortLongFuturePredictionBase:
             im_sh = inputs_not_normed['normals'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1]
-       elif 'depths' in inputs_not_normed:
+	elif 'depths' in inputs_not_normed:
             im_sh = inputs_not_normed['depths'].get_shape().as_list()
             img_height = im_sh[2]
             img_width = im_sh[3]
-            assert time_seen == im_sh[1] - 1
-       else:
+	else:
             assert img_height is not None and img_width is not None
 
         if add_gaussians:
@@ -344,7 +342,7 @@ class ShortLongFuturePredictionBase:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
-       for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
+	for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
                 'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
                 'accs_curr', 'accs_curr2']:
             if desc in inputs_not_normed:
@@ -355,7 +353,8 @@ class ShortLongFuturePredictionBase:
 
         self.inputs['reference_ids'] = inputs_not_normed['reference_ids']
         #TODO: in case of a different object being acted on, should maybe have action position stuff in for seen times
-        self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :, :6]
+        if 'actions' in inputs:
+		self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :, :6]
 
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
@@ -382,10 +381,10 @@ class ShortLongFuturePredictionBase:
 		action_ids = inputs_not_normed['actions'][:, :, :, 8]
 		for i in range(2):
 			action_id_pic = tf.expand_dims(action_ids[:, :, i], axis = 2)
-			action_id_pic = tf.cast(tf.reshape(tf.tile(action_id, [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
+			action_id_pic = tf.cast(tf.reshape(tf.tile(action_id_pic, [1, 1, shape[2] * shape[3]]), shape[:-1]), tf.int32)
 			segmentation = tf.equal(objects, action_id_pic)
 			segmentation_list.append(tf.expand_dims(segmentation, -1))
-		self.inputs['segmentation'] = tf.concat(segmentation_list, -1)
+		self.inputs['segmentation'] = tf.cast(tf.concat(segmentation_list, -1), tf.int32)
 		self.inputs['action_ids'] = action_ids
 	
 
