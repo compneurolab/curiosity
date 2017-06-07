@@ -197,6 +197,7 @@ class ShortLongFuturePredictionBase:
 		store_jerk = False, hack_jerk_norm = True, depth_cutoff = None,
 		get_actions_map = False,
 		get_segmentation = False,
+                get_hacky_segmentation_map = False,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -233,7 +234,7 @@ class ShortLongFuturePredictionBase:
             img_height = im_sh[2]
             img_width = im_sh[3]
 	else:
-            assert img_height is not None and img_width is not None
+	    assert img_height is not None and img_width is not None
 
         if add_gaussians:
             gaussians = []
@@ -342,8 +343,8 @@ class ShortLongFuturePredictionBase:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.float32) / 255.
 
-	for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
-                'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
+       for desc in ['vels', 'vels2', 'jerks', 'jerks2', 'accs', 'accs2',
+               'vels_curr', 'vels_curr2', 'jerks_curr', 'jerks_curr2',
                 'accs_curr', 'accs_curr2']:
             if desc in inputs_not_normed:
                 self.inputs[desc] = tf.cast(inputs_not_normed[desc], tf.int32)
@@ -359,7 +360,7 @@ class ShortLongFuturePredictionBase:
         self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
         # create segmented action maps
-	if get_actions_map or get_segmentation:
+	if get_actions_map or get_segmentation or get_hacky_segmentation_map:
         	objects = tf.cast(inputs_not_normed['objects'], tf.int32)
         	shape = objects.get_shape().as_list()
         	objects = tf.unstack(objects, axis=len(shape)-1)
@@ -386,8 +387,13 @@ class ShortLongFuturePredictionBase:
 			segmentation_list.append(tf.expand_dims(segmentation, -1))
 		self.inputs['segmentation'] = tf.cast(tf.concat(segmentation_list, -1), tf.int32)
 		self.inputs['action_ids'] = action_ids
-	
-
+        if get_hacky_segmentation_map:
+            # couch == id 23 and microwave == id 24
+            segmentation_list = [
+                    tf.expand_dims(tf.cast(tf.equal(objects, 23), tf.float32) * 0.5, -1),
+                    tf.expand_dims(tf.cast(tf.equal(objects, 24), tf.float32) * 1, -1)]
+            self.inputs['segmentation_map'] = tf.reduce_sum(tf.concat(
+                segmentation_list, -1), axis=-1, keep_dims=True)
 
 
 	if store_jerk:
