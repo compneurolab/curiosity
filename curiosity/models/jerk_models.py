@@ -221,7 +221,7 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
         scale_down_width = None, add_depth_gaussian = False, add_gaussians = False,
         use_segmentation = False, use_vel = False, include_pose = False, 
-        use_only_t1 = True,
+        use_only_t1 = True, do_reconstruction = False,
         num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -267,9 +267,18 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
             main_attributes.append('segmentation_map')
         main_input_per_time = [tf.concat([tf.cast(inputs[nm][:, t], tf.float32) \
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
+        if do_reconstruction:
+            print('Doing reconstruction only!')
+            main_input_per_time = []
+            for t in range(time_seen):
+                inp_t = tf.concat([inputs['depths'][:,t], inputs['vels_normed'][:,t+1]],
+                        axis = 3)
+                main_input_per_time.append(inp_t)
 
         # initial bypass
         bypass_nodes = [inputs['depths'][:, 1], inputs['vels_curr_normed'][:, 1]]
+        if do_reconstruction:
+            bypass_nodes = [inputs['depths'][:, 1], inputs['vels_normed'][:, 2]]
 
         # conditioning
         if 'use_cond' in cfg:
@@ -1125,6 +1134,34 @@ def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
         return [loss]
+
+def softmax_cross_entropy_loss_depth(outputs, gpu_id = 0, eps = 0.0,
+        min_value = -1.0, max_value = 1.0, num_classes=256,
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+        shape = outputs['pred_next_vel_1'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes
+
+        losses = []
+        # next depth losses
+        logits = outputs['next_moments'][0][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = tf.cast(outputs['depths_raw'][:,2], tf.int32)
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        assert len(losses) == 1, ('loss length: %d' % len(losses))
+        losses = tf.stack(losses)
+        return [tf.reduce_mean(losses)]
 
 def softmax_cross_entropy_loss_vel(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
