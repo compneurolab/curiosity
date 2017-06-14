@@ -392,8 +392,7 @@ class ShortLongFuturePredictionBase:
             segmentation_list = [
                     tf.expand_dims(tf.cast(tf.equal(objects, 23), tf.float32) * 0.5, -1),
                     tf.expand_dims(tf.cast(tf.equal(objects, 24), tf.float32) * 1, -1)]
-            self.inputs['segmentation_map'] = tf.reduce_sum(tf.concat(
-                segmentation_list, -1), axis=-1, keep_dims=True)
+            self.inputs['segmentation_map'] = tf.concat(segmentation_list, -1)
 
 
 	if store_jerk:
