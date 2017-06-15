@@ -26,7 +26,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_seg', 
-'3loss_bypass',
-'3loss_flat_seg', 
-'3loss_flat']
+EXP_ID = ['1loss_bypass_seg', 
+'1loss_bypass',
+'1loss_flat_seg', 
+'1loss_flat']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
@@ -100,7 +100,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred_next_vel_1'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.softmax_cross_entropy_loss_vel_all( 
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_vel_one( 
             outputs, gpu_id=gpu_id, segmented_jerk=False, buckets=buckets)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
@@ -187,7 +187,7 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_vel_all,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_vel_one,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0, 
         'buckets': buckets, 'segmented_jerk': False}, 

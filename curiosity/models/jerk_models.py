@@ -442,10 +442,62 @@ def mom_model_step2(inputs, cfg = None, time_seen = None, normalization_method =
         print(len(bypass_nodes))
         return retval, m.params
 
+def create_meshgrid(z_t):
+    with tf.variable_scope('meshgrid'):
+        shape = z_t.get_shape().as_list()
+        assert len(shape) == 4 and shape[3] == 1,\
+                ('Input has to be of shape [batch_size, height, width, 1]')
+        batch_size = shape[0]
+        height = shape[1]
+        width = shape[2]
+
+        x_t = tf.tile(tf.expand_dims(\
+                tf.matmul(tf.ones(shape=tf.stack([height, 1])),\
+                tf.transpose(tf.expand_dims(\
+                tf.linspace(-1.0, 1.0, width), 1), [1, 0])),\
+                axis=0), [batch_size, 1, 1])
+        y_t = tf.tile(tf.expand_dims(\
+                tf.matmul(tf.expand_dims(tf.linspace(-1.0, 1.0, height), 1),\
+                tf.ones(shape=tf.stack([1, width]))),\
+                axis=0), [batch_size, 1, 1])
+        z_t = tf.squeeze(z_t)
+        ones = tf.ones_like(x_t)
+       
+        grid = tf.stack([x_t, y_t, z_t, ones], axis=-1)
+        return grid
+
+def apply_projection(inputs, P):
+    assert P.get_shape().as_list() == [4,4], 'P must be of shape [4,4]'
+    inputs_shape = inputs.get_shape().as_list()
+    assert len(inputs_shape) == 4 and inputs_shape[3] == 1,\
+            ('Input has to be of shape [batch_size, height, width, 1]')
+    with tf.variable_scope('projection'):
+        inputs = create_meshgrid(inputs)
+        inputs_shape = inputs.get_shape().as_list()
+        inputs = tf.reshape(inputs, [-1, 4])
+        inputs = tf.matmul(inputs, P)
+        inputs = tf.reshape(inputs, inputs_shape)
+        return inputs[:,:,:,0:3]
+
+def reverse_projection(inputs, P):
+    assert P.get_shape().as_list() == [4,4], 'P must be of shape [4,4]'
+    inputs_shape = inputs.get_shape().as_list()
+    assert len(inputs_shape) == 4 and inputs_shape[3] == 3,\
+            ('Input has to be of shape [batch_size, height, width, 3]')
+    with tf.variable_scope('reverse_projection'):
+        P_inv = tf.matrix_inverse(P)
+        inputs = tf.concat([inputs, tf.ones_like(inputs[:,:,:,0:1])], axis=-1)
+        inputs_shape = inputs.get_shape().as_list()
+        inputs = tf.reshape(inputs, [-1, 4])
+        inputs = tf.matmul(inputs, P_inv)
+        inputs = tf.reshape(inputs, inputs_shape)
+        inputs = tf.reduce_max(inputs, axis=3, keep_dims=True)
+        return tf.maximum(0, inputs)
+
 def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
         scale_down_width = None, add_depth_gaussian = False, add_gaussians = False,
-        include_pose = False, store_jerk = True, 
+        include_pose = False, store_jerk = True, use_projection = False, 
         num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -464,7 +516,8 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
             else:
                 rinputs[k] = inputs[k]
        # preprocess input data
-        batch_size, time_seen = rinputs['depths'].get_shape().as_list()[:2]
+        batch_size, time_seen, height, width = \
+                rinputs['depths'].get_shape().as_list()[:4]
         time_seen -= 1
         long_len = rinputs['object_data'].get_shape().as_list()[1]
         base_net = fp_base.ShortLongFuturePredictionBase(
@@ -481,14 +534,29 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
 
         # init network
         m = ConvNetwithBypasses(**kwargs)
-        
+
         # encode per time step
         main_attributes = ['depths']
         main_input_per_time = [tf.concat([tf.cast(inputs[nm][:, t], tf.float32) \
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
 
+        # init projection matrix
+        if use_projection:
+            print('Using PROJECTION')
+            with tf.variable_scope('projection'):
+                P = tf.get_variable(name='P',
+                        initializer=tf.eye(4),
+                        #shape=[4, 4], 
+                        dtype=tf.float32)
+                
         # initial bypass
         bypass_nodes = [[b] for b in tf.unstack(inputs['depths'][:,:time_seen], axis=1)]
+
+        # use projection
+        if use_projection:
+            for t in range(time_seen):
+                main_input_per_time[t] = apply_projection(main_input_per_time[t], P)
+                #bypass_nodes[t].append(main_input_per_time[t])
 
         # conditioning
         if 'use_segmentation' in cfg:
@@ -1477,6 +1545,36 @@ def softmax_cross_entropy_loss_depth(outputs, gpu_id = 0, eps = 0.0,
         assert len(losses) == 1, ('loss length: %d' % len(losses))
         losses = tf.stack(losses)
         return [tf.reduce_mean(losses)]
+
+def softmax_cross_entropy_loss_vel_one(outputs, gpu_id = 0, eps = 0.0,
+        min_value = -1.0, max_value = 1.0, num_classes=256,
+        segmented_jerk=True, **kwargs):
+    with tf.device('/gpu:%d' % gpu_id):
+        undersample = False
+        if undersample:
+            thres = 0.5412
+            mask = tf.norm(outputs['jerk_all'], ord='euclidean', axis=2)
+            mask = tf.cast(tf.logical_or(tf.greater(mask[:,0], thres),
+                tf.greater(mask[:,1], thres)), tf.float32)
+            mask = tf.reshape(mask, [mask.get_shape().as_list()[0], 1, 1, 1])
+        else:
+            mask = 1
+        shape = outputs['pred_next_vel_1'].get_shape().as_list()
+        assert shape[3] / 3 == num_classes
+
+        losses = []
+        # next image losses
+        logits = outputs['next_images'][1][0]
+        logits = tf.reshape(logits, shape[0:3] + [3, shape[3] / 3])
+        labels = tf.cast(outputs['depths_raw'][:,2], tf.int32)
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=labels, logits=logits) * mask)
+        losses.append(loss)
+        assert len(losses) == 1, ('loss length: %d' % len(losses))
+
+        losses = tf.stack(losses)
+        return [tf.reduce_mean(losses)]
+
 
 def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
