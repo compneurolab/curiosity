@@ -102,7 +102,7 @@ class ConvNetwithBypasses(ConvNet):
 				for_out.append(in_layer)
 			else:
 				raise ValueError("Activation '{}' not defined".format(k))
-		self.output = tf.concat(for_out, axis = last_axis)
+		self.output = tf.concat(last_axis, for_out)
 		return self.output
 
         @tf.contrib.framework.add_arg_scope
@@ -120,9 +120,13 @@ class ConvNetwithBypasses(ConvNet):
 
             if in_layer is None:
                 in_layer = self.output
-            resh = tf.reshape(in_layer,
-                              [in_layer.get_shape().as_list()[0], -1],
-                              name='reshape')
+            print(in_layer)
+            print([in_layer.get_shape().as_list()[0], -1])
+            #let's assume things are flattened, ok?
+            # resh = tf.reshape(in_layer,
+            #                   [in_layer.get_shape().as_list()[0], -1],
+            #                   name='reshape')
+            resh = in_layer
             in_shape = resh.get_shape().as_list()[-1]
             if init != 'from_file':
                 kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
@@ -529,11 +533,11 @@ class ConvNetwithBypasses(ConvNet):
 	    			toconcat.append(self.resize_images([ds1, ds2], in_layer = layer))
 	    		else:
 	    			toconcat.append(layer)
-	    	self.output = tf.concat(toconcat, 3)
+	    	self.output = tf.concat(3, toconcat)
 	    	concat_type = 'image'
 	    elif len(in_shape) == 2:
 	    	toconcat.extend(bypass_layers)
-	    	self.output = tf.concat(toconcat, 1)
+	    	self.output = tf.concat(1, toconcat)
 	    	concat_type = 'flat'
 	    else:
 	    	raise Exception('Bypass case not yet handled.')

@@ -55,7 +55,7 @@ def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
                 scope.reuse_variables()
 
             bypass = cfg[desc][i].get('bypass')
-            if bypass:
+            if bypass is not None:
                 if type(bypass) == list:
                     bypass_node = [bypass_nodes[bp] for bp in bypass]
                 elif type(bypass) == dict:
@@ -261,7 +261,7 @@ class DepthFuturePredictionWorldModel():
 	                            do_print = True)
 			self.pred = decoding[-1]
 			self.tv = s_f[:, -1]
-			self.loss = tf.nn.l2_loss(self.tv - self.pred) / (bs * np.prod(cfg['state_shape']))
+			self.loss = tf.nn.l2_loss(self.tv - self.pred) / 100. #bs #(bs * np.prod(cfg['state_shape']))
 
 
 
@@ -323,11 +323,11 @@ a_bigger_depth_future_config = {
 	'encode' : {
 		'encode_depth' : 5,
 		'encode' : {
-			1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}},
+			1 : {'conv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 20}},
 			2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 20}},
-			3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}},
+			3 : {'conv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 20}},
 			4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}},
-			5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 5}},
+			5 : {'conv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 5}},
 		}
 	},
 
@@ -335,11 +335,11 @@ a_bigger_depth_future_config = {
 		'deconv_depth' : 5,
 
 		'deconv' : {
-			1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}, 'bypass' : 0},
-			2 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 20}, 'bypass' : 0},
-			3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}, 'bypass' : 0},
-			4 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}, 'bypass' : 0},
-			5 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 1}, 'bypass' : 0}
+			1 : {'deconv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 20}, 'bypass' : 4},
+			2 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 20}, 'bypass' : 3},
+			3 : {'deconv' : {'filter_size' : 5, 'stride' : 2, 'num_filters' : 20}, 'bypass' : 2},
+			4 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 10}, 'bypass' : 1},
+			5 : {'deconv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 1},  'bypass' : 0}
 		}
 
 
@@ -441,6 +441,36 @@ sample_cfg = {
 	'world_model' : sample_depth_future_cfg,
 
 	'seed' : 0
+}
+
+another_sample_cfg = {
+	'uncertainty_model' : {
+		'state_shape' : [2, 64, 64, 3],
+		'action_dim' : 8,
+		'n_action_samples' : 50,
+		'encode' : {
+			'encode_depth' : 5,
+			'encode' : {
+				1 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}},
+				2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 20}},
+				3 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 20}},
+				4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 10}},
+				5 : {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 5}},
+			}
+		},
+		'mlp' : {
+			'hidden_depth' : 2,
+			'hidden' : {1 : {'num_features' : 20, 'dropout' : .75},
+						2 : {'num_features' : 1, 'activation' : 'identity'}
+			}		
+		}
+	},
+
+	'world_model' : a_bigger_depth_future_config,
+
+	'seed' : 0
+
+
 }
 
 

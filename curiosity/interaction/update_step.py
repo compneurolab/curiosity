@@ -9,6 +9,7 @@ import tensorflow as tf
 from tfutils.base import get_optimizer, get_learning_rate
 import numpy as np
 import cv2
+from curiosity.interaction import models
 
 
 
@@ -47,6 +48,7 @@ def postprocess_batch_depth(batch):
 	next_depth =  np.array([batch.next_state['depth']])
 	return depths, actions, next_depth
 
+
 class UncertaintyUpdater:
 	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params):
 		self.data_provider = data_provider
@@ -59,7 +61,7 @@ class UncertaintyUpdater:
 		self.inc_step = self.global_step.assign_add(1)
 		self.wm_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
 		self.wm_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
-		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt}
+		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 
 	def start(self, sess):
 		self.data_provider.start_runner(sess)
@@ -87,7 +89,10 @@ class UncertaintyUpdater:
 			self.um.true_loss : np.array([world_model_res['loss']])
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
-		return world_model_res, um_res
+		wm_res_new = dict(('wm_' + k, v) for k, v in world_model_res.iteritems())
+		um_res_new = dict(('um_' + k, v) for k, v in um_res.iteritems())
+		wm_res_new.update(um_res_new)
+		return wm_res_new
 
 
 

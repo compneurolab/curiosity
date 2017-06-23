@@ -95,9 +95,10 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 				recent_history.add(state = obs, next_state = new_obs, 
 								action = action)
 				obs = new_obs
+				num_this_scene += 1
 
-
-			yield recent_history
+			if recent_history.next_state is not None:
+				yield recent_history
 
 	def _run(self):
 		yielded = self.run_env()

@@ -19,6 +19,7 @@ except ImportError:
 
 import json
 import cv2
+import copy
 
 
 synset_for_table = [[u'n04379243']]
@@ -100,12 +101,25 @@ def test_action_to_message_fn(action):
 	return msg
 
 
-def normalized_action_to_ego_force_torque(action, env, limits):
+def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None):
+	'''
+		Sends message given forward vel, y-angular speed, force, torque.
+		If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
+	'''
 	msg = init_msg()
 	limits = np.array(limits)
 	action = action * limits
-	msg['msg']['vel'] = [0, 0, action[0]]
+	agent_vel = action[0]
+	if wall_safety is not None:
+		#check for wall safety
+		proposed_next_position = np.array(env.info['avatar_position']) + np.array(env.info['avatar_forward']) * agent_vel
+		if (proposed_next_position[0]  < wall_safety or proposed_next_position[0] > env.ROOM_WIDTH - .5 - wall_safety
+					or proposed_next_position[2] < wall_safety or proposed_next_position[2] > env.ROOM_LENGTH - .5 - wall_safety):
+			print('wall safety!')
+			agent_vel = 0.
+	msg['msg']['vel'] = [0, 0, agent_vel]
 	msg['msg']['ang_vel'] = [0, action[1], 0]
+
 	available_objects = [o for o in env.info['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
 	if len(available_objects) > 1:
 		raise Exception('This action parametrization only meant for one object')
@@ -192,6 +206,7 @@ class Environment:
 			 action_to_message_fn, 
 			 USE_TDW = False, 
 			 SCREEN_DIMS = (128, 170),
+			 room_dims = (20., 20.), #(ROOM_LENGTH, ROOM_HEIGHT)
 			state_memory_len = {}, #remembers multiple images and concatenates. ex {'depth' : 2}
 			 rescale_dict = {}#to rescale images after unity. {'depth' : (64, 64)}
 		):
@@ -229,8 +244,7 @@ class Environment:
 		self.coll = self.conn['synthetic_generative']['3d_models']
 		self.COMPLEXITY = 1500#I think this is irrelevant, or it should be. TODO check
 		self.NUM_LIGHTS = 4
-		self.ROOM_WIDTH = 20.0
-		self.ROOM_LENGTH = 20.0
+		self.ROOM_LENGTH, self.ROOM_WIDTH = room_dims
 		self.rescale_dict = rescale_dict
 		self.state_memory_len = state_memory_len
 
@@ -326,7 +340,7 @@ class Environment:
 		for k in self.state_memory:
 			self.state_memory[k].pop(0)
 			self.state_memory[k].append(observation[k])
-			observation[k] = self.state_memory[k]
+			observation[k] = copy.copy(self.state_memory[k])
 		return observation
 
 	def _observe_world(self):
