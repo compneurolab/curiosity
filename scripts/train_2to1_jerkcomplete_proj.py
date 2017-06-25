@@ -26,7 +26,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache7/'
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
@@ -36,10 +36,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_seg', 
-'3loss_bypass',
-'3loss_flat_seg', 
-'3loss_flat']
+EXP_ID = ['3loss_bypass_seg_proj2', 
+'3loss_bypass_proj2',
+'3loss_flat_seg_proj2', 
+'3loss_flat_proj2']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
@@ -53,7 +53,7 @@ CFG = [ modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=True,
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=False,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 4
+SEED = 5
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -160,7 +160,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': True,
+    'do_restore': False,
     'load_query': None
 }] * N_GPUS
 
@@ -179,7 +179,7 @@ model_params = [{
     'add_depth_gaussian' : False,
     'include_pose' : False,
     'store_jerk': True,
-    'use_projection': False,
+    'use_projection': True,
     #'num_classes': 60.,
     'gpu_id' : 0,
 }] * N_GPUS
