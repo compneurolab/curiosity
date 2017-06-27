@@ -11,6 +11,8 @@ import pymongo
 from bson.objectid import ObjectId
 from PIL import Image
 from scipy.misc import imresize
+from curiosity.interaction.tdw_client import TDW_Client
+
 
 try:
     from StringIO import StringIO
@@ -208,21 +210,29 @@ class Environment:
 			 SCREEN_DIMS = (128, 170),
 			 room_dims = (20., 20.), #(ROOM_LENGTH, ROOM_HEIGHT)
 			state_memory_len = {}, #remembers multiple images and concatenates. ex {'depth' : 2}
-			 rescale_dict = {}#to rescale images after unity. {'depth' : (64, 64)}
+			 rescale_dict = {}, #to rescale images after unity. {'depth' : (64, 64)}
+			host_address = None,
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
-		SCREEN_HEIGHT, SCREEN_WIDTH = SCREEN_DIMS
+		self.SCREEN_HEIGHT, self.SCREEN_WIDTH = SCREEN_DIMS
 		self.RANDOM_SEED = unity_seed
-		#borrowing a hack from old curiosity
-		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		s.connect(("google.com",80))
-		host_address = s.getsockname()[0]
-		s.close()
+		# #borrowing a hack from old curiosity
+		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		# s.connect(("google.com",80))
+		if USE_TDW:
+			assert host_address is not None
+			self.host_address = host_address
+		else:
+			#borrowing a hack from old curiosity
+			s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+			s.connect(("google.com",80))
+			self.host_address = s.getsockname()[0]
+			s.close()
 		#setting up socket
 		ctx = zmq.Context()
 		if USE_TDW:
-			self.tc = TDW_Client(host_address,
+			self.tc = TDW_Client(self.host_address,
                         initial_command='request_create_environment',
                         description="test script",
                         selected_build=SELECTED_BUILD,  # or skip to select from UI
@@ -234,8 +244,8 @@ class Environment:
 		else:
 			print ("connecting...")
 			self.sock = ctx.socket(zmq.REQ)
-			self.sock.connect("tcp://" + host_address + ":5556")
-			print ("... connected @" + host_address + ":" + "5556")
+			self.sock.connect("tcp://" + self.host_address + ":5556")
+			print ("... connected @" + self.host_address + ":" + "5556")
 		self.USE_TDW = USE_TDW
 		self.not_yet_joined = True
 		self.action_to_message_fn = action_to_message_fn
@@ -314,8 +324,8 @@ class Environment:
 			}
 		if self.not_yet_joined:
 			if self.USE_TDW:
-				tc.load_config(self.config)
-				tc.load_profile({'screen_width': SCREEN_WIDTH, 'screen_height': SCREEN_HEIGHT})
+				self.tc.load_config(self.config)
+				self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
 				self.sock = tc.run()
 			else:
 				print('sending join...')

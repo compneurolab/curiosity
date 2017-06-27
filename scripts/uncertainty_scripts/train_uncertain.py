@@ -14,6 +14,8 @@ from tfutils import base, optimizer
 import numpy as np
 
 NUM_BATCHES_PER_EPOCH = 1e8
+RENDER2_HOST_ADDRESS = '10.102.2.162'
+
 
 
 params = {
@@ -59,7 +61,9 @@ params = {
 				},
 			'rescale_dict' = {
 					'depth' : (64, 64)
-				}
+				},
+			'USE_TDW' : True,
+			'host_address' : RENDER2_HOST_ADDRESS
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],

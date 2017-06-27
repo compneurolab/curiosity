@@ -58,12 +58,12 @@ params = {
 
 	'visualize' : True,
 
-	'exp_id' : 'run15'
+	'exp_id' : 'w_tdw1'
 
 }
 
 if __name__ == '__main__':
-	train.train(**params)
+	train.train_local(**params)
 
 
 

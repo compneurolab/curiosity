@@ -14,6 +14,9 @@ import os
 import cPickle
 import tfutils.base as base
 
+
+RENDER_2_ADDY = '10.102.2.162'
+
 class LocalSaver:
 	def __init__(self, how_much, how_often, save_dir):
 		self.how_much = how_much
@@ -142,7 +145,7 @@ def train_local(
 		'depth' : (64, 64)
 	}
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.))
+	env = environment.Environment(1, 1, action_to_message, USE_TDW = True, host_address = RENDER_2_ADDY, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.))
 	scene_infos = data.SillyLittleListerator([environment.example_scene_info])
 	steps_per_scene = data.SillyLittleListerator([1024 * 32])
 	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), capacity = 5)
