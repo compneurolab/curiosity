@@ -1,10 +1,12 @@
 import sys
-sys.path.append('Threedworld')
+sys.path.append('ThreeDWorld')
 
 import os, json, datetime
 import zmq
-from tabulate import tabulate
-from threedworld.servertools.tdw_queue import DEFAULT_QUEUE_PORT
+#from tabulate import tabulate
+#from threedworld.servertools.tdw_queue import DEFAULT_QUEUE_PORT
+
+DEFAULT_QUEUE_PORT = 23402#this is what we are gonna use on render2
 
 if os.name != 'nt':
     from pick import pick

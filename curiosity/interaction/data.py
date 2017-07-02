@@ -89,7 +89,7 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 					scene_len = self.scene_lengths.next()
 					break
 				action_sample = self.action_sampler.sample_actions()
-				action = self.policy.act(self.sess, action_sample, np.array([obs['depth']]))
+				action = self.policy.act(self.sess, action_sample, np.array([[elt if elt is not None else np.zeros(obs['depths1'][-1].shape, obs['depths1'][-1].dtype) for elt in obs['depths1']]]))
 
 				new_obs = self.env.step(action)
 				recent_history.add(state = obs, next_state = new_obs, 

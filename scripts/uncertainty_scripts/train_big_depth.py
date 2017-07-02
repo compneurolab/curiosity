@@ -1,6 +1,5 @@
 '''
-A second test for the curious uncertainty loop.
-This one's for cluster training, not local.
+Big depth!
 '''
 
 import sys
@@ -9,7 +8,7 @@ sys.path.append('tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment
-from curiosity.interaction.models import another_sample_cfg
+from curiosity.interaction.models import default_damian_full_cfg
 from tfutils import base, optimizer
 import numpy as np
 import os
@@ -17,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo'
+EXP_ID = 'mom_cplt3'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -57,23 +56,26 @@ params = {
 	},
 
 	'model_params' : {
-		'func' : train.get_default_models,
- 		'cfg' : another_sample_cfg,
+		'func' : train.get_models_damianworld,
+ 		'cfg' : default_damian_full_cfg,
  		'action_model_desc' : 'uncertainty_model'
 	},
 
 	'data_params' : {
 		'func' : train.get_default_data_provider,
-		'action_limits' : np.array([1., 1.] + [80. for _ in range(6)]),
+		'action_limits' : np.array([.1, .1] + [80. for _ in range(6)]),
 		'environment_params' : {
 			'random_seed' : 1,
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					'depths1' : 2
+					'depths1' : 2,
+					'msg' : 2,
+					'action' : 2,
+					'objects1' : 2
 				},
 			'rescale_dict' : {
-					'depths1' : (64, 64)
+					#'depths1' : (64, 64)
 				},
 			'USE_TDW' : True,
 			'host_address' : RENDER2_HOST_ADDRESS
@@ -84,7 +86,7 @@ params = {
 	},
 
 	'train_params' : {
-		'updater_func' : train.get_default_updater
+		'updater_func' : train.get_damian_updater
 	},
 
 
@@ -126,6 +128,7 @@ params = {
 
 if __name__ == '__main__':
 #	raise Exception('FIX TFUTILS TRAINING SAVE')
+	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
 	train.train_from_params(**params)
 
 

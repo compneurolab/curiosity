@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo'
+EXP_ID = 'tl_ego'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -64,7 +64,7 @@ params = {
 
 	'data_params' : {
 		'func' : train.get_default_data_provider,
-		'action_limits' : np.array([1., 1.] + [80. for _ in range(6)]),
+		'action_limits' : np.array([.1, .1] + [80. for _ in range(6)]),
 		'environment_params' : {
 			'random_seed' : 1,
 			'unity_seed' : 1,
@@ -126,6 +126,7 @@ params = {
 
 if __name__ == '__main__':
 #	raise Exception('FIX TFUTILS TRAINING SAVE')
+	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
 	train.train_from_params(**params)
 
 

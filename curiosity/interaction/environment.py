@@ -12,7 +12,7 @@ from bson.objectid import ObjectId
 from PIL import Image
 from scipy.misc import imresize
 from curiosity.interaction.tdw_client import TDW_Client
-
+SELECTED_BUILD = ':\Users\mrowca\Desktop\world\one_world.exe'
 
 try:
     from StringIO import StringIO
@@ -79,16 +79,16 @@ def query_results_to_unity_data(query_results, scale, mass, var = .01, seed = 0)
 
 
 
-def init_msg():
-        msg = {'n': 9, 'msg': {"msg_type": "CLIENT_INPUT", "get_obj_data": True, "send_scene_info" : True, "actions": []}}
+def init_msg(n_frames):
+        msg = {'n': n_frames, 'msg': {"msg_type": "CLIENT_INPUT", "get_obj_data": True, "send_scene_info" : True, "actions": []}}
         msg['msg']['vel'] = [0, 0, 0]
         msg['msg']['ang_vel'] = [0, 0, 0]
         return msg
 
 
 
-def test_action_to_message_fn(action):
-	msg = init_msg()
+def test_action_to_message_fn(action, env):
+	msg = init_msg(env.num_frames_per_msg)
 	if action == 0:
 		msg['msg']['vel'] = [0, 0, .5]
 		msg['msg']['action_type'] = 'FORWARD'
@@ -108,13 +108,13 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 		Sends message given forward vel, y-angular speed, force, torque.
 		If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
 	'''
-	msg = init_msg()
+	msg = init_msg(env.num_frames_per_msg)
 	limits = np.array(limits)
 	action = action * limits
 	agent_vel = action[0]
 	if wall_safety is not None:
 		#check for wall safety
-		proposed_next_position = np.array(env.info['avatar_position']) + np.array(env.info['avatar_forward']) * agent_vel
+		proposed_next_position = np.array(env.observation['info']['avatar_position']) + np.array(env.observation['info']['avatar_forward']) * agent_vel
 		if (proposed_next_position[0]  < wall_safety or proposed_next_position[0] > env.ROOM_WIDTH - .5 - wall_safety
 					or proposed_next_position[2] < wall_safety or proposed_next_position[2] > env.ROOM_LENGTH - .5 - wall_safety):
 			print('wall safety!')
@@ -122,13 +122,16 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	msg['msg']['vel'] = [0, 0, agent_vel]
 	msg['msg']['ang_vel'] = [0, action[1], 0]
 
-	available_objects = [o for o in env.info['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
+	available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
 	if len(available_objects) > 1:
 		raise Exception('This action parametrization only meant for one object')
 	elif len(available_objects) == 1:
 		obj_id = available_objects[0][1]
+		oarray = env.observation['objects1']
+		if type(oarray) == list:
+			oarray = oarray[-1]
 		#see if the object is in view
-		oarray1 = 256**2 * env.oarray[:, :, 0] + 256 * env.oarray[:, :, 1] + env.oarray[:, :, 2]
+		oarray1 = 256**2 * oarray[:, :, 0] + 256 * oarray[:, :, 1] + oarray[:, :, 2]
 		xs, ys = (oarray1 == obj_id).nonzero()
 		#if not in view
 		if len(xs) == 0:
@@ -149,28 +152,53 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	return msg
 
 
+def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
+    info = sock.recv()
+    print("got message")
+    data = {'info': info}
+    # Iterate over all cameras
+    for cam in range(len(msg_names)):
+        for n in range(len(msg_names[cam])):
+            # Handle set of images per camera
+            imgstr = sock.recv()
+            imgarray = np.asarray(Image.open(StringIO(imgstr)).convert('RGB'))
+            field_name = msg_names[cam][n] + str(cam+1)
+            assert field_name not in data, \
+                    ('duplicate message name %s' % field_name)
+            data[field_name] = imgarray
+    return data
+
 
 
 def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
     # Handle info
+    print('recv1')
     info = sock.recv()
     # print("got message")
     # Handle first set of images from camera 1
+    print('recv2')
     nstr = sock.recv()
     narray2 = np.asarray(Image.open(StringIO(nstr)).convert('RGB'))
+    print('recv3')
     ostr = sock.recv()
     oarray2 = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
+    print('recv4')
     dstr = sock.recv()
     darray2 = np.asarray(Image.open(StringIO(dstr)).convert('RGB'))
+    print('recv5')
     imstr = sock.recv()
     imarray2 = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
     # Handle second set of images from camera 2
+    print('recv6')
     nstr = sock.recv()
     narray = np.asarray(Image.open(StringIO(nstr)).convert('RGB'))
+    print('recv7')
     ostr = sock.recv()
     oarray = np.asarray(Image.open(StringIO(ostr)).convert('RGB'))
+    print('recv8')
     dstr = sock.recv()
     darray = np.asarray(Image.open(StringIO(dstr)).convert('RGB'))
+    print('recv9')
     imstr = sock.recv()
     imarray = np.asarray(Image.open(StringIO(imstr)).convert('RGB'))
 
@@ -200,6 +228,14 @@ def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
     return [info, narray, oarray, darray, imarray, narray2, oarray2, darray2, imarray2]
 
 
+SHADERS = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"DisplayVelocityCurrent": "png"}, {"DisplayAccelerationCurrent": "png"}, {"DisplayJerkCurrent": "png"}, {"Images": "jpg"}]
+HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"},  {"DisplayVelocityCurrent": "velocities_current"}, {"DisplayAccelerationCurrent": "accelerations_current"}, {"DisplayJerkCurrent": "jerks_current"}, {"Images": "images"}]
+
+#SHADERS = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"Images": "jpg"}]
+#HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"}, {"Images": "images"}]
+
+
+
 
 class Environment:
 	def __init__(self, 
@@ -212,16 +248,31 @@ class Environment:
 			state_memory_len = {}, #remembers multiple images and concatenates. ex {'depth' : 2}
 			 rescale_dict = {}, #to rescale images after unity. {'depth' : (64, 64)}
 			host_address = None,
+			msg_names = HDF5_NAMES,
+			shaders = SHADERS,
+			n_cameras = 2
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
 		self.SCREEN_HEIGHT, self.SCREEN_WIDTH = SCREEN_DIMS
 		self.RANDOM_SEED = unity_seed
+		self.shaders = shaders
+		self.msg_names = []
+		assert len(shaders) == len(msg_names)
+		for i in range(len(shaders)):
+			assert len(shaders[i].keys()) == 1
+			for k in shaders[i]:
+				assert k in msg_names[i]
+				self.msg_names.append(msg_names[i][k])
+		self.msg_names = [self.msg_names] * n_cameras
+		self.num_frames_per_msg = 1 + n_cameras * len(shaders)
+		#self.num_frames_per_msg = 15
 		# #borrowing a hack from old curiosity
 		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		# s.connect(("google.com",80))
 		if USE_TDW:
 			assert host_address is not None
+		if host_address is not None:
 			self.host_address = host_address
 		else:
 			#borrowing a hack from old curiosity
@@ -239,7 +290,7 @@ class Environment:
                         #queue_port_num="23402",
                         get_obj_data=True,
                         send_scene_info=True,
-                        num_frames_per_msg=9,
+                        num_frames_per_msg=self.num_frames_per_msg,
                         )
 		else:
 			print ("connecting...")
@@ -326,23 +377,28 @@ class Environment:
 			if self.USE_TDW:
 				self.tc.load_config(self.config)
 				self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
-				self.sock = tc.run()
+				print('about to hit run')
+				self.sock = self.tc.run()
+				print('run done')
 			else:
 				print('sending join...')
-				self.sock.send_json({"msg_type" : "CLIENT_JOIN_WITH_CONFIG", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, "output_formats": ["png", "png", "png", "jpg"]})
+				self.sock.send_json({"msg_type" : "CLIENT_JOIN_WITH_CONFIG", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, 'shaders' : self.shaders})
 				print('...join sent')
-			not_yet_joined = False
+			self.not_yet_joined = False
 		else:
-			for i in range(9):
-				self.sock.recv()
+			#for i in range(self.num_frames_per_msg):
+			#	self.sock.recv()
 			print('switching scene...')
-			scene_switch_msg = {"msg_type" : "SCENE_SWITCH", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, "output_formats": ["png", "png", "png", "jpg"]}
-			if USE_TDW:
-				self.sock.send_json({"n": 9, "msg": scene_switch_msg})
+			scene_switch_msg = {"msg_type" : "SCENE_SWITCH", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, 'SHADERS' : self.shaders}
+			if self.USE_TDW:
+				print('scene switch')
+				self.sock.send_json({"n": self.num_frames_per_msg, "msg": scene_switch_msg})
 			else:
 				self.sock.send_json(scene_switch_msg)
 		observation = self._observe_world()
-		self.state_memory = dict((k, [np.zeros(observation[k].shape, dtype = observation[k].dtype) for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
+		observation['msg'] = None
+		observation['action'] = None
+		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
 		observation = self._memory_postprocess(observation)
 		return observation
 
@@ -354,13 +410,14 @@ class Environment:
 		return observation
 
 	def _observe_world(self):
-		info, self.narray, self.oarray, self.darray, self.imarray, self.narray2, self.oarray2, self.darray2, self.imarray2 = handle_message(self.sock)
-		self.info = json.loads(info)
-		observation = {'info' : info, 'normals' : self.narray, 'objects' : self.oarray, 'depth' : self.darray, 'image' : self.imarray,
-    					'normals2' : self.narray2, 'objects2' : self.oarray2, 'depth2' : self.darray2, 'image2' : self.imarray2}
+		self.observation = handle_message_new(self.sock, self.msg_names)
+		#info, self.narray, self.oarray, self.darray, self.imarray, self.narray2, self.oarray2, self.darray2, self.imarray2 = handle_message(self.sock)
+		self.observation['info'] = json.loads(self.observation['info'])
+		#observation = {'info' : info, 'normals' : self.narray, 'objects' : self.oarray, 'depth' : self.darray, 'image' : self.imarray,
+    		#			'normals2' : self.narray2, 'objects2' : self.oarray2, 'depth2' : self.darray2, 'image2' : self.imarray2}
 		for (k, shape) in self.rescale_dict.iteritems():
-			observation[k] = imresize(observation[k], shape)
-		return observation
+			self.observation[k] = imresize(self.observation[k], shape)
+		return self.observation
 
 	def step(self, action):
 		msg = self.action_to_message_fn(action, self)
@@ -368,7 +425,12 @@ class Environment:
 			self.sock.send_json(msg)
 		else:
 			self.sock.send_json(msg['msg'])
-		return self._memory_postprocess(self._observe_world())
+		observation = self._observe_world()
+		if 'msg' in observation:
+			raise Exeption('msg is a distinguished keyword, should not have data with that name!')
+		observation['msg'] = msg
+		observation['action'] = action
+		return self._memory_postprocess(observation)
 
 
 

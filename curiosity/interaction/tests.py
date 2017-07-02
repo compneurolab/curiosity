@@ -2,16 +2,20 @@
 Some interactive tests.
 '''
 
-import environment
+import sys
+sys.path.append('curiosity')
+
+
+from curiosity.interaction import environment
 import data
 import tensorflow as tf
 import numpy as np
 
 
 scene_infos = data.SillyLittleListerator([environment.example_scene_info])
-steps_per_scene = data.SillyLittleListerator([300])
+steps_per_scene = data.SillyLittleListerator([150])
 
-env = environment.Environment(1, 1, environment.test_action_to_message_fn)
+env = environment.Environment(1, 1, environment.test_action_to_message_fn, USE_TDW = False, host_address = '10.102.2.162')
 
 class TestPolicy:
 	def __init__(self):
@@ -50,6 +54,6 @@ def another_runner_test():
 
 
 if __name__ == '__main__':
-	runner_test()
-
+	#runner_test()
+	env_walkabout_test()
 
