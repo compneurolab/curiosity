@@ -114,13 +114,14 @@ class UncertaintyPostprocessor:
 		self.big_save_freq = big_save_freq
 
 	def postprocess(self, training_results, batch):
+		obs, msg, act = batch
 		global_step = training_results['um_global_step'] / 2
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
 		else:
 			save_keys = self.little_save_keys
 		res = dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys)
-		res['msg'] = batch.next_state['msg']
+		res['msg'] = msg[-1]
 		return res
 
 class UncertaintyUpdater:
@@ -145,6 +146,10 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		depths, actions, next_depth = postprocess_batch_depth(batch)
+		print('shapes and stuffs')
+		print(depths.shape)
+		print(actions.shape)
+		print(next_depth.shape)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,
@@ -160,7 +165,7 @@ class UncertaintyUpdater:
 			print('wm loss: ' + str(world_model_res['loss']))
 		um_feed_dict = {
 			self.um.s_i : depths,
-			self.um.action_sample : actions,
+			self.um.action_sample : actions[:, -1],
 			self.um.true_loss : np.array([world_model_res['loss']])
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)

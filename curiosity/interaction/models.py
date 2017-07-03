@@ -25,7 +25,7 @@ class UniformActionSampler:
 		self.rng = np.random.RandomState(cfg['seed'])
 
 	def sample_actions(self):
-		return self.rng.uniform(-1., 1., (self.num_actions, self.action_dim))
+		return self.rng.uniform(-1., 1., [self.num_actions, self.action_dim])
 
 def postprocess_depths(depths):
 	'''
@@ -235,7 +235,7 @@ def softmax_cross_entropy_loss_vel_one(outputs, tv, gpu_id = 0, eps = 0.0,
 default_damian_cfg = jerk_models.cfg_mom_complete_bypass(768, use_segmentation=False,
             method='concat', nonlin='relu')
 
-default_damian_cfg.update({'state_shape' : [2, 128, 170, 3], 'action_dim' : 8})
+default_damian_cfg.update({'state_shape' : [2, 128, 170, 3], 'action_shape' : [2, 8]})
 
 
 class DamianModel:
@@ -642,13 +642,13 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 
 
 def flatten_append_unflatten(start_state, action, cfg, m):
-	x = flatten(start_state)
-	joined = tf_concat([x, action], 1)
-	x = hidden_loop_with_bypasses(joined, m, cfg['mlp'], reuse_weights = False, train = True)
-
-	reshape_dims = cfg['reshape_dims']
-	# assert np.prod(reshape_dims) == tf.shape(joined)[-1],  (np.prod(reshape_dims), tf.shape(joined)[-1])
-	return tf.reshape(x, [-1] + reshape_dims)
+    x = flatten(start_state)
+    action = flatten(action)
+    joined = tf_concat([x, action], 1)
+    x = hidden_loop_with_bypasses(joined, m, cfg['mlp'], reuse_weights = False, train = True)
+    reshape_dims = cfg['reshape_dims']
+    # assert np.prod(reshape_dims) == tf.shape(joined)[-1],  (np.prod(reshape_dims), tf.shape(joined)[-1])
+    return tf.reshape(x, [-1] + reshape_dims)
 
 
 class DepthFuturePredictionWorldModel():
@@ -657,7 +657,7 @@ class DepthFuturePredictionWorldModel():
 		with tf.variable_scope('wm'):
 			self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
 			self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-			self.action = tf.placeholder(tf.float32, [1, cfg['action_dim']])
+			self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
 			bs = tf.to_float(tf.shape(self.s_i)[0])
 			#convert from 3-channel encoding
 			self.processed_input = x = postprocess_depths(x)
@@ -685,7 +685,7 @@ class DepthFuturePredictionWorldModel():
 
 sample_depth_future_cfg = {
 	'state_shape' : [2, 64, 64, 3],
-	'action_dim' : 8,
+	'action_shape' : [2, 8],
 	'action_join' : {
 		'reshape_dims' : [8, 8, 5],
 
@@ -723,7 +723,7 @@ sample_depth_future_cfg = {
 
 a_bigger_depth_future_config = {
 	'state_shape' : [2, 64, 64, 3],
-	'action_dim' : 8,
+	'action_shape' : [2, 8],
 
 	'action_join' : {
 		'reshape_dims' : [8, 8, 5],
@@ -834,10 +834,10 @@ class UncertaintyModel:
 
     def act(self, sess, action_sample, state):
         last_depths = state['depths1'][-1]#assuming this is always not None, as it should be getting an actual observation
-        depths = state['depths'][-2:]
+        depths = state['depths1'][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
         depths_batch = np.array([depths])
-        chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths, self.action_sample : action_sample})[0]
+        chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})[0]
         return action_sample[chosen_idx]
 
 sample_cfg = {

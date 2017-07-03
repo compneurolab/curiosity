@@ -58,7 +58,7 @@ params = {
 
 	'visualize' : True,
 
-	'exp_id' : 'w_tdw1'
+	'exp_id' : 'data_refactor16'
 
 }
 

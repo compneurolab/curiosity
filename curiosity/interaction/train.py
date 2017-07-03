@@ -74,6 +74,15 @@ def get_damian_updater(models, data_provider, optimizer_params, learning_rate_pa
         return DamianWMUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
 
 
+DEFAULT_WHAT_TO_SAVE_PARAMS = {
+		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
+		'little_save_keys' : ['um_loss', 'wm_loss'],
+		'big_save_len' : 100,
+		'big_save_freq' : 10000
+	}
+
+
+
 
 def train_from_params(
 		save_params,
@@ -164,10 +173,10 @@ def train_local(
 
 	#set up data provider
 	state_memory_len = {
-		'depth' : 2
+		'depths1' : 3
 	}
 	rescale_dict = {
-		'depth' : (64, 64)
+		'depths1' : (64, 64)
 	}
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
 	env = environment.Environment(1, 1, action_to_message, USE_TDW = True, host_address = RENDER_2_ADDY, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.))
@@ -176,7 +185,8 @@ def train_local(
 	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), capacity = 5)
 
 	#set up updater
-	updater = UncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params)
+	postprocessor = get_default_postprocessor(what_to_save_params = DEFAULT_WHAT_TO_SAVE_PARAMS)
+	updater = UncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
 
 	#do the training loop!
 	sess = tf.Session()

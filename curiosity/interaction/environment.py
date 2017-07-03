@@ -382,11 +382,13 @@ class Environment:
 				self.tc.load_config(self.config)
 				self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
 				print('about to hit run')
+				msg = 'tdw_client_init'
 				self.sock = self.tc.run()
 				print('run done')
 			else:
 				print('sending join...')
-				self.sock.send_json({"msg_type" : "CLIENT_JOIN_WITH_CONFIG", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, 'shaders' : self.shaders})
+				msg = {"msg_type" : "CLIENT_JOIN_WITH_CONFIG", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, 'shaders' : self.shaders}
+				self.sock.send_json(msg)
 				print('...join sent')
 			self.not_yet_joined = False
 		else:
