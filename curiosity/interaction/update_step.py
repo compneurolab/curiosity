@@ -41,18 +41,43 @@ class RawDepthDiscreteActionUpdater:
 		rl_opt_params, rl_opt = get_optimizer(learning_rate, self.rl_loss, )
 
 
+def replace_the_nones(my_list):
+	'''
+		Assumes my_list[-1] is np array
+	'''
+	return [np.zeros(my_list[-1].shape, dtype = my_list[-1].dtype) if elt is None else elt for elt in my_list]
+
 
 def postprocess_batch_depth(batch):
-	depths = np.array([[timepoint if timepoint is not None else np.zeros(obs['depths1'][-1].shape, dtype = obs['depths1'][-1].dtype) for timepoint in obs['depths1']] for obs in batch.states])
-	actions = np.array(batch.actions)
-	next_depth =  np.array([batch.next_state['depths1']])
-	return depths, actions, next_depth
+	obs, msg, act = batch
+	depths = replace_the_nones(obs['depths1'])
+	obs_past = np.array([depths[:-1]])
+	obs_fut = np.array([depths[1:]])
+	actions = np.array([replace_the_nones(act)])
+	return obs_past, actions, obs_fut
+
+
+
+
+# def postprocess_batch_depth(batch):
+# 	depths = np.array([[timepoint if timepoint is not None else np.zeros(obs['depths1'][-1].shape, dtype = obs['depths1'][-1].dtype) for timepoint in obs['depths1']] for obs in batch.states])
+# 	actions = np.array(batch.actions)
+# 	next_depth =  np.array([batch.next_state['depths1']])
+# 	return depths, actions, next_depth
+
+
+def postprocess_batch_for_actionmap(batch):
+	obs, msg, act = batch
+	prepped = {}
+	for desc in ['depths1', 'objects1']:
+		dat = obs[desc]
 
 
 def postprocess_batch_for_actionmap(batch):
 	prepped = {}
 	for desc in ['depths1', 'objects1']:
 		prepped[desc] = np.array([[timepoint if timepoint is not None else np.zeros(obs[desc][-1].shape, dtype = obs[desc][-1].dtype) for timepoint in obs[desc]] for obs in batch.states])
+	actions = np.array([ for ])
 	actions = np.array([[np.zeros(batch.next_state['action'][-1].shape, batch.next_state['action'][-1].dtype) if timepoint is None else timepoint for timepoint in batch.next_state['action']]])
 	print('actions shape')
 	print(actions.shape)

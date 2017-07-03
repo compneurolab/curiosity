@@ -250,7 +250,9 @@ class Environment:
 			host_address = None,
 			msg_names = HDF5_NAMES,
 			shaders = SHADERS,
-			n_cameras = 2
+			n_cameras = 2,
+			message_memory_len = 2,
+			action_memory_len = 2
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
@@ -308,6 +310,8 @@ class Environment:
 		self.ROOM_LENGTH, self.ROOM_WIDTH = room_dims
 		self.rescale_dict = rescale_dict
 		self.state_memory_len = state_memory_len
+		self.msg_memory_len = message_memory_len
+		self.action_memory_len = action_memory_len
 
 
 
@@ -392,22 +396,28 @@ class Environment:
 			scene_switch_msg = {"msg_type" : "SCENE_SWITCH", "config" : self.config, "get_obj_data" : True, "send_scene_info" : True, 'SHADERS' : self.shaders}
 			if self.USE_TDW:
 				print('scene switch')
-				self.sock.send_json({"n": self.num_frames_per_msg, "msg": scene_switch_msg})
+				msg = {"n": self.num_frames_per_msg, "msg": scene_switch_msg}
+				self.sock.send_json(msg)
 			else:
-				self.sock.send_json(scene_switch_msg)
+				msg = scene_switch_msg
+				self.sock.send_json(msg)
 		observation = self._observe_world()
-		observation['msg'] = None
-		observation['action'] = None
 		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
-		observation = self._memory_postprocess(observation)
-		return observation
+		self.msg_memory = [None for _ in range(self.msg_memory_len)]
+		self.action_memory = [None for _ in range(self.action_memory_len)]
+		observation, msg, action = self._memory_postprocess(observation, msg, None)
+		return observation, msg
 
-	def _memory_postprocess(self, observation):
+	def _memory_postprocess(self, observation, msg, action):
 		for k in self.state_memory:
 			self.state_memory[k].pop(0)
 			self.state_memory[k].append(observation[k])
 			observation[k] = copy.copy(self.state_memory[k])
-		return observation
+		self.msg_memory.pop(0)
+		self.msg_memory.append(msg)
+		self.action_memory.pop(0)
+		self.action_memory.append(action)
+		return observation, copy.copy(self.msg_memory), copy.copy(self.action_memory)
 
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
@@ -426,11 +436,7 @@ class Environment:
 		else:
 			self.sock.send_json(msg['msg'])
 		observation = self._observe_world()
-		if 'msg' in observation:
-			raise Exeption('msg is a distinguished keyword, should not have data with that name!')
-		observation['msg'] = msg
-		observation['action'] = action
-		return self._memory_postprocess(observation)
+		return self._memory_postprocess(observation, msg, action)
 
 
 

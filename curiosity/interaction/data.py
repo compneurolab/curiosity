@@ -45,11 +45,13 @@ once it has processed enough steps.
     def __init__(self):
         self.states = []
         self.actions = []
+        self.messages = []
         self.next_state = None
 
     def add(self, **kwargs):
     	self.states.append(kwargs['state'])
     	self.actions.append(kwargs['action'])
+    	self.messages.append(kwargs['message'])
     	self.next_state = kwargs['next_state']
 
 
@@ -76,29 +78,24 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 			self._run()
 
 	def run_env(self):
-		obs = self.env.next_config(* self.scene_params.next())
+		obs, msg = self.env.next_config(* self.scene_params.next())
 		num_this_scene = 0
 		scene_len = self.scene_lengths.next()
+		action = None
 
 		while True:
-			recent_history = SimpleRecentHistory()
-			for _ in range(self.batch_size):
-				if num_this_scene >= scene_len:
-					obs = self.env.next_config(* self.scene_params.next())
-					num_this_scene = 0
-					scene_len = self.scene_lengths.next()
-					break
-				action_sample = self.action_sampler.sample_actions()
-				action = self.policy.act(self.sess, action_sample, np.array([[elt if elt is not None else np.zeros(obs['depths1'][-1].shape, obs['depths1'][-1].dtype) for elt in obs['depths1']]]))
+			if num_this_scene >= scene_len:
+				obs, msg = self.env.next_config(* self.scene_params.next())
+				num_this_scene = 0
+				scene_len = self.scene_lengths.next()
+				action = None
 
-				new_obs = self.env.step(action)
-				recent_history.add(state = obs, next_state = new_obs, 
-								action = action)
-				obs = new_obs
-				num_this_scene += 1
+			action_sample = self.action_sampler.sample_actions()
+			action = self.policy.act(self.sess, action_sample, obs)
+			obs, msg, action = self.env.step(action)
 
-			if recent_history.next_state is not None:
-				yield recent_history
+			if action is not None:
+				yield obs, msg, action
 
 	def _run(self):
 		yielded = self.run_env()

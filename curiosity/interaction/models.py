@@ -807,6 +807,7 @@ class UncertaintyModel:
 		with tf.variable_scope('um'):
 			self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
 			self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
+            self.num_timesteps = cfg['state_shape'][0]
 			self.true_loss = tr_loss = tf.placeholder(tf.float32, [1])
 			m = ConvNetwithBypasses()
 			x = postprocess_depths(x)
@@ -824,7 +825,11 @@ class UncertaintyModel:
 			self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
 
 	def act(self, sess, action_sample, state):
-		chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : state, self.action_sample : action_sample})[0]
+        last_depths = state['depths1'][-1]#assuming this is always not None, as it should be getting an actual observation
+        depths = state['depths'][-2:]
+        depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
+		depths_batch = np.array([depths])
+        chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths, self.action_sample : action_sample})[0]
 		return action_sample[chosen_idx]
 
 sample_cfg = {
