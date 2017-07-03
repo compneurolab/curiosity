@@ -69,30 +69,42 @@ def postprocess_batch_depth(batch):
 def postprocess_batch_for_actionmap(batch):
 	obs, msg, act = batch
 	prepped = {}
-	for desc in ['depths1', 'objects1']:
-		dat = obs[desc]
-
-
-def postprocess_batch_for_actionmap(batch):
-	prepped = {}
-	for desc in ['depths1', 'objects1']:
-		prepped[desc] = np.array([[timepoint if timepoint is not None else np.zeros(obs[desc][-1].shape, dtype = obs[desc][-1].dtype) for timepoint in obs[desc]] for obs in batch.states])
-	actions = np.array([ for ])
-	actions = np.array([[np.zeros(batch.next_state['action'][-1].shape, batch.next_state['action'][-1].dtype) if timepoint is None else timepoint for timepoint in batch.next_state['action']]])
-	print('actions shape')
-	print(actions.shape)
-	print(len(batch.next_state['action']))
+	depths = replace_the_nones(obs['depths1'])
+	depths_past = np.array([depths[:-1]])
+	depths_fut = np.array([depths[:1]])
+	objects = np.array([replace_the_nones(obs['objects1'])[:-1]])
+	actions = np.array([replace_the_nones(act)])
 	action_ids_list = []
 	for i in range(2):
-		action_msg = batch.next_state['msg'][i]['msg']['actions'] if batch.next_state['msg'][i] is not None else []
+		action_msg = msg[i]['msg']['actions'] if msg[i] is not None else []
 		if len(action_msg):
 			idx = int(action_msg[0]['id'])
 		else:
-			idx = -10000
+			idx = -10000#just something that's not an id seen
 		action_ids_list.append(idx)
 	action_ids = np.array([action_ids_list])
-	next_depths =  np.array([batch.next_state['depths1']])
-	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
+	return  depths_past, objects, actions, action_ids, depths_fut
+
+
+# def postprocess_batch_for_actionmap(batch):
+# 	prepped = {}
+# 	for desc in ['depths1', 'objects1']:
+# 		prepped[desc] = np.array([[timepoint if timepoint is not None else np.zeros(obs[desc][-1].shape, dtype = obs[desc][-1].dtype) for timepoint in obs[desc]] for obs in batch.states])
+# 	actions = np.array([[np.zeros(batch.next_state['action'][-1].shape, batch.next_state['action'][-1].dtype) if timepoint is None else timepoint for timepoint in batch.next_state['action']]])
+# 	print('actions shape')
+# 	print(actions.shape)
+# 	print(len(batch.next_state['action']))
+# 	action_ids_list = []
+# 	for i in range(2):
+# 		action_msg = batch.next_state['msg'][i]['msg']['actions'] if batch.next_state['msg'][i] is not None else []
+# 		if len(action_msg):
+# 			idx = int(action_msg[0]['id'])
+# 		else:
+# 			idx = -10000
+# 		action_ids_list.append(idx)
+# 	action_ids = np.array([action_ids_list])
+# 	next_depths =  np.array([batch.next_state['depths1']])
+# 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
 class UncertaintyPostprocessor:
 	def __init__(self, big_save_keys, little_save_keys, big_save_len, big_save_freq):

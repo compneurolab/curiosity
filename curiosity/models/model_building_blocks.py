@@ -7,6 +7,15 @@ sys.path.append('tfutils')
 import tensorflow as tf
 from collections import OrderedDict
 
+import distutils.version
+use_tf1 = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
+
+def tf_concat(list_of_tensors, axis = 0):
+    if use_tf1:
+        return tf.concat(list_of_tensors, axis)
+    return tf.concat(axis, list_of_tensors)
+
+
 
 from curiosity.models.my_model import ConvNet
 
@@ -89,7 +98,7 @@ class ConvNetwithBypasses(ConvNet):
 			elif k == 'tanh':
 				for_out.append(tf.tanh(in_layer, name = 'tanh'))
 			elif k == 'concat_square':
-				for_out.append(tf.concat([in_layer, in_layer * in_layer], last_axis))
+				for_out.append(tf_concat([in_layer, in_layer * in_layer], last_axis))
 			elif k == 'square':
 				for_out.append(in_layer * in_layer)
 			elif k == 'safe_square':
@@ -102,7 +111,7 @@ class ConvNetwithBypasses(ConvNet):
 				for_out.append(in_layer)
 			else:
 				raise ValueError("Activation '{}' not defined".format(k))
-		self.output = tf.concat(for_out, last_axis)
+		self.output = tf_concat(for_out, last_axis)
 		return self.output
 
         @tf.contrib.framework.add_arg_scope
@@ -230,7 +239,7 @@ class ConvNetwithBypasses(ConvNet):
 		Y = tf.expand_dims(Y, 3)
 		Y = tf.tile(Y, [batch_size, 1, out_width, 1])
 
-		coord = tf.concat([Y, X], 3)
+		coord = tf_concat([Y, X], 3)
 		coord = tf.cast(coord, tf.float32)
 
 		coord_conv = tf.nn.conv2d(coord, coord_kernel, strides = [1, stride, stride, 1], padding = padding)
@@ -409,7 +418,7 @@ class ConvNetwithBypasses(ConvNet):
                     in_layers = tf.split(3, group, in_layer)
                     kernels = tf.split(3, group, kernel)
                     convs = [convolve(i, k) for i,k in zip(in_layers, kernels)]
-                    conv = tf.concat(convs, 3)
+                    conv = tf_concat(convs, 3)
 
 		if batch_normalize:
 			#Using "global normalization," which is recommended in the original paper
@@ -533,11 +542,11 @@ class ConvNetwithBypasses(ConvNet):
 	    			toconcat.append(self.resize_images([ds1, ds2], in_layer = layer))
 	    		else:
 	    			toconcat.append(layer)
-	    	self.output = tf.concat(toconcat, 3)
+	    	self.output = tf_concat(toconcat, 3)
 	    	concat_type = 'image'
 	    elif len(in_shape) == 2:
 	    	toconcat.extend(bypass_layers)
-	    	self.output = tf.concat(toconcat, 1)
+	    	self.output = tf_concat(toconcat, 1)
 	    	concat_type = 'flat'
 	    else:
 	    	raise Exception('Bypass case not yet handled.')

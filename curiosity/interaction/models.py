@@ -8,6 +8,14 @@ from curiosity.models.model_building_blocks import ConvNetwithBypasses
 from curiosity.models import explicit_future_prediction_base as fp_base
 from curiosity.models import jerk_models
 
+import distutils.version
+use_tf1 = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
+
+def tf_concat(list_of_tensors, axis = 0):
+    if use_tf1:
+        return tf.concat(list_of_tensors, axis)
+    return tf.concat(axis, list_of_tensors)
+
 BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
 
 class UniformActionSampler:
@@ -239,7 +247,7 @@ class DamianModel:
 		self.action_id = action_id = tf.placeholder(tf.int32, [1, 2])
 		bs = tf.to_float(tf.shape(self.s_i)[0])
 		final_img_unsqueezed = self.s_f[:, 1:]
-		depths = tf.concat([self.s_i, final_img_unsqueezed], 1)
+		depths = tf_concat([self.s_i, final_img_unsqueezed], 1)
 		inputs = replace_base(depths, objects, action, action_id)
 		self.processed_input = inputs
 		for k, inpt in inputs.iteritems():
@@ -277,7 +285,7 @@ def replace_base(depths, objects, action, action_id):
         actions *= tf.expand_dims(tf.expand_dims(action[:, :, 2:], 2), 2)
         ego_motion = tf.expand_dims(tf.expand_dims(action[:, :, :2], 2), 2)
         ego_motion = tf.tile(ego_motion, [1, 1, shape[2], shape[3], 1])
-	action_map = tf.concat([actions, ego_motion], -1)
+	action_map = tf_concat([actions, ego_motion], -1)
 	action_map = tf.expand_dims(action_map, -1)
 	inputs = {'actions_map' : action_map, 'depths' : postprocess_depths(rinputs['depths']), 'tv' : rinputs['depths'][:, -1] }
 	return inputs 
@@ -326,7 +334,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
 
         # encode per time step
         main_attributes = ['depths']
-        main_input_per_time = [tf.concat([tf.cast(inputs[nm][:, t], tf.float32) \
+        main_input_per_time = [tf_concat([tf.cast(inputs[nm][:, t], tf.float32) \
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
 
         # init projection matrix
@@ -374,7 +382,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                         [shape[2]/scale_factor, shape[3]/scale_factor],
                         method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
             inputs[att] = tf.stack(inputs[att], axis=1)
-        cond_input_per_time = [tf.concat([inputs[nm][:, t] \
+        cond_input_per_time = [tf_concat([inputs[nm][:, t] \
                 for nm in cond_attributes], axis = 3) for t in range(time_seen)]
 
         encoded_input_cond = []
@@ -425,7 +433,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                     enc = sm[t+1] - sm[t]
                 elif cfg['combine_moments'] == 'concat':
                     print('Using CONCAT')
-                    enc = tf.concat([sm[t+1], sm[t]], axis=3)
+                    enc = tf_concat([sm[t+1], sm[t]], axis=3)
                     enc, bypass_nodes[i+1][t] = feedforward_conv_loop(
                             enc, m, cfg, desc = 'combine_moments_encode',
                             bypass_nodes = bypass_nodes[i+1][t], 
@@ -451,7 +459,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
         for i, moment in enumerate(moments):
             sub_currents = []
             for t, _ in enumerate(moment):
-                enc = tf.concat([moment[t], 
+                enc = tf_concat([moment[t], 
                     encoded_input_main[t+i], #TODO first moments are main inputs already!
                     encoded_input_cond[t+i]], axis=3)
                 enc, bypass_nodes[i][t] = feedforward_conv_loop(
@@ -483,7 +491,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                     nm = current[t] + dm[-1]
                 elif cfg['combine_delta'] == 'concat':
                     print('Using CONCAT')
-                    nm = tf.concat([current[t], dm[-1]], axis=3)
+                    nm = tf_concat([current[t], dm[-1]], axis=3)
                     nm, bypass_nodes[i][t] = feedforward_conv_loop(
                             nm, m, cfg, desc = 'combine_delta_encode',
                             bypass_nodes = bypass_nodes[i][t], 
@@ -511,7 +519,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                 # TODO: Higher moment reconstruction needs additional layers
                 # to match dimensions -> depth + vel + acc to next vel 
                 # vs depth + vel to next depth -> only vel possible so far!
-		enc = tf.concat([moment[t], encoded_input_main[t+i]], axis=3)
+		enc = tf_concat([moment[t], encoded_input_main[t+i]], axis=3)
 		enc, bypass_nodes[i][t] = feedforward_conv_loop(
 			enc, m, cfg, desc = 'next_main_encode',
 			bypass_nodes = bypass_nodes[i][t], reuse_weights = reuse_weights,
@@ -635,7 +643,7 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
 
 def flatten_append_unflatten(start_state, action, cfg, m):
 	x = flatten(start_state)
-	joined = tf.concat([x, action], 1)
+	joined = tf_concat([x, action], 1)
 	x = hidden_loop_with_bypasses(joined, m, cfg['mlp'], reuse_weights = False, train = True)
 
 	reshape_dims = cfg['reshape_dims']
@@ -656,7 +664,7 @@ class DepthFuturePredictionWorldModel():
 
 			s_f = postprocess_depths(s_f)
 			#flatten time dim
-			x = tf.concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
+			x = tf_concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
 			#encode
 			m = ConvNetwithBypasses()
 			all_encoding_layers = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)
@@ -783,7 +791,7 @@ class WorldModel(object):
         print(self.encoding_f)
 
         #predicting action
-        act_input = tf.concat([encoding_i, self.encoding_f], 1)
+        act_input = tf_concat([encoding_i, self.encoding_f], 1)
         print(act_input)
         act_hidden, w_act_h, b_act_h = linear(act_input, 256, 'worldact_h', normalized_columns_initializer(0.01))
         act_hidden = tf.nn.elu(act_hidden)
@@ -793,7 +801,7 @@ class WorldModel(object):
         self.act_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = self.action_one_hot, logits = self.act_logits))
 
         #forward model
-        fut_input = tf.concat([encoding_i, self.action_one_hot], 1)
+        fut_input = tf_concat([encoding_i, self.action_one_hot], 1)
         fut_hidden, w_fut_h, b_fut_h = linear(fut_input, 256, 'worldfut_h', normalized_columns_initializer(0.01))
         fut_hidden = tf.nn.elu(fut_hidden)
         #not really sure if there's some good intuition for initializers here
@@ -803,34 +811,34 @@ class WorldModel(object):
 
 
 class UncertaintyModel:
-	def __init__(self, cfg):
-		with tf.variable_scope('um'):
-			self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-			self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
+    def __init__(self, cfg):
+        with tf.variable_scope('um'):
+            self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
+            self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
             self.num_timesteps = cfg['state_shape'][0]
-			self.true_loss = tr_loss = tf.placeholder(tf.float32, [1])
-			m = ConvNetwithBypasses()
-			x = postprocess_depths(x)
-			#concatenate temporal dimension into channels
-			x = tf.concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
-			#encode
-			self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
-			x = flatten(x)
-			x = tf.cond(tf.shape(self.action_sample)[0] > 1, lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
-			# x = tf.tile(x, [cfg['n_action_samples'], 1])
-			x = tf.concat([x, ac], 1)
-			self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
-			x_tr = tf.transpose(x)
-			self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-			self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
+            self.true_loss = tr_loss = tf.placeholder(tf.float32, [1])
+            m = ConvNetwithBypasses()
+            x = postprocess_depths(x)
+            #concatenate temporal dimension into channels
+            x = tf_concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
+            #encode
+            self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            x = flatten(x)
+            x = tf.cond(tf.shape(self.action_sample)[0] > 1, lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
+            # x = tf.tile(x, [cfg['n_action_samples'], 1])
+            x = tf_concat([x, ac], 1)
+            self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
+            x_tr = tf.transpose(x)
+            self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
+            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
 
-	def act(self, sess, action_sample, state):
+    def act(self, sess, action_sample, state):
         last_depths = state['depths1'][-1]#assuming this is always not None, as it should be getting an actual observation
         depths = state['depths'][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
-		depths_batch = np.array([depths])
+        depths_batch = np.array([depths])
         chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths, self.action_sample : action_sample})[0]
-		return action_sample[chosen_idx]
+        return action_sample[chosen_idx]
 
 sample_cfg = {
 	'uncertainty_model' : {
