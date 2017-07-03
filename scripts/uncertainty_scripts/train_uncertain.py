@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo'
+EXP_ID = 'tlo_test'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -70,13 +70,15 @@ params = {
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					'depths1' : 2
+					'depths1' : 3
 				},
 			'rescale_dict' : {
 					'depths1' : (64, 64)
 				},
 			'USE_TDW' : True,
-			'host_address' : RENDER2_HOST_ADDRESS
+			'host_address' : RENDER2_HOST_ADDRESS,
+			'message_memory_len' : 2,
+			'action_memory_len' : 2
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],

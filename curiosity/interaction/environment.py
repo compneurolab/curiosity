@@ -423,6 +423,7 @@ class Environment:
 
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
+		print('got message')
 		#info, self.narray, self.oarray, self.darray, self.imarray, self.narray2, self.oarray2, self.darray2, self.imarray2 = handle_message(self.sock)
 		self.observation['info'] = json.loads(self.observation['info'])
 		#observation = {'info' : info, 'normals' : self.narray, 'objects' : self.oarray, 'depth' : self.darray, 'image' : self.imarray,
