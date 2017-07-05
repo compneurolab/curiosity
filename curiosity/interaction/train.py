@@ -14,6 +14,7 @@ import os
 import cPickle
 import tfutils.base as base
 import time
+import cv2
 
 RENDER_2_ADDY = '10.102.2.162'
 
@@ -215,6 +216,10 @@ def train_local(
 	updater.start(sess)
 	while True:
 		res = updater.update(sess, visualize)
+		if 'batch' in res:
+			depths = res['batch']['obs']
+			cv2.imshow('view', depths)
+			cv2.waitKey()
 		# saver.update(res)
 
 

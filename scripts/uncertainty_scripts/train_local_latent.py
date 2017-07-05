@@ -20,7 +20,43 @@ params = {
 		'cfg' : {
 				'world_model' : {
 					'state_shape' : [2, 64, 64, 3],
-					'action_shape' : [2, 8]
+					'action_shape' : [2, 8],
+					'encode' : {
+						'encode_depth' : 4,
+
+						'encode' : {
+							1: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+							2: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+							3: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+							4: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}}
+						}
+					},
+
+					'action_model' : {
+						'mlp' : {
+							'hidden_depth' : 2,
+							'hidden' : {
+								1: {'num_features' : 256},
+								2: {'num_features' : 16, 'activation' : 'identity'}
+							}
+						}
+
+					},
+
+					'future_model' : {
+						'mlp' : {
+							'hidden_depth' : 2,
+							'hidden' : {
+								1: {'num_features' : 512},
+								2: {'num_features' : 512, 'activation' : 'identity'}
+							}
+
+						}
+
+
+					}
+
+
 				},
 				'uncertainty_model' : {
 					'state_shape' : [2, 64, 64, 3],
