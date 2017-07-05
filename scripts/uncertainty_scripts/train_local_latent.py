@@ -9,7 +9,7 @@ sys.path.append('tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train
-from curiosity.interaction.models import another_sample_cfg
+from curiosity.interaction.models import hourglass_latent_model_cfg
 from tfutils import base, optimizer
 import numpy as np
 
@@ -18,46 +18,7 @@ NUM_BATCHES_PER_EPOCH = 1e8
 params = {
 	'model_params' : {
 		'cfg' : {
-				'world_model' : {
-					'state_shape' : [2, 64, 64, 3],
-					'action_shape' : [2, 8],
-					'encode' : {
-						'encode_depth' : 4,
-
-						'encode' : {
-							1: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
-							2: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
-							3: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
-							4: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}}
-						}
-					},
-
-					'action_model' : {
-						'mlp' : {
-							'hidden_depth' : 2,
-							'hidden' : {
-								1: {'num_features' : 256},
-								2: {'num_features' : 16, 'activation' : 'identity'}
-							}
-						}
-
-					},
-
-					'future_model' : {
-						'mlp' : {
-							'hidden_depth' : 2,
-							'hidden' : {
-								1: {'num_features' : 512},
-								2: {'num_features' : 512, 'activation' : 'identity'}
-							}
-
-						}
-
-
-					}
-
-
-				},
+				'world_model' : hourglass_latent_model_cfg,
 				'uncertainty_model' : {
 					'state_shape' : [2, 64, 64, 3],
 					'action_dim' : 8,

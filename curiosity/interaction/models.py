@@ -835,69 +835,125 @@ class LatentSpaceWorldModel(object):
             self.act_loss = tf.nn.l2_loss(self.act_pred - act_flat)
 
         #future model time
+        enc_shape = enc_f_flat.get_shape().as_list()
+        normalizing_factor = np.prod(enc_shape)
         with tf.variable_scope('future_model'):
             fut_input = tf_concat([enc_i_flat, act_flat], 1)
-            self.fut_pred = hidden_loop_with_bypasses(fut_input, m, cfg['future_model']['mlp'], reuse_weights = False, train = True)
-            enc_shape = enc_f_flat.get_shape().as_list()
-            normalizing_factor = np.prod(enc_shape)
-            self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred) / float(normalizing_factor)
+            forward = hidden_loop_with_bypasses(fut_input, m, cfg['future_model']['mlp'], reuse_weights = False, train = True)
+            if 'deconv' in cfg['future_model']:
+                reshape_dims = cfg['future_model']['reshape_dims']
+                forward = tf.reshape(forward, [-1] + reshape_dims)
+                decoding = deconv_loop(
+                                forward, m, cfg['future_model']['deconv'], desc='deconv',
+                                bypass_nodes = [self.encoding_i], reuse_weights = False,
+                                batch_normalize = False,
+                                do_print = True)
+                self.fut_pred = decoding[-1]
+                self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred) / float(normalizing_factor)
+            else:
+                self.fut_pred = forward
+                self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred) / float(normalizing_factor)
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
         self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
 
+hourglass_latent_model_cfg = {
+    'state_shape' : [2, 64, 64, 3],
+    'action_shape' : [2, 8],
+    'encode' : {
+        'encode_depth' : 4,
 
-# class LatentSpaceWorldModel(object):
-#     def __init__(self, cfg):
-#         self.s_i = s_i = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-#         self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-#         self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
-#         self.encode_var_list = []
+        'encode' : {
+            1: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            2: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            3: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            4: {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}}
+        }
+    },
 
-#         #flatten out time dim
-#         print('about to flatten time dim')
-#         print(s_i)
-#         print(s_f)
-#         s_i = tf_concat([s_i[:, i] for i in range(cfg['state_shape'][0])], 3)
-#         s_f = tf_concat([s_f[:, i] for i in range(cfg['state_shape'][0])], 3)
+    'action_model' : {
+        'mlp' : {
+            'hidden_depth' : 2,
+            'hidden' : {
+                1: {'num_features' : 256},
+                2: {'num_features' : 16, 'activation' : 'identity'}
+            }
+        }
 
-#         with tf.variable_scope('encode_model'):
-#             for i in range(4):
-#                 s_i, w, b = conv2d(s_i, 32, "encode{}".format(i + 1), [3, 3], [2, 2])
-#                 s_i = tf.nn.elu(s_i)
-#                 s_f, _, _ = conv2d(s_f, 32, "encode{}".format(i + 1), [3, 3], [2, 2], reuse_weights = True)
-#                 s_f = tf.nn.elu(s_f)
+    },
+
+    'future_model' : {
+        'mlp' : {
+            'hidden_depth' : 2,
+            'hidden' : {
+                1: {'num_features' : 256},
+                2: {'num_features' : 128, 'activation' : 'identity'}
+            }
+
+        },
+
+        'reshape_dims' : [4, 4, 8],
+
+        'deconv' : {
+            'deconv_depth' : 3,
+
+            'deconv' : {
+                1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16}, 'bypass' : 0},
+                2 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 16}, 'bypass' : 0},
+                3 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 8}, 'bypass' : 0}
+            }
+
+        }
 
 
-#         with tf.variable_scope('action_model'):
-#             self.encoding_i = s_i
-#             self.encoding_f = s_f
+    }
 
 
-#             enc_i_flat = flatten(s_i)
-#             enc_f_flat = flatten(s_f)
-#             act_flat = flatten(self.action)
 
-#             #predicting action
-#             act_input = tf_concat([enc_i_flat, enc_f_flat], 1)
-#             act_hidden, w_act_h, b_act_h = linear(act_input, 256, 'worldact_h', normalized_columns_initializer(0.01))
-#             act_hidden = tf.nn.elu(act_hidden)
-#             self.act_pred, w_act, b_act = linear(act_hidden, np.prod(cfg['action_shape']), 'worldact_out', normalized_columns_initializer(0.01))
 
-#             # self.act_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = self.action, logits = self.act_logits))
-#             self.act_loss = tf.nn.l2_loss(self.act_pred - act_flat)
 
-#         with tf.variable_scope('future_model'):
-#             #forward model
-#             fut_input = tf_concat([enc_i_flat, act_flat], 1)
-#             fut_hidden, w_fut_h, b_fut_h = linear(fut_input, 512, 'worldfut_h', normalized_columns_initializer(0.01))
-#             fut_hidden = tf.nn.elu(fut_hidden)
-#             #not really sure if there's some good intuition for initializers here
-#             self.fut_pred, w_fut, b_fut = linear(fut_hidden, 512, 'worldfut_out', normalized_columns_initializer(0.01))
-#             self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred) / 512.
-#         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
-#         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
-#         self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
+}
 
+mario_world_model_config = {
+    'state_shape' : [2, 64, 64, 3],
+    'action_shape' : [2, 8],
+    'encode' : {
+        'encode_depth' : 4,
+
+        'encode' : {
+            1: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            2: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            3: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}},
+            4: {'conv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32}}
+        }
+    },
+
+    'action_model' : {
+        'mlp' : {
+            'hidden_depth' : 2,
+            'hidden' : {
+                1: {'num_features' : 256},
+                2: {'num_features' : 16, 'activation' : 'identity'}
+            }
+        }
+
+    },
+
+    'future_model' : {
+        'mlp' : {
+            'hidden_depth' : 2,
+            'hidden' : {
+                1: {'num_features' : 512},
+                2: {'num_features' : 512, 'activation' : 'identity'}
+            }
+
+        }
+
+
+    }
+
+
+}
 
 
 class UncertaintyModel:
