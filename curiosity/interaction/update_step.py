@@ -115,7 +115,7 @@ class UncertaintyPostprocessor:
 
 	def postprocess(self, training_results, batch):
 		obs, msg, act = batch
-		global_step = training_results['um_global_step'] / 2
+		global_step = training_results['global_step'] / 2
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
 		else:
@@ -123,6 +123,56 @@ class UncertaintyPostprocessor:
 		res = dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys)
 		res['msg'] = msg[-1]
 		return res
+
+class LatentUncertaintyUpdater:
+	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor):
+		self.data_provider = data_provider
+		self.wm = world_model
+		self.um = uncertainty_model
+		self.postprocessor = postprocessor
+		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+		self.act_lr_params, act_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['act_model'])
+		self.fut_lr_params, fut_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['fut_model'])
+		self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+		act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+		fut_opt_params, fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.global_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
+		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		self.global_step = self.global_step / 3		
+		self.wm_targets = {'encoding_i' : self.wm.encoding_i, 'encoding_f' : self.wm.encoding_f,  
+						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
+						'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt, 
+						'act_lr' : act_lr, 'fut_lr' : fut_lr,
+						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss
+						}
+		self.um_targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 'global_step' : self.global_step}
+		#checking that we don't have repeat names
+		for k in self.wm_targets:
+			assert k not in self.um_targets, k
+
+	def start(self, sess):
+		self.data_provider.start_runner(sess)
+		sess.run(tf.global_variables_initializer())
+
+	def update(self, sess, visualize = False):
+		batch = self.data_provider.dequeue_batch()
+		depths, actions, next_depth = postprocess_batch_depth(batch)
+		wm_feed_dict = {
+			self.wm.s_i : depths,
+			self.wm.action : actions,
+			self.wm.s_f : next_depth
+		}
+		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
+		um_feed_dict = {
+			self.um.s_i : depths,
+			self.um.action_sample : actions[:, -1],
+			self.um.true_loss : np.array([wm_res['fut_loss']])
+		}
+		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
+		res = wm_res
+		res.update(um_res)
+		res = self.postprocessor.postprocess(res, batch)
+		return res
+
 
 class UncertaintyUpdater:
 	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor):
@@ -134,8 +184,8 @@ class UncertaintyUpdater:
 		self.wm_opt_params, wm_opt = get_optimizer(wm_learning_rate, self.world_model.loss, self.global_step, optimizer_params['world_model'])
 		self.world_model_targets = {'given' : self.world_model.processed_input,  'loss' : self.world_model.loss, 'learning_rate' : wm_learning_rate, 'optimizer' : wm_opt, 'prediction' : self.world_model.pred, 'tv' : self.world_model.tv}
 		self.inc_step = self.global_step.assign_add(1)
-		self.wm_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
-		self.wm_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		self.um_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
+		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
 		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 		self.postprocessor = postprocessor
 
@@ -146,10 +196,6 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		depths, actions, next_depth = postprocess_batch_depth(batch)
-		print('shapes and stuffs')
-		print(depths.shape)
-		print(actions.shape)
-		print(next_depth.shape)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,

@@ -119,6 +119,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 					or proposed_next_position[2] < wall_safety or proposed_next_position[2] > env.ROOM_LENGTH - .5 - wall_safety):
 			print('wall safety!')
 			agent_vel = 0.
+			action[0] = 0.
 	msg['msg']['vel'] = [0, 0, agent_vel]
 	msg['msg']['ang_vel'] = [0, action[1], 0]
 
@@ -136,6 +137,8 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 		#if not in view
 		if len(xs) == 0:
 			msg['msg']['action_type'] = 'NO_OBJ_ACT'
+			for i in range(2, 8):
+				action[i] = 0.
 		#if in view
 		else:
 			#set action_pos equal to the seen center of mass. this doesn't matter
@@ -149,7 +152,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			msg_action['object'] = str(obj_id)
 			msg_action['action_pos'] = list(map(float, seen_cm))
 			msg['msg']['actions'].append(msg_action)
-	return msg
+	return msg, action
 
 
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
@@ -433,7 +436,8 @@ class Environment:
 		return self.observation
 
 	def step(self, action):
-		msg = self.action_to_message_fn(action, self)
+		#gets message. action_to_message_fn can make adjustments to action
+		msg, action = self.action_to_message_fn(action, self)
 		if self.USE_TDW:
 			self.sock.send_json(msg)
 		else:

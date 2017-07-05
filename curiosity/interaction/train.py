@@ -7,8 +7,8 @@ This should eventually be like tfutils.base, though for now we specialize a lot.
 import curiosity.interaction.environment as environment
 import curiosity.interaction.data as data
 from curiosity.interaction.data import SimpleSamplingInteractiveDataProvider, SillyLittleListerator
-from curiosity.interaction.models import UncertaintyModel, DepthFuturePredictionWorldModel, UniformActionSampler, DamianModel
-from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater
+from curiosity.interaction.models import UncertaintyModel, DepthFuturePredictionWorldModel, UniformActionSampler, DamianModel, LatentSpaceWorldModel
+from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater
 import tensorflow as tf
 import os
 import cPickle
@@ -75,7 +75,7 @@ def get_damian_updater(models, data_provider, optimizer_params, learning_rate_pa
 
 
 DEFAULT_WHAT_TO_SAVE_PARAMS = {
-		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
+		'big_save_keys' : ['um_loss', 'wm_loss'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
 		'big_save_len' : 100,
 		'big_save_freq' : 10000
@@ -157,14 +157,15 @@ def train_local(
 	):
 	#set up models
 	cfg = model_params['cfg']
-	world_model = DepthFuturePredictionWorldModel(cfg['world_model'])
+	world_model = LatentSpaceWorldModel(cfg['world_model'])
 	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
 
 	#saver setup
 	how_often = 1500
 	save_dir = os.path.join('/Users/nickhaber/Desktop/', exp_id)
 	if os.path.exists(save_dir):
-		raise Exception('Path already exists')
+		if not 'test' in exp_id:
+			raise Exception('Path already exists')
 	else:
 		os.mkdir(save_dir)
 
@@ -186,14 +187,14 @@ def train_local(
 
 	#set up updater
 	postprocessor = get_default_postprocessor(what_to_save_params = DEFAULT_WHAT_TO_SAVE_PARAMS)
-	updater = UncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
+	updater = LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
 
 	#do the training loop!
 	sess = tf.Session()
 	updater.start(sess)
 	while True:
 		res = updater.update(sess, visualize)
-		saver.update(res)
+		# saver.update(res)
 
 
 

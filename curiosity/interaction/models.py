@@ -16,7 +16,41 @@ def tf_concat(list_of_tensors, axis = 0):
         return tf.concat(list_of_tensors, axis)
     return tf.concat(axis, list_of_tensors)
 
-BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
+#TODO replace all these makeshift helpers
+def normalized_columns_initializer(std=1.0):
+    def _initializer(shape, dtype=None, partition_info=None):
+        out = np.random.randn(*shape).astype(np.float32)
+        out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
+        return tf.constant(out)
+    return _initializer
+
+
+
+def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", dtype=tf.float32, collections=None, reuse_weights = False):
+    with tf.variable_scope(name, reuse = reuse_weights):
+        stride_shape = [1, stride[0], stride[1], 1]
+        filter_shape = [filter_size[0], filter_size[1], int(x.get_shape()[3]), num_filters]
+
+        # there are "num input feature maps * filter height * filter width"
+        # inputs to each hidden unit
+        fan_in = np.prod(filter_shape[:3])
+        # each unit in the lower layer receives a gradient from:
+        # "num output feature maps * filter height * filter width" /
+        #   pooling size
+        fan_out = np.prod(filter_shape[:2]) * num_filters
+        # initialize weights with random weights
+        w_bound = np.sqrt(6. / (fan_in + fan_out))
+        w = tf.get_variable("W", filter_shape, dtype, tf.random_uniform_initializer(-w_bound, w_bound),
+                            collections=collections)
+        b = tf.get_variable("b", [1, 1, 1, num_filters], initializer=tf.constant_initializer(0.0),
+                            collections=collections)
+        return tf.nn.conv2d(x, w, stride_shape, pad) + b, w, b
+
+def linear(x, size, name, initializer=None, bias_init=0):
+    w = tf.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
+    b = tf.get_variable(name + "/b", [size], initializer=tf.constant_initializer(bias_init))
+    return tf.matmul(x, w) + b, w, b
+
 
 class UniformActionSampler:
 	def __init__(self, cfg):
@@ -771,48 +805,63 @@ a_bigger_depth_future_config = {
 
 
 
-class WorldModel(object):
-    def __init__(self, ob_space, ac_space):
-        self.s_i = s_i = tf.placeholder(tf.float32, [None] + list(ob_space))
-        self.s_f = s_f = tf.placeholder(tf.float32, [None] + list(ob_space))
-        self.action_one_hot = tf.placeholder(tf.float32, [None] + [ac_space])
+class LatentSpaceWorldModel(object):
+    def __init__(self, cfg):
+        self.s_i = s_i = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
+        self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
+        self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
         self.encode_var_list = []
 
-        for i in range(4):
-            s_i, w, b = conv2d(s_i, 32, "encode{}".format(i + 1), [3, 3], [2, 2])
-            s_i = tf.nn.elu(s_i)
-            self.encode_var_list = self.encode_var_list + [w, b]
-            s_f, _, _ = conv2d(s_f, 32, "encode{}".format(i + 1), [3, 3], [2, 2], reuse_weights = True)
-            s_f = tf.nn.elu(s_f)
+        #flatten out time dim
+        print('about to flatten time dim')
+        print(s_i)
+        print(s_f)
+        s_i = tf_concat([s_i[:, i] for i in range(cfg['state_shape'][0])], 3)
+        s_f = tf_concat([s_f[:, i] for i in range(cfg['state_shape'][0])], 3)
 
-        encoding_i = flatten(s_i)
-        self.encoding_f = flatten(s_f)
-        print(encoding_i)
-        print(self.encoding_f)
+        with tf.variable_scope('encode_model'):
+            for i in range(4):
+                s_i, w, b = conv2d(s_i, 32, "encode{}".format(i + 1), [3, 3], [2, 2])
+                s_i = tf.nn.elu(s_i)
+                s_f, _, _ = conv2d(s_f, 32, "encode{}".format(i + 1), [3, 3], [2, 2], reuse_weights = True)
+                s_f = tf.nn.elu(s_f)
 
-        #predicting action
-        act_input = tf_concat([encoding_i, self.encoding_f], 1)
-        print(act_input)
-        act_hidden, w_act_h, b_act_h = linear(act_input, 256, 'worldact_h', normalized_columns_initializer(0.01))
-        act_hidden = tf.nn.elu(act_hidden)
-        self.act_logits, w_act, b_act = linear(act_hidden, ac_space, 'worldact_out', normalized_columns_initializer(0.01))
-        self.act_var_list = [w_act_h, b_act_h, w_act, b_act]
 
-        self.act_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = self.action_one_hot, logits = self.act_logits))
+        with tf.variable_scope('action_model'):
+            self.encoding_i = s_i
+            self.encoding_f = s_f
 
-        #forward model
-        fut_input = tf_concat([encoding_i, self.action_one_hot], 1)
-        fut_hidden, w_fut_h, b_fut_h = linear(fut_input, 256, 'worldfut_h', normalized_columns_initializer(0.01))
-        fut_hidden = tf.nn.elu(fut_hidden)
-        #not really sure if there's some good intuition for initializers here
-        self.fut_pred, w_fut, b_fut = linear(fut_hidden, 288, 'worldfut_out', normalized_columns_initializer(0.01))
-        self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred) / (100.)
-        self.fut_var_list = [w_fut_h, b_fut_h, w_fut, b_fut]
+
+            enc_i_flat = flatten(s_i)
+            enc_f_flat = flatten(s_f)
+            act_flat = flatten(self.action)
+
+            #predicting action
+            act_input = tf_concat([enc_i_flat, enc_f_flat], 1)
+            act_hidden, w_act_h, b_act_h = linear(act_input, 256, 'worldact_h', normalized_columns_initializer(0.01))
+            act_hidden = tf.nn.elu(act_hidden)
+            self.act_pred, w_act, b_act = linear(act_hidden, np.prod(cfg['action_shape']), 'worldact_out', normalized_columns_initializer(0.01))
+
+            # self.act_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels = self.action, logits = self.act_logits))
+            self.act_loss = tf.nn.l2_loss(self.act_pred - act_flat)
+
+        with tf.variable_scope('future_model'):
+            #forward model
+            fut_input = tf_concat([enc_i_flat, act_flat], 1)
+            fut_hidden, w_fut_h, b_fut_h = linear(fut_input, 512, 'worldfut_h', normalized_columns_initializer(0.01))
+            fut_hidden = tf.nn.elu(fut_hidden)
+            #not really sure if there's some good intuition for initializers here
+            self.fut_pred, w_fut, b_fut = linear(fut_hidden, 512, 'worldfut_out', normalized_columns_initializer(0.01))
+            self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred)
+        self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
+        self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
+        self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
+
 
 
 class UncertaintyModel:
     def __init__(self, cfg):
-        with tf.variable_scope('um'):
+        with tf.variable_scope('uncertainty_model'):
             self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
             self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
             self.num_timesteps = cfg['state_shape'][0]
