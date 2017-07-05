@@ -55,6 +55,12 @@ def get_default_models(cfg):
 	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
+def get_latent_models(cfg):
+	world_model = LatentSpaceWorldModel(cfg['world_model'])
+	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
+	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
+
+
 def get_default_data_provider(data_params, model_params, action_model):
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
 	env = environment.Environment(action_to_message_fn = action_to_message, ** data_params['environment_params'])
@@ -62,6 +68,13 @@ def get_default_data_provider(data_params, model_params, action_model):
 	steps_per_scene = data.SillyLittleListerator(data_params['scene_lengths'])
 	data_provider = SimpleSamplingInteractiveDataProvider(env, action_model, 1, scene_infos, steps_per_scene, UniformActionSampler(model_params['cfg']), data_params['capacity'])
 	return data_provider
+
+
+def get_latent_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
+	world_model = models['world_model']
+	uncertainty_model = models['uncertainty_model']
+        return LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
+
 
 def get_default_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
 	world_model = models['world_model']
@@ -75,11 +88,19 @@ def get_damian_updater(models, data_provider, optimizer_params, learning_rate_pa
 
 
 DEFAULT_WHAT_TO_SAVE_PARAMS = {
-		'big_save_keys' : ['um_loss', 'wm_loss'],
+		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_given', 'wm_pred', 'wm_tv'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
 		'big_save_len' : 100,
 		'big_save_freq' : 10000
 	}
+
+
+LATENT_WHAT_TO_SAVE_PARAMS = {
+	'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
+	'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
+	'big_save_len' : 100,
+	'big_save_frew' : 10000
+}
 
 
 

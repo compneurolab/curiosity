@@ -115,12 +115,14 @@ class UncertaintyPostprocessor:
 
 	def postprocess(self, training_results, batch):
 		obs, msg, act = batch
-		global_step = training_results['global_step'] / 2
+		global_step = training_results['global_step']
+		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
+			res['batch'] = {'obs' : obs[-1], 'act' : act[-1]}
 		else:
 			save_keys = self.little_save_keys
-		res = dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys)
+		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
 		res['msg'] = msg[-1]
 		return res
 
@@ -188,6 +190,7 @@ class UncertaintyUpdater:
 		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
 		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 		self.postprocessor = postprocessor
+		self.global_step = self.global_step / 2
 
 	def start(self, sess):
 		self.data_provider.start_runner(sess)
