@@ -852,7 +852,7 @@ class LatentSpaceWorldModel(object):
             fut_hidden = tf.nn.elu(fut_hidden)
             #not really sure if there's some good intuition for initializers here
             self.fut_pred, w_fut, b_fut = linear(fut_hidden, 512, 'worldfut_out', normalized_columns_initializer(0.01))
-            self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred)
+            self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred) / 512.
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
         self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]

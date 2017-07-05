@@ -119,7 +119,7 @@ class UncertaintyPostprocessor:
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[-1], 'act' : act[-1]}
+			res['batch'] = {'obs' : obs['depths1'][-1], 'act' : act[-1]}
 		else:
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
