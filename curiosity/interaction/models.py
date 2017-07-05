@@ -66,7 +66,7 @@ def postprocess_depths(depths):
 		Assumes depths is of shape [batch_size, time_number, height, width, 3]
 	'''
 	depths = tf.cast(depths, tf.float32)
-	depths = (depths[:,:,:,:,0:1] * 256 + depths[:,:,:,:,1:2] + \
+	depths = (depths[:,:,:,:,0:1] * 256. + depths[:,:,:,:,1:2] + \
 	        depths[:,:,:,:,2:3] / 256.0) / 1000.0 
 	depths /= 4. # normalization
 	return depths
