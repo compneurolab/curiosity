@@ -48,9 +48,9 @@ def replace_the_nones(my_list):
 	return [np.zeros(my_list[-1].shape, dtype = my_list[-1].dtype) if elt is None else elt for elt in my_list]
 
 
-def postprocess_batch_depth(batch):
+def postprocess_batch_depth(batch, state_desc):
 	obs, msg, act = batch
-	depths = replace_the_nones(obs['depths1'])
+	depths = replace_the_nones(obs[state_desc])
 	obs_past = np.array([depths[:-1]])
 	obs_fut = np.array([depths[1:]])
 	actions = np.array([replace_the_nones(act)])
@@ -66,13 +66,13 @@ def postprocess_batch_depth(batch):
 # 	return depths, actions, next_depth
 
 
-def postprocess_batch_for_actionmap(batch):
+def postprocess_batch_for_actionmap(batch, state_desc):
 	obs, msg, act = batch
 	prepped = {}
-	depths = replace_the_nones(obs['depths1'])
+	depths = replace_the_nones(obs[state_desc])
 	depths_past = np.array([depths[:-1]])
 	depths_fut = np.array([depths[:1]])
-	objects = np.array([replace_the_nones(obs['objects1'])[:-1]])
+	objects = np.array([replace_the_nones(obs[state_desc])[:-1]])
 	actions = np.array([replace_the_nones(act)])
 	action_ids_list = []
 	for i in range(2):
@@ -107,11 +107,12 @@ def postprocess_batch_for_actionmap(batch):
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
 class UncertaintyPostprocessor:
-	def __init__(self, big_save_keys, little_save_keys, big_save_len, big_save_freq):
+	def __init__(self, big_save_keys, little_save_keys, big_save_len, big_save_freq, state_descriptor):
 		self.big_save_keys = big_save_keys
 		self.little_save_keys = little_save_keys
 		self.big_save_len = big_save_len
 		self.big_save_freq = big_save_freq
+		self.state_descriptor = state_descriptor
 
 	def postprocess(self, training_results, batch):
 		obs, msg, act = batch
@@ -119,7 +120,7 @@ class UncertaintyPostprocessor:
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs['depths1'][-1], 'act' : act[-1]}
+			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1]}
 		else:
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
@@ -157,7 +158,8 @@ class LatentUncertaintyUpdater:
 
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
-		depths, actions, next_depth = postprocess_batch_depth(batch)
+		state_desc = self.um.state_descriptor
+		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.wm.s_i : depths,
 			self.wm.action : actions,
@@ -198,7 +200,8 @@ class UncertaintyUpdater:
 
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
-		depths, actions, next_depth = postprocess_batch_depth(batch)
+		state_desc = self.um.state_desc
+		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,

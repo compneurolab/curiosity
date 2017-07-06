@@ -71,6 +71,11 @@ def postprocess_depths(depths):
 	depths /= 4. # normalization
 	return depths
 
+def postprocess_std(in_node):
+	in_node = tf.cast(in_node, tf.float32)
+	in_node = in_node / 255.
+	return in_node
+
 
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
@@ -814,6 +819,10 @@ class LatentSpaceWorldModel(object):
         s_i = tf_concat([s_i[:, i] for i in range(cfg['state_shape'][0])], 3)
         s_f = tf_concat([s_f[:, i] for i in range(cfg['state_shape'][0])], 3)
 
+	s_i = postprocess_std(s_i)
+	s_f = postprocess_std(s_f)
+
+
         m = ConvNetwithBypasses()
 
         with tf.variable_scope('encode_model'):
@@ -977,10 +986,11 @@ class UncertaintyModel:
             x_tr = tf.transpose(x)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
             self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
+            self.state_descriptor = cfg['state_descriptor']
 
     def act(self, sess, action_sample, state):
-        last_depths = state['depths1'][-1]#assuming this is always not None, as it should be getting an actual observation
-        depths = state['depths1'][-2:]
+        last_depths = state[self.state_descriptor][-1]#assuming this is always not None, as it should be getting an actual observation
+        depths = state[self.state_descriptor][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
         depths_batch = np.array([depths])
         chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})[0]
