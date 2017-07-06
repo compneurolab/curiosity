@@ -22,6 +22,7 @@ except ImportError:
 import json
 import cv2
 import copy
+import cPickle
 
 
 synset_for_table = [[u'n04379243']]
@@ -256,7 +257,8 @@ class Environment:
 			shaders = SHADERS,
 			n_cameras = 2,
 			message_memory_len = 2,
-			action_memory_len = 2
+			action_memory_len = 2,
+			local_pickled_query = None
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
@@ -307,8 +309,10 @@ class Environment:
 		self.not_yet_joined = True
 		self.action_to_message_fn = action_to_message_fn
 		self.CACHE = {}
-		self.conn = pymongo.MongoClient(port=22334)
-		self.coll = self.conn['synthetic_generative']['3d_models']
+		self.local_pickled_query = local_pickled_query
+		if local_pickled_query is None:
+			self.conn = pymongo.MongoClient(port=22334)
+			self.coll = self.conn['synthetic_generative']['3d_models']
 		self.COMPLEXITY = 1500#I think this is irrelevant, or it should be. TODO check
 		self.NUM_LIGHTS = 4
 		self.ROOM_LENGTH, self.ROOM_WIDTH = room_dims
@@ -346,7 +350,11 @@ class Environment:
 
 	# update config for next scene switch. like reset() in gym.
 	def next_config(self, * round_info):
-		rounds = [{'items' : self.get_items(query_dict[info['type']], info['num_items'] * 4, info['scale'], info['mass'], info['scale_var']), 'num_items' : info['num_items']} for info in round_info]
+		if self.local_pickled_query is None:
+			rounds = [{'items' : self.get_items(query_dict[info['type']], info['num_items'] * 4, info['scale'], info['mass'], info['scale_var']), 'num_items' : info['num_items']} for info in round_info]
+		else:
+			with open(self.local_pickled_query) as stream:
+				rounds = cPickle.load(stream)
 
 		self.config = {
 			"environment_scene" : "ProceduralGeneration",

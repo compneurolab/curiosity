@@ -56,7 +56,7 @@ once it has processed enough steps.
 
 
 class SimpleSamplingInteractiveDataProvider(threading.Thread):
-	def __init__(self, environment, policy, batch_size, initializations, num_steps_per_scene, action_sampler, capacity = 5):
+	def __init__(self, environment, policy, batch_size, initializations, num_steps_per_scene, action_sampler, full_info_action = False, capacity = 5):
 		threading.Thread.__init__(self)
 		self.policy = policy
 		self.batch_size = batch_size
@@ -68,6 +68,7 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 		self.scene_params = initializations
 		self.scene_lengths = num_steps_per_scene
 		self.action_sampler = action_sampler
+		self.full_info_action = full_info_action
 
 	def start_runner(self, sess):
 		self.sess = sess
@@ -91,8 +92,15 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 				action = None
 
 			action_sample = self.action_sampler.sample_actions()
+			if self.full_info_action:
+				action, entropy, estimated_world_loss = self.policy.act(self.ses, action_sample, obs, full_info = True)
 			action = self.policy.act(self.sess, action_sample, obs)
 			obs, msg, action = self.env.step(action)
+			if self.full_info_action:
+				assert 'entropy' not in obs and 'est_loss' not in obs
+				obs['entropy'] = entropy
+				obs['est_loss'] = estimated_world_loss
+				obs['action_sample'] = action_sample
 			num_this_scene += 1
 			if action is not None:
 				yield obs, msg, action

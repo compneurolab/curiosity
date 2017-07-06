@@ -92,7 +92,8 @@ DEFAULT_WHAT_TO_SAVE_PARAMS = {
 		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_given', 'wm_pred', 'wm_tv'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
 		'big_save_len' : 100,
-		'big_save_freq' : 10000
+		'big_save_freq' : 10000,
+
 	}
 
 
@@ -100,7 +101,8 @@ LATENT_WHAT_TO_SAVE_PARAMS = {
 	'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 	'big_save_len' : 100,
-	'big_save_frew' : 10000
+	'big_save_freq' : 10000,
+	'state_descriptor' : 'depths1'
 }
 
 
@@ -202,13 +204,13 @@ def train_local(
 		'depths1' : (64, 64)
 	}
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, USE_TDW = True, host_address = RENDER_2_ADDY, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.))
+	env = environment.Environment(1, 1, action_to_message, USE_TDW = False, host_address = None, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.), local_pickled_query = '/Users/nickhaber/Desktop/sample_rounds.p')
 	scene_infos = data.SillyLittleListerator([environment.example_scene_info])
 	steps_per_scene = data.SillyLittleListerator([1024 * 32])
-	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), capacity = 5)
+	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), full_info_action = data_params['full_info_action'], capacity = 5)
 
 	#set up updater
-	postprocessor = get_default_postprocessor(what_to_save_params = DEFAULT_WHAT_TO_SAVE_PARAMS)
+	postprocessor = get_default_postprocessor(what_to_save_params = LATENT_WHAT_TO_SAVE_PARAMS)
 	updater = LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
 
 	#do the training loop!

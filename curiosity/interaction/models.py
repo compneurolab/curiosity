@@ -984,6 +984,9 @@ class UncertaintyModel:
             x = tf_concat([x, ac], 1)
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
+            prob = tf.nn.softmax(x_tr)
+            log_prob = tf.nn.log_softmax(x_tr)
+            self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
             self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * 100.
             self.state_descriptor = cfg['state_descriptor']
@@ -992,7 +995,7 @@ class UncertaintyModel:
                 self.just_random = True
             	self.rng = np.random.RandomState(cfg['just_random'])
 
-    def act(self, sess, action_sample, state):
+    def act(self, sess, action_sample, state, full_info = False):
         if self.just_random:
             print('random act!')
             chosen_idx = self.rng.randint(len(action_sample))
@@ -1001,6 +1004,10 @@ class UncertaintyModel:
         depths = state[self.state_descriptor][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
         depths_batch = np.array([depths])
+        if full_info:
+            chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.extimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+            chosen_idx = chosen_idx[0]
+            return action_sample, entropy, estimated_world_loss
         chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})[0]
         return action_sample[chosen_idx]
 

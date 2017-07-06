@@ -120,11 +120,13 @@ class UncertaintyPostprocessor:
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1]}
+			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
 		else:
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
 		res['msg'] = msg[-1]
+		if 'entropy' in obs:
+			res['entropy'] = obs['entropy']
 		return res
 
 class LatentUncertaintyUpdater:

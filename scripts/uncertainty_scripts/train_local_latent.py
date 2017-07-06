@@ -38,7 +38,8 @@ params = {
 						'hidden' : {1 : {'num_features' : 20, 'dropout' : .75},
 									2 : {'num_features' : 1, 'activation' : 'identity'}
 						}		
-					}
+					},
+					'state_descriptor' : 'depths1'
 				},
 				'seed' : 0
 			},
@@ -94,7 +95,8 @@ params = {
 
 
 	'data_params' : {
-		'action_limits' : np.array([1., 1.] + [80. for _ in range(6)])
+		'action_limits' : np.array([1., 1.] + [80. for _ in range(6)]),
+		'full_info_action' : True
 	},
 
 	'visualize' : True,

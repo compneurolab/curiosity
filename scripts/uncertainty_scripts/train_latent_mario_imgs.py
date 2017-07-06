@@ -69,12 +69,10 @@ params = {
 	},
 
 
-#	'load_params' : {
-#		'exp_id' : ',
-#		'load_param_dict' : None
-#	},
-
-
+	'load_params' : {
+		'exp_id' : EXP_ID,
+		'load_param_dict' : None
+	},
 
 	'what_to_save_params' : {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
@@ -108,7 +106,8 @@ params = {
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],
-		'capacity' : 5
+		'capacity' : 5,
+		'full_info_action' : True
 	},
 
 	'train_params' : {
