@@ -858,10 +858,10 @@ class LatentSpaceWorldModel(object):
                                 batch_normalize = False,
                                 do_print = True)
                 self.fut_pred = decoding[-1]
-                self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred) / float(normalizing_factor)
+                self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred)
             else:
                 self.fut_pred = forward
-                self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred) / float(normalizing_factor)
+                self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred)
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
         self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
@@ -987,8 +987,15 @@ class UncertaintyModel:
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
             self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
             self.state_descriptor = cfg['state_descriptor']
+            if 'just_random' in cfg:
+                self.just_random = True
+            	self.rng = np.random.RandomState(cfg['just_random'])
 
     def act(self, sess, action_sample, state):
+        if self.just_random:
+            print('random act!')
+            chosen_idx = self.rng.randint(len(action_sample))
+            return action_sample[chosen_idx]
         last_depths = state[self.state_descriptor][-1]#assuming this is always not None, as it should be getting an actual observation
         depths = state[self.state_descriptor][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]

@@ -8,7 +8,7 @@ sys.path.append('tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment
-from curiosity.interaction.models import mario_world_model_config
+from curiosity.interaction.models import hourglass_latent_model_cfg
 from tfutils import base, optimizer
 import numpy as np
 import os
@@ -16,17 +16,17 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'more_samples2'
+EXP_ID = 'img_bottle'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
-STATE_DESC = 'depths1'
+STATE_DESC = 'images1'
 
 
 cfg = {
-				'world_model' : mario_world_model_config,
+				'world_model' : hourglass_latent_model_cfg,
 				'uncertainty_model' : {
 					'state_shape' : [2, 64, 64, 3],
 					'action_dim' : 8,
@@ -98,10 +98,10 @@ params = {
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					'depths1' : 3
+					STATE_DESC : 3
 				},
 			'rescale_dict' : {
-					'depths1' : (64, 64)
+					STATE_DESC : (64, 64)
 				},
 			'USE_TDW' : True,
 			'host_address' : RENDER2_HOST_ADDRESS
