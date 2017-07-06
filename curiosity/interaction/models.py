@@ -985,7 +985,7 @@ class UncertaintyModel:
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss)
+            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * 100.
             self.state_descriptor = cfg['state_descriptor']
             if 'just_random' in cfg:
                 self.just_random = True

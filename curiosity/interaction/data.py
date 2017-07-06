@@ -93,7 +93,7 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 			action_sample = self.action_sampler.sample_actions()
 			action = self.policy.act(self.sess, action_sample, obs)
 			obs, msg, action = self.env.step(action)
-
+			num_this_scene += 1
 			if action is not None:
 				yield obs, msg, action
 
