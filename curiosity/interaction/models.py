@@ -987,6 +987,7 @@ class UncertaintyModel:
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
             self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * 100.
             self.state_descriptor = cfg['state_descriptor']
+            self.just_random = False
             if 'just_random' in cfg:
                 self.just_random = True
             	self.rng = np.random.RandomState(cfg['just_random'])
