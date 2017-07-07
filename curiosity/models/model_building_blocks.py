@@ -7,6 +7,15 @@ sys.path.append('tfutils')
 import tensorflow as tf
 from collections import OrderedDict
 
+import distutils.version
+use_tf1 = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('1.0.0')
+
+def tf_concat(list_of_tensors, axis = 0):
+    if use_tf1:
+        return tf.concat(list_of_tensors, axis)
+    return tf.concat(axis, list_of_tensors)
+
+
 
 from curiosity.models.my_model import ConvNet
 
@@ -89,7 +98,7 @@ class ConvNetwithBypasses(ConvNet):
 			elif k == 'tanh':
 				for_out.append(tf.tanh(in_layer, name = 'tanh'))
 			elif k == 'concat_square':
-				for_out.append(tf.concat(last_axis, [in_layer, in_layer * in_layer]))
+				for_out.append(tf_concat([in_layer, in_layer * in_layer], last_axis))
 			elif k == 'square':
 				for_out.append(in_layer * in_layer)
 			elif k == 'safe_square':
@@ -102,7 +111,7 @@ class ConvNetwithBypasses(ConvNet):
 				for_out.append(in_layer)
 			else:
 				raise ValueError("Activation '{}' not defined".format(k))
-		self.output = tf.concat(for_out, axis = last_axis)
+		self.output = tf_concat(for_out, last_axis)
 		return self.output
 
         @tf.contrib.framework.add_arg_scope
@@ -120,9 +129,13 @@ class ConvNetwithBypasses(ConvNet):
 
             if in_layer is None:
                 in_layer = self.output
-            resh = tf.reshape(in_layer,
-                              [in_layer.get_shape().as_list()[0], -1],
-                              name='reshape')
+            print(in_layer)
+            print([in_layer.get_shape().as_list()[0], -1])
+            #let's assume things are flattened, ok?
+            # resh = tf.reshape(in_layer,
+            #                   [in_layer.get_shape().as_list()[0], -1],
+            #                   name='reshape')
+            resh = in_layer
             in_shape = resh.get_shape().as_list()[-1]
             if init != 'from_file':
                 kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
@@ -226,7 +239,7 @@ class ConvNetwithBypasses(ConvNet):
 		Y = tf.expand_dims(Y, 3)
 		Y = tf.tile(Y, [batch_size, 1, out_width, 1])
 
-		coord = tf.concat([Y, X], 3)
+		coord = tf_concat([Y, X], 3)
 		coord = tf.cast(coord, tf.float32)
 
 		coord_conv = tf.nn.conv2d(coord, coord_kernel, strides = [1, stride, stride, 1], padding = padding)
@@ -584,7 +597,7 @@ class ConvNetwithBypasses(ConvNet):
                     in_layers = tf.split(3, group, in_layer)
                     kernels = tf.split(3, group, kernel)
                     convs = [convolve(i, k) for i,k in zip(in_layers, kernels)]
-                    conv = tf.concat(3, convs)
+                    conv = tf_concat(convs, 3)
 
 		if batch_normalize:
 			#Using "global normalization," which is recommended in the original paper
@@ -744,11 +757,11 @@ class ConvNetwithBypasses(ConvNet):
 	    			toconcat.append(self.resize_images([ds1, ds2], in_layer = layer))
 	    		else:
 	    			toconcat.append(layer)
-	    	self.output = tf.concat(toconcat, 3)
+	    	self.output = tf_concat(toconcat, 3)
 	    	concat_type = 'image'
 	    elif len(in_shape) == 2:
 	    	toconcat.extend(bypass_layers)
-	    	self.output = tf.concat(toconcat, 1)
+	    	self.output = tf_concat(toconcat, 1)
 	    	concat_type = 'flat'
             elif len(in_shape) == 5:
                 ds1 = in_shape[1]
