@@ -253,6 +253,97 @@ class ConvNetwithBypasses(ConvNet):
 		return self.output
 
         @tf.contrib.framework.add_arg_scope
+        def deconv3d(self,
+                 out_shape,
+                 ksize=3,
+                 stride=1,
+                 padding='SAME',
+                 init='xavier',
+                 stddev=.01,
+                 bias=1,
+		 fixed_output_shape=None,
+                 activation='relu',
+                 weight_decay=None,
+                 in_layer=None,
+                 init_file=None,
+                 init_layer_keys=None,
+                 batch_normalize=False,
+                 trainable=True,
+                   ):
+                if in_layer is None:
+                    in_layer = self.output
+                if weight_decay is None:
+                    weight_decay = 0.
+                in_shape = in_layer.get_shape().as_list()[-1]
+
+                if isinstance(ksize, int):
+                    ksize1 = ksize
+                    ksize2 = ksize
+                    ksize3 = ksize
+                else:
+                    ksize1, ksize2, ksize3 = ksize
+
+                if init != 'from_file':
+                    kernel = tf.get_variable(initializer=self.initializer(init, stddev=stddev),
+                                             shape=[ksize1, ksize2, ksize3, out_shape, in_shape],
+                                             dtype=tf.float32,
+                                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+                                             name='weights', trainable=trainable)
+                    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+                                             shape=[out_shape],
+                                             dtype=tf.float32,
+                                             name='bias', trainable=trainable)
+                else:
+                    init_dict = self.initializer(init,
+                                                 init_file=init_file,
+                                                 init_keys=init_layer_keys)
+                    kernel = tf.get_variable(initializer=init_dict['weight'],
+                                             dtype=tf.float32,
+                                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+                                             name='weights', trainable=trainable)
+                    biases = tf.get_variable(initializer=init_dict['bias'],
+                                             dtype=tf.float32,
+                                             name='bias', trainable=trainable)
+               
+		if fixed_output_shape is None:
+			in_shape = in_layer.get_shape().as_list()
+			fixed_output_shape = [in_shape[0], \
+				in_shape[1] * stride, in_shape[2] * stride, \
+                                in_shape[3] * stride, out_shape]
+                deconv = tf.nn.conv2d_transpose(in_layer, kernel, fixed_output_shape,
+                                    strides=[1, stride, stride, stride, 1],
+                                    padding=padding)
+
+                if batch_normalize:
+                        #Using "global normalization," which is recommended in the original paper
+                        print('doing batch normalization')
+                        mean, var = tf.nn.moments(deconv, [0, 1, 2, 3])
+                        scale = tf.get_variable(initializer=tf.constant_initializer(bias),
+                                                 shape=[out_shape],
+                                                 dtype=tf.float32,
+                                                 name='scale', trainable=trainable)
+                        self.output = tf.nn.batch_normalization(deconv, mean, var, biases, scale, 1e-3, name = 'deconv')
+                else:
+                        self.output = tf.nn.bias_add(deconv, biases, name='deconv')
+
+                if activation is not None:
+                    self.output = self.activation(kind=activation)
+                self.params = {'input': in_layer.name,
+                               'type': 'deconv3d',
+                               'num_filters': out_shape,
+                               'stride': stride,
+                               'kernel_size': (ksize1, ksize2, ksize3),
+                               'padding': padding,
+                               'init': init,
+                               'stddev': stddev,
+                               'bias': bias,
+                               'activation': activation,
+                               'weight_decay': weight_decay,
+                               'seed': self.seed}
+                return self.output
+
+
+        @tf.contrib.framework.add_arg_scope
         def deconv(self,
                  out_shape,
                  ksize=3,
@@ -340,6 +431,94 @@ class ConvNetwithBypasses(ConvNet):
                                'weight_decay': weight_decay,
                                'seed': self.seed}
                 return self.output
+
+
+        @tf.contrib.framework.add_arg_scope
+        def conv3d(self,
+                 out_shape,
+                 ksize=3,
+                 stride=1,
+                 padding='SAME',
+                 init='xavier',
+                 stddev=.01,
+                 bias=1,
+                 activation='relu',
+                 weight_decay=None,
+                 in_layer=None,
+                 init_file=None,
+                 init_layer_keys=None,
+                 batch_normalize=False,
+                 trainable=True,
+                 ):
+                if in_layer is None:
+                    in_layer = self.output
+                if weight_decay is None:
+                    weight_decay = 0.
+                in_shape = in_layer.get_shape().as_list()[-1]
+
+                if isinstance(ksize, int):
+                    ksize1 = ksize
+                    ksize2 = ksize
+                    ksize3 = ksize
+                else:
+                    ksize1, ksize2, ksize3 = ksize
+
+		if init != 'from_file':
+		    kernel = tf.get_variable(initializer=self.initializer(init, \
+                                                 stddev=stddev),
+		                             shape=[ksize1, ksize2, ksize3, \
+                                                 in_shape, out_shape],
+		                             dtype=tf.float32,
+		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+		                             name='weights', trainable=trainable)
+		    biases = tf.get_variable(initializer=tf.constant_initializer(bias),
+		                             shape=[out_shape],
+		                             dtype=tf.float32,
+		                             name='bias', trainable=trainable)
+		else:
+		    init_dict = self.initializer(init,
+		                                 init_file=init_file,
+		                                 init_keys=init_layer_keys)
+		    kernel = tf.get_variable(initializer=init_dict['weight'],
+		                             dtype=tf.float32,
+		                             regularizer=tf.contrib.layers.l2_regularizer(weight_decay),
+		                             name='weights', trainable=trainable)
+		    biases = tf.get_variable(initializer=init_dict['bias'],
+		                             dtype=tf.float32,
+		                             name='bias', trainable=trainable)
+
+		conv = tf.nn.conv3d(in_layer, kernel,
+		                    strides=[1, stride, stride, stride, 1],
+		                    padding=padding)
+
+		if batch_normalize:
+			#Using "global normalization," which is recommended in the original paper
+			print('doing batch normalization')
+			mean, var = tf.nn.moments(conv, [0, 1, 2, 3])
+			scale = tf.get_variable(initializer=tf.constant_initializer(bias),
+			                         shape=[out_shape],
+			                         dtype=tf.float32,
+			                         name='scale', trainable=trainable)
+			self.output = tf.nn.batch_normalization(conv, mean, var, biases, scale, 1e-3, name = 'conv')
+		else:
+			self.output = tf.nn.bias_add(conv, biases, name='conv')
+
+		if activation is not None:
+		    self.output = self.activation(kind=activation)
+		self.params = {'input': in_layer.name,
+		               'type': 'conv3d',
+		               'num_filters': out_shape,
+		               'stride': stride,
+		               'kernel_size': (ksize1, ksize2, ksize3),
+		               'padding': padding,
+		               'init': init,
+		               'stddev': stddev,
+		               'bias': bias,
+		               'activation': activation,
+		               'weight_decay': weight_decay,
+		               'seed': self.seed}
+		return self.output
+
 
 	@tf.contrib.framework.add_arg_scope
 	def conv(self, 
@@ -434,6 +613,42 @@ class ConvNetwithBypasses(ConvNet):
 		               'weight_decay': weight_decay,
 		               'seed': self.seed}
 		return self.output
+
+	@tf.contrib.framework.add_arg_scope
+	def pool3d(self,
+	         ksize=3,
+	         stride=2,
+	         padding='SAME',
+	         in_layer=None,
+	         pfunc='maxpool'):
+	    if in_layer is None:
+	        in_layer = self.output
+
+	    if isinstance(ksize, int):
+	        ksize1 = ksize
+	        ksize2 = ksize
+                ksize3 = ksize
+	    else:
+	        ksize1, ksize2, ksize3 = ksize
+
+	    if pfunc=='maxpool':
+	        self.output = tf.nn.max_pool3d(in_layer,
+	                                     ksize=[1, ksize1, ksize2, ksize3, 1],
+	                                     strides=[1, stride, stride, stride, 1],
+	                                     padding=padding,
+	                                     name='pool')
+	    else:
+	        self.output = tf.nn.avg_pool(in_layer,
+	                                     ksize=[1, ksize1, ksize2, ksize3, 1],
+	                                     strides=[1, stride, stride, stride, 1],
+	                                     padding=padding,
+	                                     name='pool')
+	    self.params = {'input': in_layer.name,
+	                   'type': pfunc,
+	                   'kernel_size': (ksize1, ksize2, ksize3),
+	                   'stride': stride,
+	                   'padding': padding}
+	    return self.output
 
 
 	@tf.contrib.framework.add_arg_scope
@@ -535,6 +750,22 @@ class ConvNetwithBypasses(ConvNet):
 	    	toconcat.extend(bypass_layers)
 	    	self.output = tf.concat(toconcat, 1)
 	    	concat_type = 'flat'
+            elif len(in_shape) == 5:
+                ds1 = in_shape[1]
+                ds2 = in_shape[2]
+                ds3 = in_shape[3]
+                for layer in bypass_layers:
+                    ls = layer.get_shape().as_list()
+                    if ls[1] != ds1 or ls[2] != ds2 or ls[3] != ds3:
+                        # resize zx plane first, then xy plane
+                        layer = tf.reshape(layer, list(ls[:-2]) + list(ls[-2]*ls[-1]))
+                        layer = self.resize_images([ds1, ds2], in_layer = layer)
+                        layer = tf.reshape(layer, [ls[0] * ds1, ds2, ls[-2], ls[-1]])
+                        layer = self.resize_images([ds2, ds3], in_layer = layer)
+                        layer = tf.reshape(layer, [ls[0], ds1, ds2, ds3, ls[-1]])
+                    toconcat.append(layer)
+                self.output = tf.concat(toconcat, 4)
+                concat_type = '3d_volume'
 	    else:
 	    	raise Exception('Bypass case not yet handled.')
 	    self.params = {'input' : in_layer.name, 'type' : 'bypass', 'bypass_names' : [l.name for l in toconcat[1:]], 'concat_type' : concat_type}

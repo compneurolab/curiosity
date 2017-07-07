@@ -14,43 +14,44 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
-VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
+DATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfdata'
+VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 4
+N_GPUS = 2
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 50
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
-NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
+CACHE_DIR = '/mnt/fs0/mrowca/cache2/'
+NUM_BATCHES_PER_EPOCH = 16000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
-BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
-BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
+BIN_PATH = '/mnt/fs1/datasets/seven_world_dataset/'
+BIN_FILE = '/mnt/fs1/datasets/seven_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_seg', 
-'3loss_bypass',
-'3loss_flat_seg', 
-'3loss_flat']
+EXP_ID = ['3loss_bypass_all', 
+'3loss_flat_all',
+'3loss_bypass_seg_all', 
+'3loss_flat_seg_all']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
-CFG = [ modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=True, 
-            method='concat', nonlin='relu'),
+CFG = [ 
         modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=False,
             method='concat', nonlin='relu'),
-        modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
-            method='concat', nonlin='relu'),
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=False,
+            method='concat', nonlin='relu'),
+        modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=True,
+            method='concat', nonlin='relu'),
+        modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
@@ -160,7 +161,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'new_data',
     'exp_id' : EXP_ID[0],
-    'do_restore': True,
+    'do_restore': False,
     'load_query': None
 }] * N_GPUS
 

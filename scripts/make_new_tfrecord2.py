@@ -15,9 +15,9 @@ dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
-SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/six_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
+SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/seven_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/seven_world_dataset/tfdata'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'normals', 'objects', 'depths', 'vels', 'accs', 'jerks', 
         'vels_curr', 'accs_curr', 'jerks_curr',
         'images2', 'normals2', 'objects2', 'depths2', 'vels2', 'accs2', 'jerks2', 
@@ -139,6 +139,8 @@ def make_id_dict(observed_objects):
 
 def get_acted_ids(actions, subset_indicators):
         teleport_times = [idx for (idx, indicator) in enumerate(subset_indicators['is_not_teleporting']) if indicator[0] == 0]
+        if len(teleport_times) == 0:
+            raise ValueError('No teleport times')
         action_times = [idx for (idx, indicator) in enumerate(subset_indicators['is_acting']) if indicator[0] == 1]
         first_next_action_times = []
         objects_acted_on_after_teleport = []
@@ -187,7 +189,8 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
                         if LAST_both_ids is None:
                             both_ids = frame_act_ids + [None]
                         else:
-                            both_ids = LAST_both_ids
+                            #both_ids = LAST_both_ids
+                            both_ids = frame_act_ids + [None]
                     else:
                         both_ids = frame_act_ids + other_obj_ids
                 else:
@@ -195,9 +198,12 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
                         if LAST_both_ids is None:
                             both_ids = other_obj_ids + [None]
                         else:
-                            both_ids = LAST_both_ids
+                            #both_ids = LAST_both_ids
+                            both_ids = other_obj_ids + [None]
                     else:
                         both_ids = other_obj_ids
+                if len(both_ids) != 2:
+                    raise ValueError('Wrong action length')
                 assert len(both_ids) == 2, 'More than one object found: ' + str(both_ids)
                 LAST_both_ids = both_ids
                 retval.append(both_ids)
@@ -499,7 +505,17 @@ def write_in_thread((file_num, batches, write_path, prefix)):
             for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
 
     for _, batch in enumerate(batches):
-        batch_data_dict = get_batch_data((file_num, batch), with_non_object_images = True)
+        try:
+            batch_data_dict = get_batch_data((file_num, batch), with_non_object_images = True)
+        except ValueError as e:
+            print('Error \'%s\' in batch %d - %d! Skipping batch' \
+                    % (e, batches[0], batches[-1]))
+            # Close writers
+            for writer in writers.values():
+                writer.close()
+            for output_file in output_files:
+                os.remove(output_file)
+            return
         # TODO: Remove unneccessary data
         #batch_data_dict = remove_frames(batch_data_dict)
         # Write batch
