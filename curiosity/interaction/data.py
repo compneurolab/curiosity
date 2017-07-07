@@ -93,8 +93,9 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 
 			action_sample = self.action_sampler.sample_actions()
 			if self.full_info_action:
-				action, entropy, estimated_world_loss = self.policy.act(self.ses, action_sample, obs, full_info = True)
-			action = self.policy.act(self.sess, action_sample, obs)
+				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs, full_info = True)
+			else:
+				action = self.policy.act(self.sess, action_sample, obs)
 			obs, msg, action = self.env.step(action)
 			if self.full_info_action:
 				assert 'entropy' not in obs and 'est_loss' not in obs

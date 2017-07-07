@@ -61,8 +61,9 @@ params = {
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
-        'save_filters_freq': 30000,
-        'cache_filters_freq': 20000,
+        'save_filters_freq': 100000,
+        'cache_filters_freq': 50000,
+	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['encoding_i', 'encoding_f', 'act_pred', 'fut_pred', 'batch']
@@ -74,10 +75,12 @@ params = {
 		'load_param_dict' : None
 	},
 
+
+
 	'what_to_save_params' : {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
-		'big_save_len' : 100,
+		'big_save_len' : 50,
 		'big_save_freq' : 10000,
 		'state_descriptor' : STATE_DESC
 	},

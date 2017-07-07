@@ -996,19 +996,22 @@ class UncertaintyModel:
             	self.rng = np.random.RandomState(cfg['just_random'])
 
     def act(self, sess, action_sample, state, full_info = False):
-        if self.just_random:
-            print('random act!')
-            chosen_idx = self.rng.randint(len(action_sample))
-            return action_sample[chosen_idx]
         last_depths = state[self.state_descriptor][-1]#assuming this is always not None, as it should be getting an actual observation
         depths = state[self.state_descriptor][-2:]
         depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
         depths_batch = np.array([depths])
         if full_info:
-            chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.extimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+            chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.estimated_world_loss], 
+							feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
             chosen_idx = chosen_idx[0]
-            return action_sample, entropy, estimated_world_loss
+            if self.just_random:
+                print('random act!')
+                chosen_idx = self.rng.randint(len(action_sample))
+            return action_sample[chosen_idx], entropy, estimated_world_loss
         chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})[0]
+        if self.just_random:
+            print('random act!')
+            chosen_idx = self.rng.randint(len(action_sample))
         return action_sample[chosen_idx]
 
 sample_cfg = {
