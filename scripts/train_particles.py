@@ -21,7 +21,7 @@ VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 50
+MODEL_BATCH_SIZE = 2
 TIME_SEEN = 2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 3

@@ -585,18 +585,17 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
         # decode velocities
         next_vels = tf.cast(inputs['vels'][:,2], tf.float32)
         next_vels = (next_vels - 127) / 255 / 0.5 * 2
-        next_vels = tf.concat([next_vels[:,:,:,0:1],
-            -next_vels[:,:,:,1:2],
-            next_vels[:,:,:,2:3],
-            tf.zeros(next_vels.get_shape().as_list()[:4])], axis=3)
+        next_vels = tf.stack([next_vels[:,:,:,0],
+            -next_vels[:,:,:,1],
+            next_vels[:,:,:,2],
+            tf.zeros(next_vels.get_shape().as_list()[:3])], axis=3)
 
         curr_vels = tf.cast(inputs['vels_curr'][:,1], tf.float32)
         curr_vels = (curr_vels - 127) / 255 / 0.5 * 2
-        curr_vels = tf.concat([curr_vels[:,:,:,0:1],
-            -curr_vels[:,:,:,1:2],
-            curr_vels[:,:,:,2:3],
-            tf.zeros(curr_vels.get_shape().as_list()[:4])], axis=3)
-
+        curr_vels = tf.stack([curr_vels[:,:,:,0],
+            -curr_vels[:,:,:,1],
+            curr_vels[:,:,:,2],
+            tf.zeros(curr_vels.get_shape().as_list()[:3])], axis=3)
         seg_maps = tf.reduce_sum(inputs['segmentation_map'], axis=-1, keep_dims=True)
         act_maps = tf.reduce_sum(inputs['actions_map'], axis=-1, keep_dims=False)
 
@@ -1739,7 +1738,7 @@ def particle_loss(outputs, gpu_id, **kwargs):
         distance = tf.nn.conv3d(pos, k3d, [1,1,1,1,1], "SAME")
         distance *= distance
         distance = tf.stack([tf.reduce_sum(dim, axis=-1) for dim in \
-            tf.split(distance, k3m.shape[4], axis=4)])
+            tf.split(distance, k3m.shape[4], axis=4)], axis=4)
         distances.append(distance)
     preserve_distance_loss = tf.reduce_sum((distances[1] - distances[0]) ** 2 \
             * relation_same) / 2
@@ -1757,7 +1756,10 @@ def particle_loss(outputs, gpu_id, **kwargs):
     mse_velocity_loss = tf.nn.l2_loss(pred_vel - next_vel)
     
     # MEAN OF BOTH LOSSES
-    loss = tf.reduce_mean(tf.stack([mse_velocity_loss, preserve_distance_loss]))
+    loss = tf.reduce_mean(tf.stack([
+        mse_velocity_loss, 
+        preserve_distance_loss, 
+        mass_conservation_loss]))
     
     return [loss]
 
