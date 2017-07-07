@@ -567,9 +567,12 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
         inputs = base_net.inputs
 
         # decode depth images
+	# 'epsilon' is needed to avoid devision by zero after 
+        # discretizing the depth into color channels
+        epsilon = 1e-6 
         depths = tf.cast(inputs['depths_raw'], tf.float32)
         depths = -(depths[:,0:2,:,:,0:1] * 256 + depths[:,0:2,:,:,1:2] + \
-                depths[:,0:2,:,:,2:3] / 256.0) / 1000.0
+                depths[:,0:2,:,:,2:3] / 256.0 + epsilon) / 1000.0
         depths = (P[2,2] * depths + P[3,2]) / (P[2,3] * depths)
         depths = tf.unstack(depths, axis=1)
         assert len(depths) == 2, 'Wrong time seen input length'
@@ -1759,8 +1762,8 @@ def particle_loss(outputs, gpu_id, **kwargs):
     loss = tf.reduce_mean(tf.stack([
         mse_velocity_loss, 
         preserve_distance_loss, 
-        mass_conservation_loss]))
-    
+        mass_conservation_loss])) 
+
     return [loss]
 
 def softmax_cross_entropy_loss_binary_jerk(outputs, gpu_id, **kwargs):
