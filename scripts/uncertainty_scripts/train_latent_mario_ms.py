@@ -16,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'more_samples3'
+EXP_ID = 'more_samples_n3'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -56,7 +56,7 @@ params = {
 
 	'save_params' : {	
 		'host' : 'localhost',
-		'port' : 27017,
+		'port' : 15841,
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
