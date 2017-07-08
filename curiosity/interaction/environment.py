@@ -52,7 +52,7 @@ query_dict = {'SHAPENET' : shapenet_inquery, 'ROLLY' : rolly_query, 'TABLE' : ta
 example_scene_info = [
         {
         'type' : 'SHAPENET',
-        'scale' : 2.,
+        'scale' : 1.2,
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
@@ -272,7 +272,8 @@ class Environment:
 			message_memory_len = 2,
 			action_memory_len = 2,
 			local_pickled_query = None,
-			rng_source = None
+			rng_source = None,
+			rng_periodicity = None
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
@@ -335,7 +336,8 @@ class Environment:
 		self.msg_memory_len = message_memory_len
 		self.action_memory_len = action_memory_len
 		self.rng_source = rng_source
-
+		if rng_periodicity is not None:
+			self.rng_source = PeriodicRNGSource(rng_periodicity, seed = 1)
 
 
 

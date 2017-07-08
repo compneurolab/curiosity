@@ -202,7 +202,7 @@ class UncertaintyUpdater:
 
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
-		state_desc = self.um.state_desc
+		state_desc = self.um.state_descriptor
 		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
@@ -226,6 +226,8 @@ class UncertaintyUpdater:
 		wm_res_new = dict(('wm_' + k, v) for k, v in world_model_res.iteritems())
 		um_res_new = dict(('um_' + k, v) for k, v in um_res.iteritems())
 		wm_res_new.update(um_res_new)
+		res = wm_res_new
+		res['global_step'] = res.pop('um_global_step')
 		res = self.postprocessor.postprocess(wm_res_new, batch)
 		return res
 
@@ -277,6 +279,7 @@ class DamianWMUncertaintyUpdater:
 		wm_res_new = dict(('wm_' + k, v) for k, v in world_model_res.iteritems())
 		um_res_new = dict(('um_' + k, v) for k, v in um_res.iteritems())
 		wm_res_new.update(um_res_new)
+		res['global_step'] = res.pop('um_global_step')
 		res = self.postprocessor.postprocess(wm_res_new, batch)
 		return res
 
