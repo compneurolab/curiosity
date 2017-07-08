@@ -52,7 +52,7 @@ query_dict = {'SHAPENET' : shapenet_inquery, 'ROLLY' : rolly_query, 'TABLE' : ta
 example_scene_info = [
         {
         'type' : 'SHAPENET',
-        'scale' : 1.2,
+        'scale' : .7,
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
