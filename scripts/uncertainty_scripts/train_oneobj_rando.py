@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo_1obj2'
+EXP_ID = 'tlo_1obj_random'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -27,6 +27,7 @@ STATE_DESC = 'depths1'
 
 
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
+another_sample_cfg['uncertainty_model']['just_random'] = 0
 
 params = {
 
@@ -37,8 +38,8 @@ params = {
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
-        'save_filters_freq': 30000,
-        'cache_filters_freq': 20000,
+        'save_filters_freq': 100000,
+        'cache_filters_freq': 50000,
 	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
