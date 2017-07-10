@@ -36,7 +36,7 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['particles_bypass', 
+EXP_ID = ['particles_flat', #'particles_bypass3', 
 'particles_flat',
 'particles_deep', 
 'particles_downsampled']
@@ -44,8 +44,9 @@ EXP_ID = ['particles_bypass',
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
 buckets = 0
+min_particle_distance = 0.01
 CFG = [ 
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_flat_cfg(n_classes * 64, nonlin='relu'),
         modelsource.particle_cfg(n_classes, nonlin='relu'),
         modelsource.particle_cfg(n_classes, nonlin='relu'),
         modelsource.particle_cfg(n_classes, nonlin='relu')
@@ -97,7 +98,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     retval = {}
     batch_size = outputs['pred_vel_flat'].get_shape().as_list()[0]
     retval['loss'] = modelsource.particle_loss( 
-            outputs, gpu_id=gpu_id)
+            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
@@ -179,7 +180,7 @@ loss_params = [{
     'agg_func' : modelsource.parallel_reduce_mean,
     'loss_per_case_func' : modelsource.particle_loss,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
-    'loss_func_kwargs' : {'gpu_id': 0}, 
+    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
     #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 
@@ -193,12 +194,12 @@ learning_rate_params = [{
 
 optimizer_params = [{
     'func': modelsource.ParallelClipOptimizer,
-    'optimizer_class': tf.train.AdamOptimizer,
+    'optimizer_class': tf.train.RMSPropOptimizer, #tf.train.AdamOptimizer,
     'clip': True,
     'gpu_offset': 0,
     #'momentum': .9,
-    'beta1': 0.95,
-    'beta2': 0.9995,
+    #'beta1': 0.95,
+    #'beta2': 0.9995,
 }] * N_GPUS
 
 validation_params = [{

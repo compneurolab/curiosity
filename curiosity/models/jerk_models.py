@@ -550,7 +550,7 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 rinputs[k] = inputs[k]
 
        # preprocess input data
-        batch_size, time_seen, height, width = \
+        BATCH_SIZE, time_seen, height, width = \
                 rinputs['depths'].get_shape().as_list()[:4]
         assert time_seen == 3, 'Wrong input data time'
         time_seen -= 1
@@ -599,6 +599,7 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
             -curr_vels[:,:,:,1],
             curr_vels[:,:,:,2],
             tf.zeros(curr_vels.get_shape().as_list()[:3])], axis=3)
+
         seg_maps = tf.reduce_sum(inputs['segmentation_map'], axis=-1, keep_dims=True)
         act_maps = tf.reduce_sum(inputs['actions_map'], axis=-1, keep_dims=False)
 
@@ -612,7 +613,8 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
         # flatten 2d points matrix, with 4d homogenous coordinates and features
         for i, pts in enumerate(points):
             shape = pts.get_shape().as_list()
-            points[i] = tf.reshape(pts, [batch_size, shape[1]*shape[2], -1])
+            points[i] = tf.reshape(pts, [BATCH_SIZE, shape[1]*shape[2], -1])
+        FEATURE_DIM = points[0].get_shape().as_list()[-1]
         # transform to occupancy grid
         # CAREFUL! GRID IS SWAPPED IN X AND Y COMPARED TO IMAGE!
         discretization_shape = np.array([nw, nh, nd]).astype(np.int32) # 170, 128, 128
@@ -639,20 +641,58 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
             grid_shape = tf.stack([batch_size] \
                     + tf.unstack(discretization_shape) + [feature_dim], 0) 
             grid = tf.scatter_nd(idxs, vals, grid_shape, name='grid_'+str(i))
+            grid.set_shape([BATCH_SIZE] + list(discretization_shape) + [FEATURE_DIM])
             grids.append(grid)
             indices.append(idxs)
-
-        # init network
-        m = ConvNetwithBypasses(**kwargs)
 
         # encode per time step
         # action as an external effect will be concatenated on again later
         #TODO later when vel estimated add grids[0]
         state_grid, action_grid, next_vel_grid = tf.split(grids[1], [9, 6, 4], axis=4)
+
+        #define relations between particles
+        # mask kernel: to only use distance between particles of the same group
+        # select the appropriate channel 0 for particle label
+        ks = 5
+        dim = 3
+        km = ks / 2 
+        k3m = np.zeros([ks,ks,ks,1,ks*ks*ks-1])
+        m = 0
+        for i in range(ks):
+            for j in range(ks):
+                for k in range(ks):
+                    if not(i == j == k == km):
+                        k3m[i,j,k,0,m] = 1
+                        k3m[km,km,km,0,m] = 1
+                        m += 1
+
+        point_groups = []
+        relations_same = []
+        relations_solid = []
+        for i in range(1): #TODO CHANGE THAT LATER WHEN MORE TIMESTEPS
+            group = state_grid[:,:,:,:,8:9]
+            # determine active relations
+            relation = tf.nn.conv3d(group, k3m, [1,1,1,1,1], "SAME")
+            # relation between same kind of particles
+            relation_same = tf.cast(
+                    tf.logical_and(tf.equal(relation, 2 * group), 
+                    tf.not_equal(relation, 0)), tf.float32)
+            # relation between non-air solid particles
+            relation_solid = tf.cast(
+                    tf.logical_and(tf.greater(relation, group), tf.not_equal(group, 0)),
+                    tf.float32)
+            relations_same.append(relation_same)
+            relations_solid.append(relation_solid)
+        state_grid = tf.concat([state_grid[:,:,:,:,0:8], relations_same[0]], axis=-1)
+
+        # encode per time input
         main_input_per_time = [state_grid] # remove action
                 
         # initial bypass, state and external actions
         bypass_nodes = [[state_grid, action_grid]]
+
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
 
         # main
         encoded_input_main = []
@@ -665,6 +705,35 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
                         do_print=(not reuse_weights), return_bypass = True, use_3d=True)
                 encoded_input_main.append(enc[-1])
                 reuse_weights = True
+
+        if '2d_encode' in cfg:
+            print('Using 2D Compression')
+            reuse_weights = False
+            #reshape to 2D array
+            shapes = []
+            for i, inp in enumerate(encoded_input_main):
+                shapes.append(inp.get_shape().as_list())
+                encoded_input_main[i] = tf.reshape(inp, shapes[i][0:3] + [-1])
+            bypass_2d = []
+            for t, bypass_node in enumerate(bypass_nodes):
+                b2d = []
+                for i, byp in enumerate(bypass_node):
+                    bypass_shape = byp.get_shape().as_list()
+                    b2d.append(tf.reshape(byp, bypass_shape[0:3] + [-1]))
+                bypass_2d.append(b2d)
+            #use 2D convolution
+            for t in range(time_seen-1): # TODO -1 as first input skipped
+                enc, bypass_nodes[t] = feedforward_conv_loop(
+                        encoded_input_main[t], m, cfg, desc = '2d_encode',
+                        bypass_nodes = bypass_2d[t], reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True, use_3d=False)
+                encoded_input_main[t] = enc[-1]
+                reuse_weights = True
+            #reshape back to 3D
+            for i, inp in enumerate(encoded_input_main):
+                encoded_input_main[i] = tf.reshape(inp, shapes[i][0:4] + [-1])
+        
         pred_vel = encoded_input_main[0]
 
         pred_vel_flat = tf.reshape(tf.gather_nd(pred_vel, indices[0]), \
@@ -681,6 +750,8 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 'pred_vel': pred_vel,
                 'state': state_grid,
                 'next_vel': next_vel_grid,
+                'relation_same': relations_same[0],
+                'relation_solid': relations_solid[0],
                 'bypasses': bypass_nodes,
                 }
         retval.update(base_net.inputs)
@@ -1691,12 +1762,13 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
-def particle_loss(outputs, gpu_id, **kwargs):
+def particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     state = outputs['state']
-    group = state[:,:,:,:,8:9]
     positions = state[:,:,:,:,0:3]
     next_vel = outputs['next_vel'][:,:,:,:,0:3]
     pred_vel = outputs['pred_vel'][:,:,:,:,0:3]
+    relation_same = outputs['relation_same']
+    relation_solid = outputs['relation_solid']
 
     # PRESERVE DISTANCE LOSS
     # construct the pairwise distance calculation kernels
@@ -1704,8 +1776,8 @@ def particle_loss(outputs, gpu_id, **kwargs):
     # depth height, width, in (x,y,z), out (right, bottom, front) distance
     ks = 5
     dim = 3
-    k3d = np.zeros([ks,ks,ks,dim,(ks*ks*ks-1)*dim])
     km = ks / 2 
+    k3d = np.zeros([ks,ks,ks,dim,(ks*ks*ks-1)*dim])
     # set x,y,z center to 1 and boundary -1
     m = 0
     for i in range(ks):
@@ -1717,43 +1789,22 @@ def particle_loss(outputs, gpu_id, **kwargs):
                         k3d[km,km,km,l,m] = 1
                         m += 1
 
-    # mask kernel: to only use distance between particles of the same group
-    # select the appropriate channel 0 for particle label
-    k3m = np.zeros([ks,ks,ks,1,ks*ks*ks-1])
-    m = 0
-    for i in range(ks):
-        for j in range(ks):
-            for k in range(ks):
-                if not(i == j == k == km):
-                    k3m[i,j,k,0,m] = 1
-                    k3m[km,km,km,0,m] = 1
-                    m += 1
-
-    # determine active relations
-    relation = tf.nn.conv3d(group, k3m, [1,1,1,1,1], "SAME")
-    relation_same = tf.cast(
-            tf.logical_and(tf.equal(relation, 2 * group), tf.not_equal(relation, 0)), 
-            tf.float32)
     # determine distance between neighboring particles at time t
     positions = [positions, positions + pred_vel]
     distances = []
     for i, pos in enumerate(positions):
         distance = tf.nn.conv3d(pos, k3d, [1,1,1,1,1], "SAME")
         distance *= distance
-        distance = tf.stack([tf.reduce_sum(dim, axis=-1) for dim in \
-            tf.split(distance, k3m.shape[4], axis=4)], axis=4)
+        distance = tf.stack([tf.sqrt(tf.reduce_sum(dim, axis=-1)) for dim in \
+            tf.split(distance, (ks*ks*ks-1), axis=4)], axis=4)
         distances.append(distance)
     preserve_distance_loss = tf.reduce_sum((distances[1] - distances[0]) ** 2 \
             * relation_same) / 2
 
     # CONSERVATION OF MASS = MINIMUM DISTANCE BETWEEN PARTICLES HAS TO BE KEPT
     # with mask to enforce only between solid particles and not between empty particles
-    min_distance = 0.2
-    relation_solid = tf.cast(
-            tf.logical_and(tf.greater(relation, group), tf.not_equal(group, 0)),
-            tf.float32)
     mass_conservation_loss = tf.reduce_sum( \
-            tf.nn.relu(-distances[1]+min_distance) * relation_solid)
+            tf.nn.relu(-distances[1]+min_particle_distance) * relation_solid)
 
     # MSE VELOCITY LOSS
     mse_velocity_loss = tf.nn.l2_loss(pred_vel - next_vel)
@@ -2544,6 +2595,62 @@ def cfg_mom_complete_flat(n_classes, use_segmentation=True,
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
                 #'bypass': 2
                 },
+        }
+}
+
+def particle_flat_cfg(n_classes, nonlin='relu'):
+    return {
+        # Encoding the inputs
+        'main_encode_depth': 1,
+        'main_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' :6*50},
+                'nonlinearity': nonlin # up to 6 effects with each 50 dim
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 100},
+                'bypass': [0, 1], 'nonlinearity': nonlin
+                # concat effects state and actions
+                },
+            7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
+                'nonlinearity': nonlin
+                }
+        },
+        # Encoding the inputs
+        '2d_encode_depth': 7,
+        '2d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' :6*50},
+                'nonlinearity': nonlin # up to 6 effects with each 50 dim
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 100},
+                'bypass': [0, 1], 'nonlinearity': nonlin
+                # concat effects state and actions
+                },
+            7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
+                'nonlinearity': nonlin
+                }
         }
 }
 
