@@ -88,7 +88,8 @@ params = {
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],
-		'capacity' : 5
+		'capacity' : 5,
+		'full_info_action' : True
 	},
 
 	'train_params' : {
