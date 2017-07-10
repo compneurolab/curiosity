@@ -52,7 +52,7 @@ query_dict = {'SHAPENET' : shapenet_inquery, 'ROLLY' : rolly_query, 'TABLE' : ta
 example_scene_info = [
         {
         'type' : 'SHAPENET',
-        'scale' : .4,
+        'scale' : .7,
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
@@ -239,7 +239,20 @@ HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"Displ
 #SHADERS = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"Images": "jpg"}]
 #HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"}, {"Images": "images"}]
 
+class PeriodicRNGSource:
+	'''
+	A class for giving rngs to the environment for object selection. Periodically repeats with a fresh one with the same seeds.
+	'''
+	def __init__(self, period, seed = 0):
+		self.period = period
+		self.seed = seed
+		self.ctr = 0
 
+	def next(self):
+		if self.ctr % self.period == 0:
+			self.rng = np.random.RandomState(self.seed)
+		self.ctr += 1
+		return self.rng
 
 
 class Environment:
@@ -258,7 +271,9 @@ class Environment:
 			n_cameras = 2,
 			message_memory_len = 2,
 			action_memory_len = 2,
-			local_pickled_query = None
+			local_pickled_query = None,
+			rng_source = None,
+			rng_periodicity = None
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
@@ -320,7 +335,9 @@ class Environment:
 		self.state_memory_len = state_memory_len
 		self.msg_memory_len = message_memory_len
 		self.action_memory_len = action_memory_len
-
+		self.rng_source = rng_source
+		if rng_periodicity is not None:
+			self.rng_source = PeriodicRNGSource(rng_periodicity, seed = 1)
 
 
 
@@ -350,6 +367,9 @@ class Environment:
 
 	# update config for next scene switch. like reset() in gym.
 	def next_config(self, * round_info):
+		#meant so that one can have finer control over 
+		if self.rng_source is not None:
+			self.rng = self.rng_source.next()
 		if self.local_pickled_query is None:
 			rounds = [{'items' : self.get_items(query_dict[info['type']], info['num_items'] * 4, info['scale'], info['mass'], info['scale_var']), 'num_items' : info['num_items']} for info in round_info]
 		else:

@@ -55,6 +55,8 @@ once it has processed enough steps.
     	self.next_state = kwargs['next_state']
 
 
+
+
 class SimpleSamplingInteractiveDataProvider(threading.Thread):
 	def __init__(self, environment, policy, batch_size, initializations, num_steps_per_scene, action_sampler, full_info_action = False, capacity = 5):
 		threading.Thread.__init__(self)

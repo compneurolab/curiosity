@@ -204,9 +204,9 @@ def train_local(
 		'depths1' : (64, 64)
 	}
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, USE_TDW = False, host_address = None, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.), local_pickled_query = '/Users/nickhaber/Desktop/sample_rounds.p')
+	env = environment.Environment(1, 1, action_to_message, USE_TDW = True, host_address = RENDER_2_ADDY, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
 	scene_infos = data.SillyLittleListerator([environment.example_scene_info])
-	steps_per_scene = data.SillyLittleListerator([1024 * 32])
+	steps_per_scene = data.SillyLittleListerator([100])
 	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), full_info_action = data_params['full_info_action'], capacity = 5)
 
 	#set up updater
@@ -221,7 +221,7 @@ def train_local(
 		if 'batch' in res:
 			depths = res['batch']['obs']
 			cv2.imshow('view', depths)
-			cv2.waitKey()
+			cv2.waitKey(1)
 		# saver.update(res)
 
 
