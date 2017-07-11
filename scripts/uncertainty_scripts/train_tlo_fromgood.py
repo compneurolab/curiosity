@@ -17,24 +17,55 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo'
+EXP_ID_OLD = 'tlo'
+EXP_ID_NEW = 'tlo_fromgood'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
-CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
+CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID_NEW)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
 STATE_DESC = 'depths1'
 
+
+
+
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
+another_sample_cfg['uncertainty_model']['n_action_samples'] = 1000
+
+
+
+env_cfg = [
+        {
+        'type' : 'SHAPENET',
+        'scale' : .4,
+        'mass' : 1.,
+        'scale_var' : .01,
+        'num_items' : 1,
+        }
+        ]
+
+
+
 
 params = {
 
-	'save_params' : {	
+	'load_params' : {
 		'host' : 'localhost',
 		'port' : 27017,
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
-		'exp_id' : EXP_ID,
+		'exp_id' : EXP_ID_OLD,
+		'do_restore' : True,
+		'query' : {'saved_filters' : True, 'step' : 3300000},
+		'load_param_dict' : None
+	},
+
+	'save_params' : {
+		'host' : 'localhost',
+		'port' : 15841,
+		'dbname' : 'uncertain_agent',
+		'collname' : 'uniform_action',
+		'exp_id' : EXP_ID_NEW,
 		'save_valid_freq' : 2000,
         'save_filters_freq': 100000,
         'cache_filters_freq': 50000,
@@ -43,13 +74,6 @@ params = {
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch']
 	},
-
-
-	'load_params' : {
-		'exp_id' : EXP_ID,
-		'load_param_dict' : None
-	},
-
 
 
 	'what_to_save_params' : {
@@ -84,7 +108,7 @@ params = {
 			'message_memory_len' : 2,
 			'action_memory_len' : 2
 		},
-		'scene_list' : [environment.example_scene_info],
+		'scene_list' : [env_cfg],
 		'scene_lengths' : [1024 * 32],
 		'capacity' : 5,
 		'full_info_action' : True
