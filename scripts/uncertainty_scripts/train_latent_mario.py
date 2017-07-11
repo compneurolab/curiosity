@@ -47,7 +47,8 @@ cfg = {
 						'hidden' : {1 : {'num_features' : 20, 'dropout' : .75},
 									2 : {'num_features' : 1, 'activation' : 'identity'}
 						}		
-					}
+					},
+					'loss_factor' : 100.
 				},
 				'seed' : 0
 }

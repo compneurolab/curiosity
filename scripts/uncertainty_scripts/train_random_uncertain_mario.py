@@ -48,7 +48,8 @@ cfg = {
 						}		
 					},
 					'state_descriptor' : STATE_DESC,
-					'just_random' : 0
+					'just_random' : 0,
+					'loss_facror' : 100.
 				},
 				'seed' : 0,
 }
