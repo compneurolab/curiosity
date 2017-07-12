@@ -820,7 +820,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
         for t in range(time_seen):
             group = seg_maps[:,t]
             # determine active relations
-            relations = tf.nn.conv2d(group, k2m, [1,1,1,1], "SAME")
+            relation = tf.nn.conv2d(group, k2m, [1,1,1,1], "SAME")
             # relation between same kind of particles
             relation_same = tf.cast(
                     tf.logical_and(tf.equal(relation, 2 * group),
@@ -843,7 +843,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
 
         if use_relations_as_input:
             # add relations to input
-            for t in range(time_seen)
+            for t in range(time_seen):
                 main_input_per_time[t] = tf.concat([main_input_per_time[t], \
                         relations_same[t]], axis = -1)
 
@@ -2037,8 +2037,8 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
                 for j in range(ks):
                     for l in range(dim):
                         if not(i == j == km):
-			    k3d[i,j,l,m] = -1
-			    k3d[km,km,l,m] = 1
+			    k2d[i,j,l,m] = -1
+			    k2d[km,km,l,m] = 1
 			    m += 1
 
             # determine distance between neighboring particles at time t
@@ -2048,7 +2048,7 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
                 distance = tf.nn.conv2d(pos, k2d, [1,1,1,1], "SAME")
                 distance *= distance
                 distance = tf.stack([tf.sqrt(tf.reduce_sum(dim, axis=-1)) for dim in \
-                    tf.split(distance, (ks*ks-1), axis=4)], axis=4)
+                    tf.split(distance, (ks*ks-1), axis=3)], axis=3)
                 distances.append(distance)
             preserve_distance_loss = tf.reduce_sum((distances[1] - distances[0]) ** 2 \
                     * relation_same) / 2
