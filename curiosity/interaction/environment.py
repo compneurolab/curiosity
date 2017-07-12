@@ -233,8 +233,11 @@ def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
     return [info, narray, oarray, darray, imarray, narray2, oarray2, darray2, imarray2]
 
 
-SHADERS = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"DisplayVelocityCurrent": "png"}, {"DisplayAccelerationCurrent": "png"}, {"DisplayJerkCurrent": "png"}, {"Images": "jpg"}]
-HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"},  {"DisplayVelocityCurrent": "velocities_current"}, {"DisplayAccelerationCurrent": "accelerations_current"}, {"DisplayJerkCurrent": "jerks_current"}, {"Images": "images"}]
+SHADERS = [{'DisplayDepth': 'png'}, {'GetIdentity' : 'png'}]
+HDF5_NAMES = [{'DisplayDepth' : 'depths'}, {'GetIdentity' : 'objects'}]
+
+SHADERS_LONG = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"DisplayVelocityCurrent": "png"}, {"DisplayAccelerationCurrent": "png"}, {"DisplayJerkCurrent": "png"}, {"Images": "jpg"}]
+HDF5_NAMES_LONG = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"},  {"DisplayVelocityCurrent": "velocities_current"}, {"DisplayAccelerationCurrent": "accelerations_current"}, {"DisplayJerkCurrent": "jerks_current"}, {"Images": "images"}]
 
 #SHADERS = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"Images": "jpg"}]
 #HDF5_NAMES = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"}, {"Images": "images"}]

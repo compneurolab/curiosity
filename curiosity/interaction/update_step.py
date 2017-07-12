@@ -107,7 +107,7 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
 class UncertaintyPostprocessor:
-	def __init__(self, big_save_keys, little_save_keys, big_save_len, big_save_freq, state_descriptor):
+	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
 		self.big_save_keys = big_save_keys
 		self.little_save_keys = little_save_keys
 		self.big_save_len = big_save_len
@@ -119,9 +119,11 @@ class UncertaintyPostprocessor:
 		global_step = training_results['global_step']
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
+			print('big time')
 			save_keys = self.big_save_keys
 			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
 		else:
+			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
 		res['msg'] = msg[-1]
@@ -192,9 +194,10 @@ class UncertaintyUpdater:
 		self.inc_step = self.global_step.assign_add(1)
 		self.um_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
 		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		self.global_step = self.global_step / 2
 		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 		self.postprocessor = postprocessor
-		self.global_step = self.global_step / 2
+		
 
 	def start(self, sess):
 		self.data_provider.start_runner(sess)
