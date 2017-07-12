@@ -534,9 +534,9 @@ def particle_model(inputs, cfg = None, time_seen = None, normalization_method = 
         rinputs = {}
         for k in inputs:
             pd = 3 #padding 3
-            nh = 64 #new height 64
-            nw = 88 #new width 88
-            nd = 64 #new depth 64
+            nh = 32 #new height 64
+            nw = 44 #new width 88
+            nd = 32 #new depth 64
             if k in ['depths', 'objects', 'vels', 'accs', 'jerks',
                     'vels_curr', 'accs_curr', 'actions_map', 'segmentation_map']:
                 rinputs[k] = tf.pad(inputs[k],
@@ -765,7 +765,8 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
         stats_file = None, obj_pic_dims = None, scale_down_height = None,
         scale_down_width = None, add_depth_gaussian = False, add_gaussians = False,
         include_pose = False, store_jerk = True, use_projection = False, 
-        num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+        use_relations_as_input = False, num_classes = None, keep_prob = None, 
+        gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
         # rescale inputs to be divisible by 8
@@ -799,6 +800,39 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                 get_actions_map = True)
         inputs = base_net.inputs
 
+        # define relations between particles
+        # mask kernel: to only use distance between particles of the same group
+        # select the appropriate channel 0 for particle label
+        ks = 5
+        km = ks / 2
+        k2m = np.zeros([ks,ks,1,ks*ks-1])
+        m = 0
+        for i in range(ks):
+            for j in range(ks):
+                if not(i == j == km):
+                    k2m[i,j,0,m] = 1
+                    k2m[km,km,0,m] = 1
+                    m += 1
+        
+        seg_maps = tf.reduce_sum(inputs['segmentation_map'], axis=-1, keep_dims=True)
+        relations_same = []
+        relations_solid = []
+        for t in range(time_seen):
+            group = seg_maps[:,t]
+            # determine active relations
+            relations = tf.nn.conv2d(group, k2m, [1,1,1,1], "SAME")
+            # relation between same kind of particles
+            relation_same = tf.cast(
+                    tf.logical_and(tf.equal(relation, 2 * group),
+                    tf.not_equal(relation, 0)), tf.float32)
+            # relation between non-air solid particles
+            relation_solid = tf.cast(
+                    tf.logical_and(tf.greater(relation, group), tf.not_equal(group, 0)),
+                    tf.float32)
+            relations_same.append(relation_same)
+            relations_solid.append(relation_solid)
+
+
         # init network
         m = ConvNetwithBypasses(**kwargs)
 
@@ -806,6 +840,12 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
         main_attributes = ['depths']
         main_input_per_time = [tf.concat([tf.cast(inputs[nm][:, t], tf.float32) \
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
+
+        if use_relations_as_input:
+            # add relations to input
+            for t in range(time_seen)
+                main_input_per_time[t] = tf.concat([main_input_per_time[t], \
+                        relations_same[t]], axis = -1)
 
         # init projection matrix
         if use_projection:
@@ -1055,7 +1095,10 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                 'moments': moments,
                 'delta_moments': delta_moments,
                 'next_moments': next_moments,
-                'next_images': nexts
+                'next_images': nexts,
+                'relations_same': relations_same,
+                'relations_solid': relations_solid,
+                'depths': inputs['depths'],
                 }
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
@@ -1868,7 +1911,7 @@ def softmax_cross_entropy_loss_depth(outputs, gpu_id = 0, eps = 0.0,
         return [tf.reduce_mean(losses)]
 
 def softmax_cross_entropy_loss_vel_one(outputs, gpu_id = 0, eps = 0.0,
-        min_value = -1.0, max_value = 1.0, num_classes=256,
+        min_value = -1.0, max_value = 1.0, num_classes=256, use_relations_in_loss=False,
         segmented_jerk=True, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
@@ -1898,7 +1941,7 @@ def softmax_cross_entropy_loss_vel_one(outputs, gpu_id = 0, eps = 0.0,
 
 
 def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
-        min_value = -1.0, max_value = 1.0, num_classes=256,
+        min_value = -1.0, max_value = 1.0, num_classes=256, use_relations_in_loss=False,
         segmented_jerk=True, **kwargs):
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
@@ -1940,6 +1983,77 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
             labels=labels, logits=logits) * mask)
         losses.append(loss)
         assert len(losses) == 3, ('loss length: %d' % len(losses))
+
+        if use_relations_in_loss:
+
+            P = np.array([
+                [1.30413,    0.00000,    0.00000,   0.00000],
+                [0.00000,    1.73205,    0.00000,   0.00000],
+                [0.00000,    0.00000,   -1.00060,  -0.60018],
+                [0.00000,    0.00000,   -1.00000,   0.00000]])\
+                        .transpose().astype(np.float32)
+
+            P_inv = np.array([
+                [0.76679,    0.00000,    0.00000,   0.00000],
+                [0.00000,    0.57735,    0.00000,   0.00000],
+                [0.00000,    0.00000,    0.00000,  -1.000005],
+                [0.00000,    0.00000,   -1.66617,   1.66717]])\
+                        .transpose().astype(np.float32)
+
+            batch_size, time_seen, height, width = \
+                    outputs['depths'].get_shape().as_list()[:4]
+            depths = outputs['depths'] * 17.32 + 1e-9 # undo normalization
+            # convert depth to camera space
+            depths = (P[2,2] * depths + P[3,2]) / (P[2,3] * depths)
+            depths = tf.unstack(depths, axis=1)
+            for i, depth in enumerate(depths):
+                depth = create_meshgrid(depth)
+                depth_shape = tf.shape(depth)
+                depth = tf.matmul(tf.reshape(depth, [-1,4]), P_inv)
+                depth = tf.reshape(depth, depth_shape)
+                depths[i] = depth[:,:,:,0:3] / depth[:,:,:,3:]
+            positions = depths[1]
+
+            # convert velocity to camera space
+            pred_vel = tf.cast(outputs['next_moments'][1][0], tf.float32)
+            pred_vel = (pred_vel - 127) / 255 / 0.5 * 2
+            pred_vel = tf.stack([pred_vel[:,:,:,0],
+                -pred_vel[:,:,:,1],
+                pred_vel[:,:,:,2]], axis=3)
+
+            relation_same = outputs['relations_same'][1]
+
+            # PRESERVE DISTANCE LOSS
+            # construct the pairwise distance calculation kernels
+            # pairwise distance kernel:
+            # depth height, width, in (x,y,z), out (right, bottom, front) distance
+            ks = 5
+            dim = 3
+            km = ks / 2
+            k2d = np.zeros([ks,ks,dim,(ks*ks-1)*dim])
+            # set x,y,z center to 1 and boundary -1
+            m = 0
+            for i in range(ks):
+                for j in range(ks):
+                    for l in range(dim):
+                        if not(i == j == km):
+			    k3d[i,j,l,m] = -1
+			    k3d[km,km,l,m] = 1
+			    m += 1
+
+            # determine distance between neighboring particles at time t
+            positions = [positions, positions + pred_vel]
+            distances = []
+            for i, pos in enumerate(positions):
+                distance = tf.nn.conv2d(pos, k2d, [1,1,1,1], "SAME")
+                distance *= distance
+                distance = tf.stack([tf.sqrt(tf.reduce_sum(dim, axis=-1)) for dim in \
+                    tf.split(distance, (ks*ks-1), axis=4)], axis=4)
+                distances.append(distance)
+            preserve_distance_loss = tf.reduce_sum((distances[1] - distances[0]) ** 2 \
+                    * relation_same) / 2
+            losses.append(preserve_distance_loss)
+            assert len(losses) == 4, ('loss length: %d' % len(losses))
 
         losses = tf.stack(losses)
         return [tf.reduce_mean(losses)]
