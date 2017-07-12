@@ -988,7 +988,10 @@ class UncertaintyModel:
             log_prob = tf.nn.log_softmax(x_tr)
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * 100.
+            loss_factor = cfg.get('loss_factor')
+            if loss_factor is None:
+                loss_factor = 1.
+            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * loss_factor
             self.state_descriptor = cfg['state_descriptor']
             self.just_random = False
             if 'just_random' in cfg:

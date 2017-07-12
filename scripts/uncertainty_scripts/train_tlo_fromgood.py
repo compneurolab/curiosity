@@ -17,26 +17,55 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo_1obj_random'
+EXP_ID_OLD = 'tlo'
+EXP_ID_NEW = 'tlo_fromgood'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
-CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
+CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID_NEW)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
 STATE_DESC = 'depths1'
 
 
+
+
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
-another_sample_cfg['uncertainty_model']['just_random'] = 0
+another_sample_cfg['uncertainty_model']['n_action_samples'] = 1000
+
+
+
+env_cfg = [
+        {
+        'type' : 'SHAPENET',
+        'scale' : .4,
+        'mass' : 1.,
+        'scale_var' : .01,
+        'num_items' : 1,
+        }
+        ]
+
+
+
 
 params = {
 
-	'save_params' : {	
+	'load_params' : {
+		'host' : 'localhost',
+		'port' : 27017,
+		'dbname' : 'uncertain_agent',
+		'collname' : 'uniform_action',
+		'exp_id' : EXP_ID_OLD,
+		'do_restore' : True,
+		'query' : {'saved_filters' : True, 'step' : 3300000},
+		'load_param_dict' : None
+	},
+
+	'save_params' : {
 		'host' : 'localhost',
 		'port' : 15841,
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
-		'exp_id' : EXP_ID,
+		'exp_id' : EXP_ID_NEW,
 		'save_valid_freq' : 2000,
         'save_filters_freq': 100000,
         'cache_filters_freq': 50000,
@@ -47,17 +76,10 @@ params = {
 	},
 
 
-	'load_params' : {
-		'exp_id' : EXP_ID,
-		'load_param_dict' : None
-	},
-
-
-
 	'what_to_save_params' : {
 		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
-		'big_save_len' : 50,
+		'big_save_len' : 100,
 		'big_save_freq' : 10000,
 		'state_descriptor' : STATE_DESC
 	},
@@ -76,18 +98,17 @@ params = {
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					'depths1' : 3
+					STATE_DESC : 3
 				},
 			'rescale_dict' : {
-					'depths1' : (64, 64)
+					STATE_DESC : (64, 64)
 				},
 			'USE_TDW' : True,
 			'host_address' : RENDER2_HOST_ADDRESS,
 			'message_memory_len' : 2,
-			'action_memory_len' : 2,
-			'rng_periodicity' : 1
+			'action_memory_len' : 2
 		},
-		'scene_list' : [environment.example_scene_info],
+		'scene_list' : [env_cfg],
 		'scene_lengths' : [1024 * 32],
 		'capacity' : 5,
 		'full_info_action' : True
@@ -136,7 +157,6 @@ params = {
 
 if __name__ == '__main__':
 #	raise Exception('FIX TFUTILS TRAINING SAVE')
-	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
 	train.train_from_params(**params)
 
 

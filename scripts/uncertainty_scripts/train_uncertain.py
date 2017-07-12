@@ -17,13 +17,15 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
-EXP_ID = 'tlo_test'
+EXP_ID = 'tlo'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
+STATE_DESC = 'depths1'
 
+another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
 
 params = {
 
@@ -34,18 +36,19 @@ params = {
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
 		'save_valid_freq' : 2000,
-        'save_filters_freq': 30000,
-        'cache_filters_freq': 20000,
+        'save_filters_freq': 100000,
+        'cache_filters_freq': 50000,
+	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given']
+        'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch']
 	},
 
 
-#	'load_params' : {
-#		'exp_id' : ',
-#		'load_param_dict' : None
-#	},
+	'load_params' : {
+		'exp_id' : EXP_ID,
+		'load_param_dict' : None
+	},
 
 
 
@@ -53,7 +56,8 @@ params = {
 		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
 		'big_save_len' : 100,
-		'big_save_freq' : 10000
+		'big_save_freq' : 10000,
+		'state_descriptor' : STATE_DESC
 	},
 
 	'model_params' : {
@@ -70,10 +74,10 @@ params = {
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					'depths1' : 3
+					STATE_DESC : 3
 				},
 			'rescale_dict' : {
-					'depths1' : (64, 64)
+					STATE_DESC : (64, 64)
 				},
 			'USE_TDW' : True,
 			'host_address' : RENDER2_HOST_ADDRESS,
@@ -82,7 +86,8 @@ params = {
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],
-		'capacity' : 5
+		'capacity' : 5,
+		'full_info_action' : True
 	},
 
 	'train_params' : {
