@@ -47,7 +47,8 @@ cfg = {
 									2 : {'num_features' : 1, 'activation' : 'identity'}
 						}		
 					},
-					'state_descriptor' : STATE_DESC
+					'state_descriptor' : STATE_DESC,
+					'loss_facror' : 100.
 				},
 				'seed' : 0
 }
