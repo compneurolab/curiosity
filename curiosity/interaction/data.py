@@ -98,7 +98,7 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs, full_info = True)
 			else:
 				action = self.policy.act(self.sess, action_sample, obs)
-			obs, msg, action = self.env.step(action)
+			obs, msg, action, action_post = self.env.step(action)
 			if self.full_info_action:
 				assert 'entropy' not in obs and 'est_loss' not in obs
 				obs['entropy'] = entropy
@@ -106,7 +106,7 @@ class SimpleSamplingInteractiveDataProvider(threading.Thread):
 				obs['action_sample'] = action_sample
 			num_this_scene += 1
 			if action is not None:
-				yield obs, msg, action
+				yield obs, msg, action, action_post
 
 	def _run(self):
 		yielded = self.run_env()
