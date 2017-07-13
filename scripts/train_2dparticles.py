@@ -14,43 +14,45 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfdata_actfix'
-VALDATA_PATH = '/mnt/fs1/datasets/six_world_dataset/new_tfvaldata_actfix'
+DATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfdata'
+VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 1
+N_GPUS = 2
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 16
-TIME_SEEN = 2
+MODEL_BATCH_SIZE = 50
+TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 3
-MIN_LEN = 3
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
-NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
+LONG_LEN = 4
+MIN_LEN = 4
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
+NUM_BATCHES_PER_EPOCH = 16000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
-BIN_PATH = '/mnt/fs1/datasets/six_world_dataset/'
-BIN_FILE = '/mnt/fs1/datasets/six_world_dataset/bin_data_file.pkl'
+BIN_PATH = '/mnt/fs1/datasets/seven_world_dataset/'
+BIN_FILE = '/mnt/fs1/datasets/seven_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
-SCALE_DOWN_HEIGHT = 64
-SCALE_DOWN_WIDTH = 88
+SCALE_DOWN_HEIGHT = 32
+SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['particles_flat3', #'particles_bypass3', 
-'particles_flat',
-'particles_deep', 
-'particles_downsampled']
+EXP_ID = ['3loss_bypass_all_rel', 
+'3loss_flat_all_rel',
+'3loss_bypass_seg_all_rel', 
+'3loss_flat_seg_all_rel']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
-n_classes = 3
-buckets = 0
-min_particle_distance = 0.01
+n_classes = 768
+buckets = 255
 CFG = [ 
-        modelsource.particle_flat_cfg(n_classes * 32, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu')
-        ]
+        modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=False,
+            method='concat', nonlin='relu'),
+        modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=False,
+            method='concat', nonlin='relu'),
+        modelsource.cfg_mom_complete_bypass(n_classes, use_segmentation=True,
+            method='concat', nonlin='relu'),
+        modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
+            method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
 
@@ -90,15 +92,16 @@ def just_keep_everything(val_res):
     keys = val_res[0].keys()
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
-
-SAVE_TO_GFS = ['pred_vel_flat', 'reference_ids']
+SAVE_TO_GFS = ['pred_next_vel_1', 'reference_ids', 'master_filter', 
+        'pred_vel_1', 'pred_delta_vel_1', 'pred_next_img_1']
 
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
-    batch_size = outputs['pred_vel_flat'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.particle_loss( 
-            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
+    batch_size = outputs['pred_next_vel_1'].get_shape().as_list()[0]
+    retval['loss'] = modelsource.softmax_cross_entropy_loss_vel_all( 
+            outputs, gpu_id=gpu_id, segmented_jerk=False, buckets=buckets, 
+            use_relations_in_loss=True)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
@@ -162,7 +165,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.particle_model,
+    'func' : modelsource.mom_complete,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -171,6 +174,13 @@ model_params = [{
     'stats_file' : STATS_FILE,
     'image_height' : IMG_HEIGHT,
     'image_width' : IMG_WIDTH,
+    #'scale_down_height' : SCALE_DOWN_HEIGHT,
+    #'scale_down_width' : SCALE_DOWN_WIDTH,
+    'add_depth_gaussian' : False,
+    'include_pose' : False,
+    'store_jerk': False,
+    'use_projection': False,
+    'use_relations_as_input': True,
     #'num_classes': 60.,
     'gpu_id' : 0,
 }] * N_GPUS
@@ -178,9 +188,10 @@ model_params = [{
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.particle_loss,
+    'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_vel_all,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
-    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
+    'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0, 
+        'buckets': buckets, 'segmented_jerk': False, 'use_relations_in_loss': True}, 
     #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 
@@ -194,12 +205,12 @@ learning_rate_params = [{
 
 optimizer_params = [{
     'func': modelsource.ParallelClipOptimizer,
-    'optimizer_class': tf.train.RMSPropOptimizer, #tf.train.AdamOptimizer,
+    'optimizer_class': tf.train.AdamOptimizer,
     'clip': True,
     'gpu_offset': 0,
     #'momentum': .9,
-    #'beta1': 0.95,
-    #'beta2': 0.9995,
+    'beta1': 0.95,
+    'beta2': 0.9995,
 }] * N_GPUS
 
 validation_params = [{
@@ -226,7 +237,7 @@ validation_params = [{
             'queue_type' : 'random',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : SEED,
-            'capacity' : MODEL_BATCH_SIZE * 30,
+            'capacity' : MODEL_BATCH_SIZE * 20,
             'min_after_dequeue': MODEL_BATCH_SIZE * 10
             },
         'targets' : {
@@ -268,7 +279,7 @@ train_params =  {
         'queue_type' : 'random',
         'batch_size' : MODEL_BATCH_SIZE,
         'seed' : SEED,
-        'capacity' : MODEL_BATCH_SIZE * 60
+        'capacity' : MODEL_BATCH_SIZE * 40 #TODO change!
     },
     'num_steps' : float('inf'),
     'thres_loss' : float('inf')
@@ -308,6 +319,37 @@ params = {
     'validation_params' : validation_params,
     'inter_op_parallelism_threads': 500,
 }
+
+def int_shape(x):
+        return list(map(int, x.get_shape()))
+
+def sample_from_discretized_mix_logistic(l, nr_mix, buckets = 255.0):
+    ls = int_shape(l)
+    xs = ls[:-1] + [3]
+    # unpack parameters
+    logit_probs = l[:, :, :, :nr_mix]
+    l = tf.reshape(l[:, :, :, nr_mix:], xs + [nr_mix * 3])
+    # sample mixture indicator from softmax
+    sel = tf.one_hot(tf.argmax(logit_probs - tf.log(-tf.log(tf.random_uniform(
+        logit_probs.get_shape(), minval=1e-5, maxval=1. - 1e-5))), 3), depth=nr_mix, dtype=tf.float32)
+    sel = tf.reshape(sel, xs[:-1] + [1, nr_mix])
+    # select logistic parameters
+    means = tf.reduce_sum(l[:, :, :, :, :nr_mix] * sel, 4)
+    log_scales = tf.maximum(tf.reduce_sum(
+        l[:, :, :, :, nr_mix:2 * nr_mix] * sel, 4), -7.)
+    coeffs = tf.reduce_sum(tf.nn.tanh(
+        l[:, :, :, :, 2 * nr_mix:3 * nr_mix]) * sel, 4)
+    # sample from logistic & clip to interval
+    # we don't actually round to the nearest 8bit value when sampling
+    u = tf.random_uniform(means.get_shape(), minval=1e-5, maxval=1. - 1e-5)
+    x = means + tf.exp(log_scales) * (tf.log(u) - tf.log(1. - u))
+    x0 = tf.minimum(tf.maximum(x[:, :, :, 0], 0.), buckets) #-1.), 1.)
+    x1 = tf.minimum(tf.maximum(
+        x[:, :, :, 1] + coeffs[:, :, :, 0] * x0, 0.), buckets) #-1.), 1.)
+    x2 = tf.minimum(tf.maximum(
+        x[:, :, :, 2] + coeffs[:, :, :, 1] * x0 + coeffs[:, :, :, 2] * x1, 0.), buckets) #-1.), 1.)
+    return tf.concat([tf.reshape(x0, xs[:-1] + [1]), tf.reshape(x1, xs[:-1] + [1]), tf.reshape(x2, xs[:-1] + [1])], 3)
+
 
 if __name__ == '__main__':
     base.get_params()

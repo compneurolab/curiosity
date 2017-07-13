@@ -14,9 +14,9 @@ import numpy as np
 import os
 
 NUM_BATCHES_PER_EPOCH = 1e8
-RENDER2_HOST_ADDRESS = '10.102.2.162'
+RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'random_act_n3c'
+EXP_ID = 'rand_lat_render1'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -65,7 +65,7 @@ params = {
 		'save_valid_freq' : 2000,
         'save_filters_freq': 100000,
         'cache_filters_freq': 50000,
-	'save_metrics_freq' : 1000,
+	'save_metrics_freq' : 100,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['encoding_i', 'encoding_f', 'act_pred', 'fut_pred', 'batch']
@@ -82,8 +82,8 @@ params = {
 	'what_to_save_params' : {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
-		'big_save_len' : 50,
-		'big_save_freq' : 10000,
+		'big_save_len' : 100,
+		'big_save_freq' : 100,
 		'state_descriptor' : STATE_DESC
 	},
 
@@ -107,7 +107,7 @@ params = {
 					STATE_DESC : (64, 64)
 				},
 			'USE_TDW' : True,
-			'host_address' : RENDER2_HOST_ADDRESS
+			'host_address' : RENDER1_HOST_ADDRESS
 		},
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],
