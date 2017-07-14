@@ -9,18 +9,21 @@ sys.path.append('tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train
-from curiosity.interaction.models import hourglass_latent_model_cfg
+from curiosity.interaction.models import mario_world_model_config
 from tfutils import base, optimizer
 import numpy as np
 
 NUM_BATCHES_PER_EPOCH = 1e8
 
+STATE_DESC = 'depths1'
+
+
 params = {
 	'model_params' : {
 		'cfg' : {
-				'world_model' : hourglass_latent_model_cfg,
+				'world_model' : mario_world_model_config,
 				'uncertainty_model' : {
-					'state_shape' : [2, 64, 64, 3],
+					'state_shape' : [2, 128, 170, 3],
 					'action_dim' : 8,
 					'n_action_samples' : 50,
 					'encode' : {
@@ -39,7 +42,7 @@ params = {
 									2 : {'num_features' : 1, 'activation' : 'identity'}
 						}		
 					},
-					'state_descriptor' : 'depths1'
+					'state_descriptor' : STATE_DESC
 				},
 				'seed' : 0
 			},

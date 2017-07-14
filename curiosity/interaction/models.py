@@ -811,6 +811,7 @@ class LatentSpaceWorldModel(object):
         self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
         self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
         self.encode_var_list = []
+	self.action_post = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
 
         #flatten out time dim
         print('about to flatten time dim')
@@ -835,13 +836,14 @@ class LatentSpaceWorldModel(object):
         enc_i_flat = flatten(s_i)
         enc_f_flat = flatten(s_f)
         act_flat = flatten(self.action)
+	act_post_flat = flatten(self.action_post)
 
 
 
         #action model time
         with tf.variable_scope('action_model'):
             self.act_pred = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
-            self.act_loss = tf.nn.l2_loss(self.act_pred - act_flat)
+            self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat)
 
         #future model time
         enc_shape = enc_f_flat.get_shape().as_list()

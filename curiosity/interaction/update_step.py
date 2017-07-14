@@ -49,12 +49,13 @@ def replace_the_nones(my_list):
 
 
 def postprocess_batch_depth(batch, state_desc):
-	obs, msg, act = batch
+	obs, msg, act, act_post = batch
 	depths = replace_the_nones(obs[state_desc])
 	obs_past = np.array([depths[:-1]])
 	obs_fut = np.array([depths[1:]])
 	actions = np.array([replace_the_nones(act)])
-	return obs_past, actions, obs_fut
+	actions_post = np.array([replace_the_nones(act_post)])
+	return obs_past, actions, actions_post, obs_fut
 
 
 
@@ -107,7 +108,7 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
 class UncertaintyPostprocessor:
-	def __init__(self, big_save_keys, little_save_keys, big_save_len, big_save_freq, state_descriptor):
+	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
 		self.big_save_keys = big_save_keys
 		self.little_save_keys = little_save_keys
 		self.big_save_len = big_save_len
@@ -115,13 +116,15 @@ class UncertaintyPostprocessor:
 		self.state_descriptor = state_descriptor
 
 	def postprocess(self, training_results, batch):
-		obs, msg, act = batch
+		obs, msg, act, act_post = batch
 		global_step = training_results['global_step']
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
+			print('big time')
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
+			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'act_post' : act_post[-1],  'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
 		else:
+			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
 		res['msg'] = msg[-1]
@@ -161,10 +164,11 @@ class LatentUncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
+		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.wm.s_i : depths,
 			self.wm.action : actions,
+			self.wm.action_post : actions_post,
 			self.wm.s_f : next_depth
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
@@ -192,9 +196,10 @@ class UncertaintyUpdater:
 		self.inc_step = self.global_step.assign_add(1)
 		self.um_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
 		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		self.global_step = self.global_step / 2
 		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 		self.postprocessor = postprocessor
-		self.global_step = self.global_step / 2
+		
 
 	def start(self, sess):
 		self.data_provider.start_runner(sess)
@@ -203,7 +208,7 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
+		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,
