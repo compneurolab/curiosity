@@ -2289,7 +2289,7 @@ class ParallelClipOptimizer(object):
             grads_and_vars = []
             if isinstance(losses, list):
                 for i, loss in enumerate(losses):
-                    with tf.device('/gpu:%d' % i + self.gpu_offset):
+                    with tf.device('/gpu:%d' % i + str(self.gpu_offset)):
                         with tf.name_scope('gpu_' + str(i + self.gpu_offset)) \
                                 as gpu_scope:
                             grads_and_vars.append(self.compute_gradients(loss))

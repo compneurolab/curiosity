@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 4
+SEED = 5
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
