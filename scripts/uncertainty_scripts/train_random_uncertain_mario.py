@@ -16,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'rand_lat_render1'
+EXP_ID = 'rand_lat_newact'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -49,7 +49,7 @@ cfg = {
 					},
 					'state_descriptor' : STATE_DESC,
 					'just_random' : 0,
-					'loss_facror' : 100.
+					'loss_factor' : 100.
 				},
 				'seed' : 0,
 }
@@ -62,10 +62,10 @@ params = {
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
-		'save_valid_freq' : 2000,
-        'save_filters_freq': 100000,
-        'cache_filters_freq': 50000,
-	'save_metrics_freq' : 100,
+		'save_valid_freq' : 10000,
+        'save_filters_freq': 200000,
+        'cache_filters_freq': 100000,
+	'save_metrics_freq' : 10000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['encoding_i', 'encoding_f', 'act_pred', 'fut_pred', 'batch']
@@ -82,8 +82,8 @@ params = {
 	'what_to_save_params' : {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
-		'big_save_len' : 100,
-		'big_save_freq' : 100,
+		'big_save_len' : 50,
+		'big_save_freq' : 10000,
 		'state_descriptor' : STATE_DESC
 	},
 

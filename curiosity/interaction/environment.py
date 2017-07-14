@@ -111,6 +111,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	'''
 	msg = init_msg(env.num_frames_per_msg)
 	limits = np.array(limits)
+	action = np.copy(action)
 	action_normalized = action
 	action = action * limits
 	agent_vel = action[0]
@@ -233,8 +234,11 @@ def handle_message(sock, write=False, outdir='', imtype='png', prefix=''):
     return [info, narray, oarray, darray, imarray, narray2, oarray2, darray2, imarray2]
 
 
-SHADERS = [{'DisplayDepth': 'png'}, {'GetIdentity' : 'png'}]
-HDF5_NAMES = [{'DisplayDepth' : 'depths'}, {'GetIdentity' : 'objects'}]
+SHADERS = [{'DisplayDepth': 'png'}, {'GetIdentity' : 'png'}, {'Images' : 'png'}]
+HDF5_NAMES = [{'DisplayDepth' : 'depths'}, {'GetIdentity' : 'objects'}, {'Images' : 'images'}]
+
+SHADERS_DEPTH = [{'DisplayDepth': 'png'}, {'GetIdentity' : 'png'}]
+HDF5_NAMES_DEPTH = [{'DisplayDepth' : 'depths'}, {'GetIdentity' : 'objects'}]
 
 SHADERS_LONG = [{"DisplayNormals": "png"}, {"GetIdentity": "png"}, {"DisplayDepth": "png"}, {"DisplayVelocity": "png"}, {"DisplayAcceleration": "png"}, {"DisplayJerk": "png"}, {"DisplayVelocityCurrent": "png"}, {"DisplayAccelerationCurrent": "png"}, {"DisplayJerkCurrent": "png"}, {"Images": "jpg"}]
 HDF5_NAMES_LONG = [{"DisplayNormals": "normals"}, {"GetIdentity": "objects"}, {"DisplayDepth": "depths"}, {"DisplayVelocity": "velocities"}, {"DisplayAcceleration": "accelerations"}, {"DisplayJerk": "jerks"},  {"DisplayVelocityCurrent": "velocities_current"}, {"DisplayAccelerationCurrent": "accelerations_current"}, {"DisplayJerkCurrent": "jerks_current"}, {"Images": "images"}]
@@ -442,10 +446,11 @@ class Environment:
 		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
 		self.msg_memory = [None for _ in range(self.msg_memory_len)]
 		self.action_memory = [None for _ in range(self.action_memory_len)]
-		observation, msg, action = self._memory_postprocess(observation, msg, None)
+		self.action_post_memory = [None for _ in range(self.action_memory_len)]
+		observation, msg, action, action_post  = self._memory_postprocess(observation, msg, None, None)
 		return observation, msg
 
-	def _memory_postprocess(self, observation, msg, action):
+	def _memory_postprocess(self, observation, msg, action, action_post):
 		for k in self.state_memory:
 			self.state_memory[k].pop(0)
 			self.state_memory[k].append(observation[k])
@@ -454,7 +459,9 @@ class Environment:
 		self.msg_memory.append(msg)
 		self.action_memory.pop(0)
 		self.action_memory.append(action)
-		return observation, copy.copy(self.msg_memory), copy.copy(self.action_memory)
+		self.action_post_memory.pop(0)
+		self.action_post_memory.append(action_post)
+		return observation, copy.copy(self.msg_memory), copy.copy(self.action_memory), copy.copy(self.action_post_memory)
 
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
@@ -469,13 +476,13 @@ class Environment:
 
 	def step(self, action):
 		#gets message. action_to_message_fn can make adjustments to action
-		msg, action = self.action_to_message_fn(action, self)
+		msg, action_post = self.action_to_message_fn(action, self)
 		if self.USE_TDW:
 			self.sock.send_json(msg)
 		else:
 			self.sock.send_json(msg['msg'])
 		observation = self._observe_world()
-		return self._memory_postprocess(observation, msg, action)
+		return self._memory_postprocess(observation, msg, action, action_post)
 
 
 

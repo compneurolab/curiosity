@@ -842,6 +842,7 @@ def mom_complete(inputs, cfg = None, time_seen = None, normalization_method = No
                 for nm in main_attributes], axis = 3) for t in range(time_seen)]
 
         if use_relations_as_input:
+            print('USING RELATIONS AS INPUT')
             # add relations to input
             for t in range(time_seen):
                 main_input_per_time[t] = tf.concat([main_input_per_time[t], \
@@ -1985,7 +1986,7 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         assert len(losses) == 3, ('loss length: %d' % len(losses))
 
         if use_relations_in_loss:
-
+            print('USING RELATION LOSS')
             P = np.array([
                 [1.30413,    0.00000,    0.00000,   0.00000],
                 [0.00000,    1.73205,    0.00000,   0.00000],
@@ -2288,7 +2289,7 @@ class ParallelClipOptimizer(object):
             grads_and_vars = []
             if isinstance(losses, list):
                 for i, loss in enumerate(losses):
-                    with tf.device('/gpu:%d' % i + self.gpu_offset):
+                    with tf.device('/gpu:%d' % i + str(self.gpu_offset)):
                         with tf.name_scope('gpu_' + str(i + self.gpu_offset)) \
                                 as gpu_scope:
                             grads_and_vars.append(self.compute_gradients(loss))

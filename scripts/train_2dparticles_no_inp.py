@@ -26,7 +26,7 @@ TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache6/'
 NUM_BATCHES_PER_EPOCH = 16000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/seven_world_dataset/'
@@ -36,8 +36,8 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_all_rel3', 
-'3loss_flat_all_rel3',
+EXP_ID = ['3loss_bypass_all_rel_no_in3', 
+'3loss_flat_all_rel_no_in3',
 '3loss_bypass_seg_all_rel', 
 '3loss_flat_seg_all_rel']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 5
+SEED = 4
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -180,7 +180,7 @@ model_params = [{
     'include_pose' : False,
     'store_jerk': False,
     'use_projection': False,
-    'use_relations_as_input': True,
+    'use_relations_as_input': False,
     #'num_classes': 60.,
     'gpu_id' : 0,
 }] * N_GPUS

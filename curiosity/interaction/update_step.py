@@ -49,12 +49,13 @@ def replace_the_nones(my_list):
 
 
 def postprocess_batch_depth(batch, state_desc):
-	obs, msg, act = batch
+	obs, msg, act, act_post = batch
 	depths = replace_the_nones(obs[state_desc])
 	obs_past = np.array([depths[:-1]])
 	obs_fut = np.array([depths[1:]])
 	actions = np.array([replace_the_nones(act)])
-	return obs_past, actions, obs_fut
+	actions_post = np.array([replace_the_nones(act_post)])
+	return obs_past, actions, actions_post, obs_fut
 
 
 
@@ -115,13 +116,13 @@ class UncertaintyPostprocessor:
 		self.state_descriptor = state_descriptor
 
 	def postprocess(self, training_results, batch):
-		obs, msg, act = batch
+		obs, msg, act, act_post = batch
 		global_step = training_results['global_step']
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			print('big time')
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
+			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'act_post' : act_post[-1],  'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
 		else:
 			print('little time')
 			save_keys = self.little_save_keys
@@ -163,10 +164,11 @@ class LatentUncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
+		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.wm.s_i : depths,
 			self.wm.action : actions,
+			self.wm.action_post : actions_post,
 			self.wm.s_f : next_depth
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
@@ -206,7 +208,7 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, next_depth = postprocess_batch_depth(batch, state_desc)
+		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,
