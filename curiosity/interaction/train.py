@@ -121,7 +121,8 @@ def train_from_params(
 		log_device_placement = False,
 		load_params = None,
 		data_params = None,
-		inter_op_parallelism_threads = 40
+		inter_op_parallelism_threads = 40,
+		allow_growth = False
 	):
 	model_cfg = model_params['cfg']
 	models_constructor = model_params['func']
@@ -137,8 +138,11 @@ def train_from_params(
 
 	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 'what_to_save_params' : what_to_save_params, 'load_params' : load_params}
 
-	sess = tf.Session(config = tf.ConfigProto(allow_soft_placement = True, 
-		log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads))
+
+	config = tf.ConfigProto(allow_soft_placement = True,
+                log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
+	config.gpu_options.allow_growth = allow_growth
+	sess = tf.Session(config = config)
 	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
 	dbinterface.initialize()

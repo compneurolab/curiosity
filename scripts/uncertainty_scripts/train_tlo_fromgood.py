@@ -18,7 +18,7 @@ NUM_BATCHES_PER_EPOCH = 1e8
 RENDER2_HOST_ADDRESS = '10.102.2.162'
 
 EXP_ID_OLD = 'tlo'
-EXP_ID_NEW = 'tlo_fromgood'
+EXP_ID_NEW = 'tlo_fromgood1'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID_NEW)
 if not os.path.exists(CACHE_DIR):
@@ -31,7 +31,7 @@ STATE_DESC = 'depths1'
 
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
 another_sample_cfg['uncertainty_model']['n_action_samples'] = 1000
-
+another_sample_cfg['uncertainty_model']['scope_name'] = 'um'
 
 
 env_cfg = [
@@ -48,7 +48,7 @@ env_cfg = [
 
 
 params = {
-
+	'allow_growth' = True,
 	'load_params' : {
 		'host' : 'localhost',
 		'port' : 27017,
