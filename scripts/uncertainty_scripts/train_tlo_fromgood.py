@@ -18,7 +18,7 @@ NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
 EXP_ID_OLD = 'tlo'
-EXP_ID_NEW = 'tlo_fromgood1'
+EXP_ID_NEW = 'tlo_fromgood3'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID_NEW)
 if not os.path.exists(CACHE_DIR):
@@ -32,7 +32,7 @@ STATE_DESC = 'depths1'
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
 another_sample_cfg['uncertainty_model']['n_action_samples'] = 1000
 another_sample_cfg['uncertainty_model']['scope_name'] = 'um'
-
+another_sample_cfg['world_model']['action_shape'] = [1, 8]
 
 env_cfg = [
         {
@@ -66,10 +66,10 @@ params = {
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID_NEW,
-		'save_valid_freq' : 2000,
-        'save_filters_freq': 100000,
-        'cache_filters_freq': 50000,
-	'save_metrics_freq' : 1000,
+		'save_valid_freq' : 10000,
+        'save_filters_freq': 200000,
+        'cache_filters_freq': 100000,
+	'save_metrics_freq' : 10000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch']
@@ -79,7 +79,7 @@ params = {
 	'what_to_save_params' : {
 		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
-		'big_save_len' : 100,
+		'big_save_len' : 50,
 		'big_save_freq' : 10000,
 		'state_descriptor' : STATE_DESC
 	},

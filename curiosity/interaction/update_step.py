@@ -199,6 +199,7 @@ class UncertaintyUpdater:
 		self.global_step = self.global_step / 2
 		self.um_targets = {'loss' : self.um.uncertainty_loss, 'learning_rate' : um_learning_rate, 'optimizer' : um_opt, 'global_step' : self.global_step}
 		self.postprocessor = postprocessor
+		self.world_action_time = self.world_model.action.get_shape().as_list()[1]
 		
 
 	def start(self, sess):
@@ -212,7 +213,7 @@ class UncertaintyUpdater:
 		wm_feed_dict = {
 			self.world_model.s_i : depths,
 			self.world_model.s_f : next_depth,
-			self.world_model.action : actions
+			self.world_model.action : actions[:, - self.world_action_time : ]
 		}
 		world_model_res = sess.run(self.world_model_targets, feed_dict = wm_feed_dict)
 		if visualize:
