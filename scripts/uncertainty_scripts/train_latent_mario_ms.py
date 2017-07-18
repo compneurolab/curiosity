@@ -16,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'more_samples_newact'
+EXP_ID = 'more_samples_na_s'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):

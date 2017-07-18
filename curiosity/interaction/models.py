@@ -969,7 +969,8 @@ mario_world_model_config = {
 
 class UncertaintyModel:
     def __init__(self, cfg):
-        with tf.variable_scope('uncertainty_model'):
+	um_scope = cfg.get('scope_name', 'uncertainty_model')
+        with tf.variable_scope(um_scope):
             self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
             self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
             self.num_timesteps = cfg['state_shape'][0]
