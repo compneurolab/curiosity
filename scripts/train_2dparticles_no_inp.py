@@ -21,7 +21,7 @@ VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 
 N_GPUS = 2
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 40
+MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 4
+SEED = 5
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)

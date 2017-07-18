@@ -1944,6 +1944,7 @@ def softmax_cross_entropy_loss_vel_one(outputs, gpu_id = 0, eps = 0.0,
 def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256, use_relations_in_loss=False,
         segmented_jerk=True, **kwargs):
+    debug = False
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
         if undersample:
@@ -1964,6 +1965,8 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         labels = outputs['vels'][:,2]
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
+        if debug:
+            loss = tf.Print(loss, [loss], message='next moments')
         losses.append(loss)
         assert len(losses) == 1, ('loss length: %d' % len(losses))
 
@@ -1973,6 +1976,8 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         labels = outputs['vels_curr'][:,1]
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=labels, logits=logits) * mask)
+        if debug:
+            loss = tf.Print(loss, [loss], message='moments')
         losses.append(loss)
         assert len(losses) == 2, ('loss length: %d' % len(losses))
 
@@ -1982,6 +1987,8 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         labels = tf.cast(outputs['depths_raw'][:,2], tf.int32)
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=labels, logits=logits) * mask)
+        if debug:
+            loss = tf.Print(loss, [loss], message='next image')
         losses.append(loss)
         assert len(losses) == 3, ('loss length: %d' % len(losses))
 
@@ -2051,8 +2058,11 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
                 distance = tf.stack([tf.sqrt(tf.reduce_sum(dim, axis=-1)) for dim in \
                     tf.split(distance, (ks*ks-1), axis=3)], axis=3)
                 distances.append(distance)
-            preserve_distance_loss = tf.reduce_sum((distances[1] - distances[0]) ** 2 \
+            preserve_distance_loss = tf.reduce_mean((distances[1] - distances[0]) ** 2 \
                     * relation_same) / 2
+            if debug:
+                preserve_distance_loss = tf.Print(preserve_distance_loss, \
+                      [preserve_distance_loss], message='distance')
             losses.append(preserve_distance_loss)
             assert len(losses) == 4, ('loss length: %d' % len(losses))
 
