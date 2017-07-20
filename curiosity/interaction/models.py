@@ -697,10 +697,13 @@ class DepthFuturePredictionWorldModel():
 			#state shape gives the state of one shape. The 'states' variable has an extra timestep, which it cuts up into the given and future states.
 			states_shape = list(cfg['state_shape'])
 			states_shape[0] += 1
-			self.states = tf.placeholder(tf.float32, [1] + states_shape)
+			#Knowing the batch size is not truly needed, but until we need this to be adaptive, might as well keep it
+			#The fix involves getting shape information to deconv
+			bs = cfg['batch_size']
+			self.states = tf.placeholder(tf.float32, [bs] + states_shape)
 			self.s_i = x = self.states[:, :-1]
 			self.s_f = s_f = self.states[:, 1:]
-			self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
+			self.action = tf.placeholder(tf.float32, [bs] + cfg['action_shape'])
 			#convert from 3-channel encoding
 			self.processed_input = x = postprocess_depths(x)
 
@@ -723,7 +726,7 @@ class DepthFuturePredictionWorldModel():
 			self.tv = s_f[:, -1]
 			diff = self.pred - self.tv
 			diff = flatten(diff)
-			self.loss_per_example = tf.reduce_sum(diff * diff / 2, axis = 1)
+			self.loss_per_example = tf.reduce_sum(diff * diff / 2., axis = 1)
 			self.loss = tf.reduce_mean(self.loss_per_example)
 			#self.loss = tf.nn.l2_loss(self.tv - self.pred) #bs #(bs * np.prod(cfg['state_shape']))
 

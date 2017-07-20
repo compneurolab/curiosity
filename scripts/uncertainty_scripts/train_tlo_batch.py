@@ -17,20 +17,21 @@ NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
 EXP_ID = 'tlo_batch'
-CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
+CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
 STATE_DESC = 'depths1'
 
-BATCH_SIZE = 1
+BATCH_SIZE = 32
 
 
 another_sample_cfg['uncertainty_model']['state_descriptor'] = STATE_DESC
 another_sample_cfg['uncertainty_model']['n_action_samples'] = 1000
 another_sample_cfg['uncertainty_model']['scope_name'] = 'um'
 another_sample_cfg['world_model']['action_shape'] = [1, 8]
+another_sample_cfg['world_model']['batch_size'] = BATCH_SIZE
 
 env_cfg = [
         {
