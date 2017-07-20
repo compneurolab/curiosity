@@ -128,7 +128,8 @@ def train_from_params(
 		load_params = None,
 		data_params = None,
 		inter_op_parallelism_threads = 40,
-		allow_growth = False
+		allow_growth = False,
+		per_process_gpu_memory_fraction = None
 	):
 	model_cfg = model_params['cfg']
 	models_constructor = model_params['func']
@@ -150,6 +151,9 @@ def train_from_params(
 	if allow_growth:
 		#including this weird conditional because I'm running into a weird bug
 		config.gpu_options.allow_growth = allow_growth
+	if per_process_gpu_memory_fraction is not None:
+		print('limiting mem fraction')
+		config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
 	sess = tf.Session(config = config)
 	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
