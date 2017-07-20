@@ -721,7 +721,11 @@ class DepthFuturePredictionWorldModel():
 	                            do_print = True)
 			self.pred = decoding[-1]
 			self.tv = s_f[:, -1]
-			self.loss = tf.nn.l2_loss(self.tv - self.pred) #bs #(bs * np.prod(cfg['state_shape']))
+			diff = self.pred - self.tv
+			diff = flatten(diff)
+			self.loss_per_example = tf.reduce_sum(diff * diff / 2, axis = 1)
+			self.loss = tf.reduce_mean(self.loss_per_example)
+			#self.loss = tf.nn.l2_loss(self.tv - self.pred) #bs #(bs * np.prod(cfg['state_shape']))
 
 
 

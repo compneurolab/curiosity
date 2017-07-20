@@ -190,7 +190,7 @@ class UncertaintyUpdater:
 		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
 		self.wm_lr_params, wm_learning_rate = get_learning_rate(self.global_step, ** learning_rate_params['world_model'])
 		self.wm_opt_params, wm_opt = get_optimizer(wm_learning_rate, self.world_model.loss, self.global_step, optimizer_params['world_model'])
-		self.world_model_targets = {'given' : self.world_model.processed_input,  'loss' : self.world_model.loss, 'learning_rate' : wm_learning_rate, 'optimizer' : wm_opt, 'prediction' : self.world_model.pred, 'tv' : self.world_model.tv}
+		self.world_model_targets = {'given' : self.world_model.processed_input,  'loss' : self.world_model.loss, 'loss_per_example' : self.world_model.loss_per_example, 'learning_rate' : wm_learning_rate, 'optimizer' : wm_opt, 'prediction' : self.world_model.pred, 'tv' : self.world_model.tv}
 		self.inc_step = self.global_step.assign_add(1)
 		self.um_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
 		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
@@ -213,9 +213,9 @@ class UncertaintyUpdater:
 		}
 		world_model_res = sess.run(self.world_model_targets, feed_dict = wm_feed_dict)
 		um_feed_dict = {
-			self.um.s_i : depths,
-			self.um.action_sample : actions[:, -1],
-			self.um.true_loss : np.array([world_model_res['loss']])
+			self.um.s_i : batch[state_desc][:, :-1],
+			self.um.action_sample : batch['action'][:, -1],
+			self.um.true_loss : world_model_res['loss_per_example']
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
 		wm_res_new = dict(('wm_' + k, v) for k, v in world_model_res.iteritems())
