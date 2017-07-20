@@ -164,17 +164,16 @@ class LatentUncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
+		#depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
-			self.wm.s_i : depths,
-			self.wm.action : actions,
-			self.wm.action_post : actions_post,
-			self.wm.s_f : next_depth
+			self.wm.states = batch[state_desc]
+			self.wm.action : batch['action'],
+			self.wm.action_post : batch['action_post']
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
 		um_feed_dict = {
-			self.um.s_i : depths,
-			self.um.action_sample : actions[:, -1],
+			self.um.s_i : batch[state_desc][:, :-1],
+			self.um.action_sample : batch['actions'][:, -1],
 			self.um.true_loss : np.array([wm_res['fut_loss']])
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
@@ -208,20 +207,11 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
-			self.world_model.s_i : depths,
-			self.world_model.s_f : next_depth,
+			self.world_model.states : batch[state_desc]
 			self.world_model.action : actions
 		}
 		world_model_res = sess.run(self.world_model_targets, feed_dict = wm_feed_dict)
-		if visualize:
-			cv2.imshow('pred', world_model_res['prediction'][0] / 4.)#TODO clean up w colors
-			cv2.imshow('tv', world_model_res['tv'][0] / 4.)
-			cv2.imshow('processed0', world_model_res['given'][0, 0] / 4.)
-			cv2.imshow('processed1', world_model_res['given'][0, 1] / 4.)
-			cv2.waitKey(1)
-			print('wm loss: ' + str(world_model_res['loss']))
 		um_feed_dict = {
 			self.um.s_i : depths,
 			self.um.action_sample : actions[:, -1],
