@@ -16,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'tlo_batch2'
+EXP_ID = 'no_obj'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -39,7 +39,7 @@ env_cfg = [
         'scale' : .4,
         'mass' : 1.,
         'scale_var' : .01,
-        'num_items' : 1,
+        'num_items' : 0,
         }
         ]
 
@@ -156,7 +156,7 @@ params = {
 
 
 if __name__ == '__main__':
-#	raise Exception('FIX TFUTILS TRAINING SAVE')
+	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
 	train.train_from_params(**params)
 
 
