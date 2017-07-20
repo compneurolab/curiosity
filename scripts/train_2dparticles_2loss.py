@@ -19,14 +19,14 @@ VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 2
+N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache6/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache3/'
 NUM_BATCHES_PER_EPOCH = 16000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/seven_world_dataset/'
@@ -36,8 +36,8 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_all_rel_no_in3', 
-'3loss_flat_all_rel_no_in3',
+EXP_ID = ['3loss_bypass_all_rel4',
+'3loss_flat_all_rel4',
 '3loss_bypass_seg_all_rel', 
 '3loss_flat_seg_all_rel']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 5
+SEED = 6
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -101,7 +101,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     batch_size = outputs['pred_next_vel_1'].get_shape().as_list()[0]
     retval['loss'] = modelsource.softmax_cross_entropy_loss_vel_all( 
             outputs, gpu_id=gpu_id, segmented_jerk=False, buckets=buckets, 
-            use_relations_in_loss=True)
+            use_relations_in_loss=True, use_next_depth=False)
     for k in SAVE_TO_GFS:
         if k != 'reference_ids':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
@@ -180,7 +180,7 @@ model_params = [{
     'include_pose' : False,
     'store_jerk': False,
     'use_projection': False,
-    'use_relations_as_input': False,
+    'use_relations_as_input': True,
     #'num_classes': 60.,
     'gpu_id' : 0,
 }] * N_GPUS
@@ -191,7 +191,7 @@ loss_params = [{
     'loss_per_case_func' : modelsource.softmax_cross_entropy_loss_vel_all,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'bin_data_file': BIN_FILE, 'gpu_id': 0, 
-        'buckets': buckets, 'segmented_jerk': False, 'use_relations_in_loss': True}, 
+        'buckets': buckets, 'segmented_jerk': False, 'use_relations_in_loss': True, 'use_next_depth': False}, 
     #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 

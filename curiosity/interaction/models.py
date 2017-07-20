@@ -694,10 +694,13 @@ class DepthFuturePredictionWorldModel():
 	def __init__(self, cfg, action_state_join_model = flatten_append_unflatten):
 		print('Warning! dropout train/test not currently being handled.')
 		with tf.variable_scope('wm'):
-			self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-			self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-			self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
-			bs = tf.to_float(tf.shape(self.s_i)[0])
+			#state shape gives the state of one shape. The 'states' variable has an extra timestep, which it cuts up into the given and future states.
+			states_shape = list(cfg['state_shape'])
+			states_shape[0] += 1
+			self.states = tf.placeholder(tf.float32, [None] + states_shape)
+			self.s_i = x = self.states[:, :-1]
+			self.s_f = s_f = self.states[:, 1:]
+			self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 			#convert from 3-channel encoding
 			self.processed_input = x = postprocess_depths(x)
 
@@ -807,11 +810,15 @@ a_bigger_depth_future_config = {
 
 class LatentSpaceWorldModel(object):
     def __init__(self, cfg):
-        self.s_i = s_i = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-        self.s_f = s_f = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
-        self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
+	#states shape has one more timestep, because we have given and future times, shoved into gpu once, and then we cut it up
+	states_shape = list(cfg['state_shape'])
+	states_shape[0] += 1
+	self.states = tf.placeholder(tf.float32, [None] + states_shape)
+        self.s_i = s_i = self.states[:, :-1]
+        self.s_f = s_f = self.states[:, 1:]
+        self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
         self.encode_var_list = []
-	self.action_post = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
+	self.action_post = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 
         #flatten out time dim
         print('about to flatten time dim')
