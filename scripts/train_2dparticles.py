@@ -21,7 +21,7 @@ VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 
 N_GPUS = 2
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 40
+MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
@@ -36,8 +36,8 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_all_rel3', 
-'3loss_flat_all_rel3',
+EXP_ID = ['3loss_bypass_all_rel4',
+'3loss_flat_all_rel4',
 '3loss_bypass_seg_all_rel', 
 '3loss_flat_seg_all_rel']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 5
+SEED = 6
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)

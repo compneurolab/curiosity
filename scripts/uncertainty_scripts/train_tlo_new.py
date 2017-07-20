@@ -1,6 +1,5 @@
 '''
-A second test for the curious uncertainty loop.
-This one's for cluster training, not local.
+Redo of original tlo script, this time keeping it at one action.
 '''
 
 import sys
@@ -17,10 +16,9 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID_OLD = 'tlo'
-EXP_ID_NEW = 'tlo_fromgood3'
+EXP_ID = 'tlo_locked'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
-CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID_NEW)
+CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
@@ -49,30 +47,26 @@ env_cfg = [
 
 params = {
 	'allow_growth' : True,
-	'load_params' : {
-		'host' : 'localhost',
-		'port' : 27017,
-		'dbname' : 'uncertain_agent',
-		'collname' : 'uniform_action',
-		'exp_id' : EXP_ID_OLD,
-		'do_restore' : True,
-		'query' : {'saved_filters' : True, 'step' : 3340000},
-		'load_param_dict' : None
-	},
-
 	'save_params' : {
 		'host' : 'localhost',
 		'port' : 15841,
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
-		'exp_id' : EXP_ID_NEW,
-		'save_valid_freq' : 10000,
+		'exp_id' : EXP_ID,
+		'save_valid_freq' : 100000,
         'save_filters_freq': 200000,
         'cache_filters_freq': 100000,
-	'save_metrics_freq' : 10000,
+	'save_metrics_freq' : 100000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch']
+	},
+
+	'load_params' : {
+		'EXP_ID' : EXP_ID,
+		'load_param_dict' : None
+
+
 	},
 
 
@@ -80,7 +74,7 @@ params = {
 		'big_save_keys' : ['um_loss', 'wm_loss', 'wm_prediction', 'wm_tv', 'wm_given'],
 		'little_save_keys' : ['um_loss', 'wm_loss'],
 		'big_save_len' : 50,
-		'big_save_freq' : 10000,
+		'big_save_freq' : 100000,
 		'state_descriptor' : STATE_DESC
 	},
 

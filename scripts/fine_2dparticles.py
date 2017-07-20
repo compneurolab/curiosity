@@ -19,14 +19,14 @@ VALDATA_PATH = '/mnt/fs1/datasets/seven_world_dataset/tfvaldata'
 #DATA_PATH = '/data/two_world_dataset/new_tfdata'
 #VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
 
-N_GPUS = 2
+N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 32
 TIME_SEEN = 3
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 4
 MIN_LEN = 4
-CACHE_DIR = '/mnt/fs0/mrowca/cache6/'
+CACHE_DIR = '/mnt/fs0/mrowca/cache5/'
 NUM_BATCHES_PER_EPOCH = 16000 * 256 / MODEL_BATCH_SIZE
 STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
 BIN_PATH = '/mnt/fs1/datasets/seven_world_dataset/'
@@ -36,12 +36,12 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 32
 SCALE_DOWN_WIDTH = 43
 L2_COEF = 200.
-EXP_ID = ['3loss_bypass_all_rel_no_in3', 
-'3loss_flat_all_rel_no_in3',
+EXP_ID = ['3loss_bypass_fine',
+'3loss_flat_all_rel4',
 '3loss_bypass_seg_all_rel', 
 '3loss_flat_seg_all_rel']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
-LRS = [0.001, 0.001, 0.001, 0.001]
+LRS = [0.0005, 0.001, 0.001, 0.001]
 n_classes = 768
 buckets = 255
 CFG = [ 
@@ -54,7 +54,7 @@ CFG = [
         modelsource.cfg_mom_complete_flat(n_classes, use_segmentation=True,
             method='concat', nonlin='relu')]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 5
+SEED = 6
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -296,7 +296,7 @@ for i, _ in enumerate(save_params):
 
 for i, _ in enumerate(model_params):
     save_params[i]['exp_id'] = EXP_ID[i]
-    load_params[i]['exp_id'] = EXP_ID[i]
+    load_params[i]['exp_id'] = '3loss_bypass_all' # EXP_ID[i]
 
     save_params[i]['cache_dir'] = CACHE_DIRS[i]
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
