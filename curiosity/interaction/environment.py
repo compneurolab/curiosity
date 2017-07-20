@@ -451,7 +451,7 @@ class Environment:
 				self.sock.send_json(msg)
 		observation = self._observe_world()
 		self._pad_memory()
-		observation, msg, action, action_post  = self._memory_postprocess(observation, msg, None, None)
+		observation, msg, action, action_post, other_dat  = self._memory_postprocess(observation, msg, None, None)
 		return observation, msg
 
 	def _pad_memory(self):

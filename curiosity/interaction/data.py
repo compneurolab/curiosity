@@ -55,8 +55,15 @@ once it has processed enough steps.
     	self.next_state = kwargs['next_state']
 
 
-def batch_FIFO(history, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2):
-	assert len(data_length['obs']) == 1
+def replace_the_nones(my_list):
+	'''
+		Assumes my_list[-1] is np array
+	'''
+	return [np.zeros(my_list[-1].shape, dtype = my_list[-1].dtype) if elt is None else elt for elt in my_list]
+
+
+def batch_FIFO(history, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):
+	assert len(data_lengths['obs']) == 1
 	batch = {}
 	for k, v in data_lengths.iteritems():
 		if k == 'obs':
@@ -79,10 +86,10 @@ class BSInteractiveDataProvider(threading.Thread):
 	A batching, sampling interactive data provider.
 	Meant to support a light amount of experience replay, as well as simply giving batches of data.
 	'''
-	def __init__(self, environment, policy, scene_params, scene_lengths, action_sampler, batching_fn, capacity = 5, batch_size = 32, gather_per_batch = 32, gather_at_beginning = 32):
+	def __init__(self, environment, policy, scene_params, scene_lengths, action_sampler, batching_fn, capacity = 5, gather_per_batch = 32, gather_at_beginning = 32):
+		threading.Thread.__init__(self)
 		self.env = environment
 		self.policy = policy
-		self.batch_size = batch_size
 		self.capacity = capacity
 		self.queue = queue.Queue(capacity)
 		self.daemon = True
@@ -102,15 +109,15 @@ class BSInteractiveDataProvider(threading.Thread):
 		with self.sess.as_default():
 			self._run()
 
-        def _run(self):
-                yielded = self.run_env()
-                while True:
+	def _run(self):
+		yielded = self.run_env()
+		while True:
 			history = next(yielded)
 			batch = self.batching_fn(history)
-                        self.queue.put(batch, timeout = 600.0)
+			self.queue.put(batch, timeout = 600.0)
 
-        def dequeue_batch(self):
-                return self.queue.get(timeout = 600.0)
+	def dequeue_batch(self):
+		return self.queue.get(timeout = 600.0)
 
 	def run_env(self):
 		#initialize counters
@@ -128,7 +135,6 @@ class BSInteractiveDataProvider(threading.Thread):
 					num_this_scene = 0
 					scene_len = self.scene_lengths.next()
 					action = None
-					for _ in range(
 				#select action and act on world
 				action_sample = self.action_sampler.sample_actions()
 				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs, full_info = True)
@@ -140,7 +146,7 @@ class BSInteractiveDataProvider(threading.Thread):
 				num_this_yield += 1
 				total_gathered += 1
 				if action is not None:
-					yield {'observation' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
+					yield {'obs' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
 	
 		
 

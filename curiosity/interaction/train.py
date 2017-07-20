@@ -63,6 +63,14 @@ def get_latent_models(cfg):
 	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
+def get_batching_data_provider(data_params, model_params, action_model):
+	assert set(data_params.keys()) == set(['environment_params', 'scene_list', 'scene_lengths', 'provider_params'])
+	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
+	env = environment.Environment(action_to_message_fn = action_to_message, ** data_params['environment_params'])
+	scene_infos = data.SillyLittleListerator(data_params['scene_list'])
+	steps_per_scene = data.SillyLittleListerator(data_params['scene_lengths'])
+	data_provider = data.BSInteractiveDataProvider(env, policy, scene_infos, steps_per_scene, UniformActionSampler(model_params['cfg']), ** data_params['provider_params'])
+	return data_provider
 
 def get_default_data_provider(data_params, model_params, action_model):
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
@@ -214,16 +222,23 @@ def train_local(
 
 	#set up data provider
 	state_memory_len = {
-		STATE_DESC : 3
+		STATE_DESC : 4,
 	}
 	rescale_dict = {
 		STATE_DESC : (64, 64)
 	}
+	provider_params = {
+		'batching_fn' : lambda hist : data.batch_FIFO(hist, batch_size = 2),
+		'capacity' : 5,
+		'gather_per_batch' : 2,
+		'gather_at_beginning' : 4
+	}
+
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = False, host_address = None, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
+	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = False, host_address = None, state_memory_len = state_memory_len, action_memory_len = 3, message_memory_len = 3, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
 	scene_infos = data.SillyLittleListerator([example_scene_local])
 	steps_per_scene = data.SillyLittleListerator([100])
-	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), full_info_action = data_params['full_info_action'], capacity = 5)
+	data_provider = data.BSInteractiveDataProvider(env, uncertainty_model, scene_infos, steps_per_scene, UniformActionSampler(cfg), ** provider_params)
 
 	#set up updater
 	postprocessor = get_default_postprocessor(what_to_save_params = LATENT_WHAT_TO_SAVE_PARAMS)

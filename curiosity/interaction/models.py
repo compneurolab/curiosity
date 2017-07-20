@@ -854,7 +854,6 @@ class LatentSpaceWorldModel(object):
 
         #future model time
         enc_shape = enc_f_flat.get_shape().as_list()
-        normalizing_factor = np.prod(enc_shape)
         with tf.variable_scope('future_model'):
             fut_input = tf_concat([enc_i_flat, act_flat], 1)
             forward = hidden_loop_with_bypasses(fut_input, m, cfg['future_model']['mlp'], reuse_weights = False, train = True)
@@ -978,10 +977,10 @@ class UncertaintyModel:
     def __init__(self, cfg):
 	um_scope = cfg.get('scope_name', 'uncertainty_model')
         with tf.variable_scope(um_scope):
-            self.s_i = x = tf.placeholder(tf.float32, [1] + cfg['state_shape'])
+            self.s_i = x = tf.placeholder(tf.float32, [None] + cfg['state_shape'])
             self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
             self.num_timesteps = cfg['state_shape'][0]
-            self.true_loss = tr_loss = tf.placeholder(tf.float32, [1])
+            self.true_loss = tr_loss = tf.placeholder(tf.float32, [None])
             m = ConvNetwithBypasses()
             x = postprocess_depths(x)
             #concatenate temporal dimension into channels
@@ -989,7 +988,7 @@ class UncertaintyModel:
             #encode
             self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             x = flatten(x)
-            x = tf.cond(tf.shape(self.action_sample)[0] > 1, lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
+            x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
             # x = tf.tile(x, [cfg['n_action_samples'], 1])
             x = tf_concat([x, ac], 1)
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)

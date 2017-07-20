@@ -116,20 +116,18 @@ class UncertaintyPostprocessor:
 		self.state_descriptor = state_descriptor
 
 	def postprocess(self, training_results, batch):
-		obs, msg, act, act_post = batch
 		global_step = training_results['global_step']
 		res = {}
 		if (global_step - 1) % self.big_save_freq < self.big_save_len:
 			print('big time')
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'act_post' : act_post[-1],  'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
+			res['batch'] = {'obs' : batch['depths1'][-1, -1], 'act' : batch['action'][-1], 'act_post' : batch['action_post'][-1],  'est_loss' : batch['other'][1], 'action_sample' : batch['other'][2]}
 		else:
 			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
-		res['msg'] = msg[-1]
-		if 'entropy' in obs:
-			res['entropy'] = obs['entropy']
+		res['msg'] = batch['msg']
+		res['entropy'] = batch['other'][0]
 		return res
 
 class LatentUncertaintyUpdater:
@@ -165,15 +163,19 @@ class LatentUncertaintyUpdater:
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
 		#depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
+		print('wtf')
+		print(batch[state_desc].shape)
+		print(batch['action'].shape)
+		print(batch['action_post'].shape)
 		wm_feed_dict = {
-			self.wm.states = batch[state_desc]
+			self.wm.states : batch[state_desc],
 			self.wm.action : batch['action'],
 			self.wm.action_post : batch['action_post']
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
 		um_feed_dict = {
 			self.um.s_i : batch[state_desc][:, :-1],
-			self.um.action_sample : batch['actions'][:, -1],
+			self.um.action_sample : batch['action'][:, -1],
 			self.um.true_loss : np.array([wm_res['fut_loss']])
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
