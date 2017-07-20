@@ -52,7 +52,8 @@ cfg = {
 						}		
 					},
 					'state_descriptor' : STATE_DESC,
-					'loss_factor' : 1. / float(BATCH_SIZE)
+					'loss_factor' : 1. / float(BATCH_SIZE),
+					'just_random' : 0
 				},
 				'seed' : 0
 }

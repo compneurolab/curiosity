@@ -145,8 +145,8 @@ class BSInteractiveDataProvider(threading.Thread):
 				#update counters
 				num_this_yield += 1
 				total_gathered += 1
-				if action is not None:
-					yield {'obs' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
+			if action is not None:
+				yield {'obs' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
 	
 		
 
