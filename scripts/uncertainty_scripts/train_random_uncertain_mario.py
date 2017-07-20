@@ -22,6 +22,7 @@ CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
+STATE_DESC = 'images1'
 
 cfg = {
 				'world_model' : mario_world_model_config,
