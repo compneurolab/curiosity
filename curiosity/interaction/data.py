@@ -55,6 +55,94 @@ once it has processed enough steps.
     	self.next_state = kwargs['next_state']
 
 
+def batch_FIFO(history, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2):
+	assert len(data_length['obs']) == 1
+	batch = {}
+	for k, v in data_lengths.iteritems():
+		if k == 'obs':
+			desc = data_lengths['obs'].keys()[0]
+			dat_len = v[desc]
+			dat_raw = history['obs'][desc]
+		else:
+			desc = k
+			dat_len = v
+			dat_raw = history[k]
+		nones_replaced = replace_the_nones(dat_raw[-(batch_size + dat_len - 1) : ])
+		batch[desc] = np.array([nones_replaced[sample_num : sample_num + dat_len] for sample_num in range(batch_size)])
+	batch['msg'] = history['msg'][-1]
+	batch['other'] = history['other'][-1]
+	return batch
+
+
+class BSInteractiveDataProvider(threading.Thread):
+	'''
+	A batching, sampling interactive data provider.
+	Meant to support a light amount of experience replay, as well as simply giving batches of data.
+	'''
+	def __init__(self, environment, policy, scene_params, scene_lengths, action_sampler, batching_fn, capacity = 5, batch_size = 32, gather_per_batch = 32, gather_at_beginning = 32):
+		self.env = environment
+		self.policy = policy
+		self.batch_size = batch_size
+		self.capacity = capacity
+		self.queue = queue.Queue(capacity)
+		self.daemon = True
+		self.sess = None
+		self.scene_params = scene_params
+		self.scene_lengths = scene_lengths
+		self.action_sampler = action_sampler
+		self.gather_per_batch = gather_per_batch
+		self.gather_at_beginning = gather_at_beginning
+		self.batching_fn = batching_fn
+
+	def start_runner(self, sess):
+		self.sess = sess
+		self.start()
+
+	def run(self):
+		with self.sess.as_default():
+			self._run()
+
+        def _run(self):
+                yielded = self.run_env()
+                while True:
+			history = next(yielded)
+			batch = self.batching_fn(history)
+                        self.queue.put(batch, timeout = 600.0)
+
+        def dequeue_batch(self):
+                return self.queue.get(timeout = 600.0)
+
+	def run_env(self):
+		#initialize counters
+		num_this_scene = 0
+		scene_len = -1
+		total_gathered = 0
+
+		while True:
+			#gather a batch
+			num_this_yield = 0
+			while num_this_yield < self.gather_per_batch or total_gathered < self.gather_at_beginning:
+				#check for scene start condition
+				if num_this_scene >= scene_len:
+					obs, msg = self.env.next_config(* self.scene_params.next())
+					num_this_scene = 0
+					scene_len = self.scene_lengths.next()
+					action = None
+					for _ in range(
+				#select action and act on world
+				action_sample = self.action_sampler.sample_actions()
+				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs, full_info = True)
+				action = self.policy.act(self.sess, action_sample, obs)
+				obs, msg, action, action_post, other_mem = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
+			
+
+				#update counters
+				num_this_yield += 1
+				total_gathered += 1
+				if action is not None:
+					yield {'observation' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
+	
+		
 
 
 class SimpleSamplingInteractiveDataProvider(threading.Thread):
