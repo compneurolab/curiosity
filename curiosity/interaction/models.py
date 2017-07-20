@@ -866,10 +866,17 @@ class LatentSpaceWorldModel(object):
                                 batch_normalize = False,
                                 do_print = True)
                 self.fut_pred = decoding[-1]
-                self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred)
+                tv_flat = flatten(self.encoding_f)
+                # self.fut_loss = tf.nn.l2_loss(self.encoding_f - self.fut_pred)
             else:
                 self.fut_pred = forward
-                self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred)
+                tv_flat = enc_f_flat
+                # self.fut_loss = tf.nn.l2_loss(enc_f_flat - self.fut_pred)
+            #different formula for l2 loss now because we need per-example details
+            pred_flat = flatten(self.fut_pred)
+            diff = pred_flat - tv_flat
+            self.fut_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2.
+            self.fut_loss = tf.reduce_mean(self.fut_loss_per_example)
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
         self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]

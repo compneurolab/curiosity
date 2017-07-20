@@ -148,7 +148,7 @@ class LatentUncertaintyUpdater:
 						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
 						'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt, 
 						'act_lr' : act_lr, 'fut_lr' : fut_lr,
-						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss
+						'fut_loss' : self.wm.fut_loss, 'fut_loss_per_example' : self.wm.fut_loss_per_example, 'act_loss' : self.wm.act_loss
 						}
 		self.um_targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 'global_step' : self.global_step}
 		#checking that we don't have repeat names
@@ -163,10 +163,6 @@ class LatentUncertaintyUpdater:
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
 		#depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
-		print('wtf')
-		print(batch[state_desc].shape)
-		print(batch['action'].shape)
-		print(batch['action_post'].shape)
 		wm_feed_dict = {
 			self.wm.states : batch[state_desc],
 			self.wm.action : batch['action'],
@@ -176,7 +172,7 @@ class LatentUncertaintyUpdater:
 		um_feed_dict = {
 			self.um.s_i : batch[state_desc][:, :-1],
 			self.um.action_sample : batch['action'][:, -1],
-			self.um.true_loss : np.array([wm_res['fut_loss']])
+			self.um.true_loss : np.array([wm_res['fut_loss_per_example']])
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
 		res = wm_res
