@@ -697,10 +697,10 @@ class DepthFuturePredictionWorldModel():
 			#state shape gives the state of one shape. The 'states' variable has an extra timestep, which it cuts up into the given and future states.
 			states_shape = list(cfg['state_shape'])
 			states_shape[0] += 1
-			self.states = tf.placeholder(tf.float32, [None] + states_shape)
+			self.states = tf.placeholder(tf.float32, [1] + states_shape)
 			self.s_i = x = self.states[:, :-1]
 			self.s_f = s_f = self.states[:, 1:]
-			self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+			self.action = tf.placeholder(tf.float32, [1] + cfg['action_shape'])
 			#convert from 3-channel encoding
 			self.processed_input = x = postprocess_depths(x)
 

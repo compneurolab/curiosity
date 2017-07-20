@@ -29,8 +29,6 @@ class LocalSaver:
 		self.ctr = 0
 		with open(os.path.join(self.save_dir, 'test.pkl'), 'w') as stream:
 			cPickle.dump([], stream)
-
-	def update(self, results):
 		for k in self.how_much:
 			if len(self.storage[k]) < self.how_much[k]:
 				self.storage[k].append(results[k])
@@ -149,7 +147,9 @@ def train_from_params(
 
 	config = tf.ConfigProto(allow_soft_placement = True,
                 log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
-	config.gpu_options.allow_growth = allow_growth
+	if allow_growth:
+		#including this weird conditional because I'm running into a weird bug
+		config.gpu_options.allow_growth = allow_growth
 	sess = tf.Session(config = config)
 	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
