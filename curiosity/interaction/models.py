@@ -726,7 +726,11 @@ class DepthFuturePredictionWorldModel():
 			self.tv = s_f[:, -1]
 			diff = self.pred - self.tv
 			diff = flatten(diff)
-			self.loss_per_example = tf.reduce_sum(diff * diff / 2., axis = 1)
+			per_sample_norm = cfg.get('per_sample_normalization')
+			if per_sample_norm == 'reduce_mean':
+				self.loss_per_example = tf.reduce_mean(diff * diff / 2., axis = 1)
+			else:	
+				self.loss_per_example = tf.reduce_sum(diff * diff / 2., axis = 1)
 			self.loss = tf.reduce_mean(self.loss_per_example)
 			#self.loss = tf.nn.l2_loss(self.tv - self.pred) #bs #(bs * np.prod(cfg['state_shape']))
 
