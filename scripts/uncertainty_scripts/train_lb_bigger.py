@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'lb_random'
+EXP_ID = 'lb_bigger'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -25,7 +25,7 @@ if not os.path.exists(CACHE_DIR):
 
 STATE_DESC = 'depths1'
 
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 
 
 
@@ -52,8 +52,7 @@ cfg = {
 						}		
 					},
 					'state_descriptor' : STATE_DESC,
-					'loss_factor' : 1. / float(BATCH_SIZE),
-					'just_random' : 0
+					'loss_factor' : 1. / float(BATCH_SIZE)
 				},
 				'seed' : 0
 }
