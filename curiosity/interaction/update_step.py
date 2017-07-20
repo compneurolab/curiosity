@@ -169,10 +169,11 @@ class LatentUncertaintyUpdater:
 			self.wm.action_post : batch['action_post']
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
+		print(wm_res['fut_loss_per_example'].shape)
 		um_feed_dict = {
 			self.um.s_i : batch[state_desc][:, :-1],
 			self.um.action_sample : batch['action'][:, -1],
-			self.um.true_loss : np.array([wm_res['fut_loss_per_example']])
+			self.um.true_loss : wm_res['fut_loss_per_example']
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
 		res = wm_res
