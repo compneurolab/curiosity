@@ -72,7 +72,7 @@ params = {
 	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['encoding_i', 'encoding_f', 'act_pred', 'fut_pred', 'batch']
+        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg']
 	},
 
 
@@ -84,7 +84,7 @@ params = {
 
 
 	'what_to_save_params' : {
-	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
+	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 		'big_save_len' : 2,
 		'big_save_freq' : 1000,

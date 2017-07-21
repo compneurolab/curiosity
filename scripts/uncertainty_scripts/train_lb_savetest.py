@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'lb_bigger'
+EXP_ID = 'lb_testsave1'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -25,7 +25,7 @@ if not os.path.exists(CACHE_DIR):
 
 STATE_DESC = 'depths1'
 
-BATCH_SIZE = 128
+BATCH_SIZE = 32
 
 
 
@@ -58,7 +58,7 @@ cfg = {
 }
 
 params = {
-
+	'allow_growth' : True,
 	'save_params' : {	
 		'host' : 'localhost',
 		'port' : 15841,
@@ -68,7 +68,7 @@ params = {
 		'save_valid_freq' : 1000,
         'save_filters_freq': 50000,
         'cache_filters_freq': 20000,
-	'save_metrics_freq' : 1000,
+	'save_metrics_freq' : 10,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg']
@@ -86,7 +86,7 @@ params = {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 		'big_save_len' : 2,
-		'big_save_freq' : 1000,
+		'big_save_freq' : 10,
 		'state_descriptor' : STATE_DESC
 	},
 

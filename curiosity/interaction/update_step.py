@@ -118,16 +118,25 @@ class UncertaintyPostprocessor:
 	def postprocess(self, training_results, batch):
 		global_step = training_results['global_step']
 		res = {}
-		if (global_step - 1) % self.big_save_freq < self.big_save_len:
+		print('postprocessor deets')
+		print(global_step)
+		print(self.big_save_freq)
+		print(self.big_save_len)
+		if (global_step) % self.big_save_freq < self.big_save_len:
 			print('big time')
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : batch['depths1'][-1, -1], 'act' : batch['action'][-1], 'act_post' : batch['action_post'][-1],  'est_loss' : batch['other'][1], 'action_sample' : batch['other'][2]}
+			est_losses = [other[1] for other in batch['other']]
+			action_sample = [other[2] for other in batch['other']]
+			res['batch'] = {'obs' : batch['depths1'][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1],  'est_loss' : est_losses, 'action_sample' : action_sample}
+			res['msg'] = batch['msg']
 		else:
 			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
-		res['msg'] = batch['msg']
-		res['entropy'] = batch['other'][0]
+		#res['msg'] = batch['msg'][-1]
+		entropies = [other[0] for other in batch['other']]
+		entropies = np.mean(entropies)
+		res['entropy'] = entropies
 		return res
 
 class LatentUncertaintyUpdater:

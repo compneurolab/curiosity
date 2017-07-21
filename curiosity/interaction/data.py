@@ -76,8 +76,8 @@ def batch_FIFO(history, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}
 			dat_raw = history[k]
 		nones_replaced = replace_the_nones(dat_raw[-(batch_size + dat_len - 1) : ])
 		batch[desc] = np.array([nones_replaced[sample_num : sample_num + dat_len] for sample_num in range(batch_size)])
-	batch['msg'] = history['msg'][-1]
-	batch['other'] = history['other'][-1]
+	batch['msg'] = history['msg']
+	batch['other'] = history['other']
 	return batch
 
 
