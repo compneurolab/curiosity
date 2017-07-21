@@ -17,7 +17,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'lb_bigger'
+EXP_ID = 'lb_bigger1'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -85,7 +85,7 @@ params = {
 	'what_to_save_params' : {
 	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
-		'big_save_len' : 2,
+		'big_save_len' : 1,
 		'big_save_freq' : 1000,
 		'state_descriptor' : STATE_DESC
 	},
