@@ -16,7 +16,7 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'no_obj_redmean'
+EXP_ID = 'no_obj_redmean1'
 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
@@ -61,7 +61,7 @@ params = {
 	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch']
+        'save_to_gfs' : ['wm_prediction', 'wm_tv', 'wm_given', 'batch', 'msg']
 	},
 
 	'load_params' : {
