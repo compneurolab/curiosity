@@ -20,27 +20,6 @@ import numpy as np
 RENDER_2_ADDY = '10.102.2.162'
 RENDER_1_ADDY = '10.102.2.161'
 
-class LocalSaver:
-	def __init__(self, how_much, how_often, save_dir):
-		self.how_much = how_much
-		self.how_often = how_often
-		self.save_dir = save_dir
-		self.storage = dict((k, []) for k in how_much)
-		self.ctr = 0
-		with open(os.path.join(self.save_dir, 'test.pkl'), 'w') as stream:
-			cPickle.dump([], stream)
-		for k in self.how_much:
-			if len(self.storage[k]) < self.how_much[k]:
-				self.storage[k].append(results[k])
-		self.ctr += 1
-		if self.ctr % self.how_often == 0:
-			print('saving...')
-			fn = os.path.join(self.save_dir, 'sv_' + str(self.ctr // self.how_often) + '.pkl')
-			with open(fn, 'w') as stream:
-				cPickle.dump(self.storage, stream)
-				self.storage = dict((k, []) for k in self.how_much)
-
-
 def get_default_postprocessor(what_to_save_params):
 	return UncertaintyPostprocessor(** what_to_save_params)
 
@@ -110,7 +89,7 @@ LATENT_WHAT_TO_SAVE_PARAMS = {
 	'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 	'big_save_len' : 100,
-	'big_save_freq' : 10000,
+	'big_save_freq' : 100,
 	'state_descriptor' : STATE_DESC
 }
 
@@ -221,9 +200,6 @@ def train_local(
 	else:
 		os.mkdir(save_dir)
 
-	how_much = {'um_loss' : 1500, 'wm_loss' : 1500, 'wm_prediction' : 50, 'wm_tv' : 50, 'wm_given' : 50}
-	saver = LocalSaver(how_much, how_often, save_dir)
-
 	#set up data provider
 	state_memory_len = {
 		STATE_DESC : 4,
@@ -239,7 +215,7 @@ def train_local(
 	}
 
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = False, host_address = None, state_memory_len = state_memory_len, action_memory_len = 3, message_memory_len = 3, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
+	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = False, host_address = None, state_memory_len = state_memory_len, action_memory_len = 3, message_memory_len = 2, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
 	scene_infos = data.SillyLittleListerator([example_scene_local])
 	steps_per_scene = data.SillyLittleListerator([100])
 	data_provider = data.BSInteractiveDataProvider(env, uncertainty_model, scene_infos, steps_per_scene, UniformActionSampler(cfg), ** provider_params)
@@ -255,7 +231,7 @@ def train_local(
 		res = updater.update(sess, visualize)
 		print('updated')
 		if 'batch' in res:
-			depths = res['batch']['obs']
+			depths = res['batch']['obs'][1]
 			print('after: ' + str(depths.shape))
 			print(np.linalg.norm(depths))
 			depths = depths.astype(np.uint8)
@@ -277,6 +253,8 @@ def train_local(
 			# print(np.linalg.norm(depths[:, :, 0] - depths[:, :, 1]))
 			# print(np.linalg.norm(depths[:, :, 1] - depths[:, :, 2]))
 			cv2.waitKey(1)
+			print(res['msg'])
+			print(res['batch']['act_post'])
 		# saver.update(res)
 
 

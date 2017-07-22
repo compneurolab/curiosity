@@ -107,6 +107,7 @@ params = {
 					'depths1' : BATCH_SIZE + 3 - 1
 				},
 			'action_memory_len' : BATCH_SIZE + 2 - 1,
+			'message_memory_len' : BATCH_SIZE
 			'rescale_dict' : {
 					'depths1' : (64, 64)
 				},

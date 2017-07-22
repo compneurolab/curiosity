@@ -155,6 +155,11 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			msg_action['object'] = str(obj_id)
 			msg_action['action_pos'] = list(map(float, seen_cm))
 			msg['msg']['actions'].append(msg_action)
+	else:
+		for i in range(2, 8):
+			msg['msg']['action_type'] = 'OBJ_NOT_PRESENT'
+			print('Warning! object not found!')
+			action_normalized[i] = 0.
 	return msg, action_normalized
 
 
@@ -486,10 +491,7 @@ class Environment:
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
 		print('got message')
-		#info, self.narray, self.oarray, self.darray, self.imarray, self.narray2, self.oarray2, self.darray2, self.imarray2 = handle_message(self.sock)
 		self.observation['info'] = json.loads(self.observation['info'])
-		#observation = {'info' : info, 'normals' : self.narray, 'objects' : self.oarray, 'depth' : self.darray, 'image' : self.imarray,
-    		#			'normals2' : self.narray2, 'objects2' : self.oarray2, 'depth2' : self.darray2, 'image2' : self.imarray2}
 		for (k, shape) in self.rescale_dict.iteritems():
 			self.observation[k] = imresize(self.observation[k], shape)
 		return self.observation
