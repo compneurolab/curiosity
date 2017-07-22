@@ -11,6 +11,7 @@ from tfutils import base, optimizer
 import os
 import numpy as np
 from curiosity.interaction import train, environment, data
+import tensorflow as tf
 
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
@@ -92,8 +93,8 @@ def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), b
 			'state_memory_len' : {
 					'depths1' : batch_size + state_time_length
 				},
-			'action_memory_len' : BATCH_SIZE + state_time_length,
-			'message_memory_len' : BATCH_SIZE
+			'action_memory_len' : batch_size + state_time_length - 1,
+			'message_memory_len' : batch_size,
 			'rescale_dict' : {
 					'depths1' : image_scale
 				},
@@ -112,7 +113,7 @@ def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), b
 		'scene_lengths' : [scene_len],
 	}
 
-def generate_latent_save_params(exp_id, location = 'freud', 
+def generate_latent_save_params(exp_id, location = 'freud', state_desc = 'depths1'): 
 	if location == 'freud':
 		CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 	elif location == 'cluster':
@@ -131,10 +132,11 @@ def generate_latent_save_params(exp_id, location = 'freud',
 		'save_valid_freq' : 1000,
         'save_filters_freq': 60000,
         'cache_filters_freq': 20000,
+	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
         'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg']
-	}
+	}}
 	
 	params['load_params'] = {
 		'exp_id' : exp_id,
@@ -145,8 +147,9 @@ def generate_latent_save_params(exp_id, location = 'freud',
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 		'big_save_len' : 2,
 		'big_save_freq' : 1000,
-		'state_descriptor' : STATE_DESC
+		'state_descriptor' : state_desc
 	}
+	return params
 
 
 
@@ -175,12 +178,12 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 					'loss_factor' : loss_factor
 				}
 
-def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8,
+def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, act_loss_factor = 1., fut_loss_factor = 1.,
 				encode_deets = {'sizes' : [3, 3, 3, 3], 'strides' : [2, 2, 2, 2], 'nf' : [32, 32, 32, 32]},
 				action_deets = {'nf' : [256]},
 				future_deets = {'nf' : [512]}):
 	params = {'state_shape' : [state_time_length] + list(image_shape) + [3], 'action_shape' : [state_time_length, action_dim]}
-	encode_params = {'encode' : {}, 'encode_depth' : 0}:
+	encode_params = {'encode' : {}, 'encode_depth' : 0}
 	assert len(set([len(deet) for deet in encode_deets.values()])) == 1
 	for i, (sz, stride, num_feat) in enumerate(zip(encode_deets['sizes'], encode_deets['strides'], encode_deets['nf'])):		
 		encode_params['encode_depth'] += 1
@@ -190,7 +193,7 @@ def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape 
 	action_mlp_params = {'hidden_depth' : act_hidden_depth, 'hidden' : {act_hidden_depth : {'num_features' : state_time_length * action_dim, 'activation' : 'identity'}}}
 	for i, nf in enumerate(action_deets['nf']):
 		action_mlp_params['hidden'][i + 1] = {'num_features' : nf}
-	params['action_model'] = {'mlp' : action_mlp_params}
+	params['action_model'] = {'mlp' : action_mlp_params, 'loss_factor' : act_loss_factor}
 	future_hidden_depth = len(future_deets['nf']) + 1
 	latent_space_dim = 1
 	for i in range(2):
@@ -198,10 +201,12 @@ def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape 
 		for stride in encode_deets['strides']:
 			sz = np.ceil(float(sz) / float(stride))
 		latent_space_dim *= sz
+	latent_space_dim = int(latent_space_dim)
+	latent_space_dim *= encode_deets['nf'][-1]
 	future_mlp_params = {'hidden_depth' : future_hidden_depth, 'hidden' : {future_hidden_depth : {'num_features' : latent_space_dim, 'activation' : 'identity'}}}
 	for i, nf in enumerate(future_deets['nf']):
 		future_mlp_params['hidden'][i + 1] = {'num_features' : nf}
-	params['future_model'] = {'mlp' : future_mlp_params}
+	params['future_model'] = {'mlp' : future_mlp_params, 'loss_factor' : fut_loss_factor}
 	return params
 
 def generate_latent_model_cfg(world_cfg, uncertainty_cfg, seed = 0):

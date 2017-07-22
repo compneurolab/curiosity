@@ -156,9 +156,9 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			msg_action['action_pos'] = list(map(float, seen_cm))
 			msg['msg']['actions'].append(msg_action)
 	else:
+		print('Warning! object not found!')
 		for i in range(2, 8):
 			msg['msg']['action_type'] = 'OBJ_NOT_PRESENT'
-			print('Warning! object not found!')
 			action_normalized[i] = 0.
 	return msg, action_normalized
 

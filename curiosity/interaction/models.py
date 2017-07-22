@@ -856,12 +856,13 @@ class LatentSpaceWorldModel(object):
         act_flat = flatten(self.action)
 	act_post_flat = flatten(self.action_post)
 
-
+	act_loss_factor = cfg['action_model'].get('loss_factor', 1.)
+	fut_loss_factor = cfg['future_model'].get('loss_factor', 1.)
 
         #action model time
         with tf.variable_scope('action_model'):
             self.act_pred = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
-            self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat)
+            self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
 
         #future model time
         enc_shape = enc_f_flat.get_shape().as_list()
@@ -886,7 +887,7 @@ class LatentSpaceWorldModel(object):
             #different formula for l2 loss now because we need per-example details
             pred_flat = flatten(self.fut_pred)
             diff = pred_flat - tv_flat
-            self.fut_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2.
+            self.fut_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * fut_loss_factor
             self.fut_loss = tf.reduce_mean(self.fut_loss_per_example)
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
