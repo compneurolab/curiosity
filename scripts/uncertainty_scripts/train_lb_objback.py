@@ -15,11 +15,13 @@ from tfutils import base, optimizer
 import numpy as np
 import os
 
-EXP_IDS = ['lb_l2_n_o_fix' + str(i) for i in range(4)]
+#EXP_IDS = dict(((arch, lr, opt), 'actopt_' + str(arch) + str(lr) + str(opt)) for arch in range(4) for lr in range(6) for opt in range(2)
 BATCH_SIZE = 32
 STATE_DESC = 'depths1'
-exp_id_idx = int(sys.argv[2])
-EXP_ID = EXP_IDS[exp_id_idx]
+arch_idx = int(sys.argv[2])
+lr_idx = int(sys.argv[3])
+opt_idx = int(sys.argv[4])
+EXP_ID = 'objback_' + str(arch_idx) + str(lr_idx) + str(opt_idx)
 
 noobj_scene_info = [
         {
@@ -27,7 +29,7 @@ noobj_scene_info = [
         'scale' : .4,
         'mass' : 1.,
         'scale_var' : .01,
-        'num_items' : 0,
+        'num_items' : 1,
         }
         ]
 
@@ -59,7 +61,13 @@ wm_cfg_gen_params = [
 
 ]
 
-wm_params = wm_cfg_gen_params[exp_id_idx]
+wm_params = wm_cfg_gen_params[arch_idx]
+
+lrs = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]
+lr = lrs[lr_idx]
+
+opts = [tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
+opt = opts[opt_idx]
 
 
 
@@ -70,7 +78,7 @@ save_params_config = cfg_generation.generate_latent_save_params(EXP_ID, location
 
 um_cfg = cfg_generation.generate_uncertainty_model_cfg(image_shape = (64, 64), state_desc = STATE_DESC, loss_factor = 1/ float(BATCH_SIZE))
 
-wm_cfg= cfg_generation.generate_latent_marioish_world_model_cfg(image_shape = (64, 64), act_loss_factor = 1/float(BATCH_SIZE), **wm_params)
+wm_cfg= cfg_generation.generate_latent_marioish_world_model_cfg(image_shape = (64, 64), act_loss_factor = 1/float(BATCH_SIZE), act_loss_type = 'one_l2', **wm_params)
 
 print('printing future model!')
 print(wm_cfg['future_model'])
@@ -83,7 +91,7 @@ print(wm_cfg['future_model'])
 
 model_cfg = cfg_generation.generate_latent_model_cfg(world_cfg = wm_cfg, uncertainty_cfg = um_cfg)
 
-params = cfg_generation.generate_latent_standards(model_cfg = model_cfg)
+params = cfg_generation.generate_latent_standards(model_cfg = model_cfg, learning_rate = lr, optimizer_class = opt)
 
 params.update(save_params_config)
 
