@@ -181,7 +181,9 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, act_loss_factor = 1., fut_loss_factor = 1.,
 				encode_deets = {'sizes' : [3, 3, 3, 3], 'strides' : [2, 2, 2, 2], 'nf' : [32, 32, 32, 32]},
 				action_deets = {'nf' : [256]},
-				future_deets = {'nf' : [512]}):
+				future_deets = {'nf' : [512]},
+				act_loss_type = 'both_l2'
+				):
 	params = {'state_shape' : [state_time_length] + list(image_shape) + [3], 'action_shape' : [state_time_length, action_dim]}
 	encode_params = {'encode' : {}, 'encode_depth' : 0}
 	assert len(set([len(deet) for deet in encode_deets.values()])) == 1
@@ -189,11 +191,13 @@ def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape 
 		encode_params['encode_depth'] += 1
 		encode_params['encode'][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : num_feat}}
 	params['encode'] = encode_params
+	#action cfg construction
 	act_hidden_depth = len(action_deets['nf']) + 1
-	action_mlp_params = {'hidden_depth' : act_hidden_depth, 'hidden' : {act_hidden_depth : {'num_features' : state_time_length * action_dim, 'activation' : 'identity'}}}
+	act_pred_time_length = 2 if act_loss_type == 'both_l2' else 1
+	action_mlp_params = {'hidden_depth' : act_hidden_depth, 'hidden' : {act_hidden_depth : {'num_features' : act_pred_time_length * action_dim, 'activation' : 'identity'}}}
 	for i, nf in enumerate(action_deets['nf']):
 		action_mlp_params['hidden'][i + 1] = {'num_features' : nf}
-	params['action_model'] = {'mlp' : action_mlp_params, 'loss_factor' : act_loss_factor}
+	params['action_model'] = {'mlp' : action_mlp_params, 'loss_factor' : act_loss_factor, 'loss_type' : act_loss_type}
 	future_hidden_depth = len(future_deets['nf']) + 1
 	latent_space_dim = 1
 	for i in range(2):

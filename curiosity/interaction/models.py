@@ -854,15 +854,22 @@ class LatentSpaceWorldModel(object):
         enc_i_flat = flatten(s_i)
         enc_f_flat = flatten(s_f)
         act_flat = flatten(self.action)
-	act_post_flat = flatten(self.action_post)
 
 	act_loss_factor = cfg['action_model'].get('loss_factor', 1.)
 	fut_loss_factor = cfg['future_model'].get('loss_factor', 1.)
 
         #action model time
         with tf.variable_scope('action_model'):
+            loss_type = cfg['action_model'].get('loss_type', 'both_l2')
             self.act_pred = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
-            self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
+            if loss_type == 'both_l2':
+                act_post_flat = flatten(self.action_post)
+                self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
+            elif loss_type == 'one_l2':
+                act_post_flat = self.action_post[:, -1]
+                self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
+            else:
+                raise Exception('loss type not recognized!')
 
         #future model time
         enc_shape = enc_f_flat.get_shape().as_list()
