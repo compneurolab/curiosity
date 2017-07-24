@@ -819,6 +819,49 @@ a_bigger_depth_future_config = {
 
 }
 
+
+class ActionModel(object):
+    def __init__(self, cfg):
+        states_shape = list(cfg['state_shape'])
+        states_shape[0] += 1
+        self.states = tf.placeholder(tf.float32, [None] + states_shape)
+        self.s_i = s_i = self.states[:, :-1]
+        self.s_f = s_f = self.states[:, 1:]
+        self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+        self.action_post = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+        last_action = self.action[:, 0]
+        tv_action = self.action_post[:, -1]
+
+
+        #encode
+        s_i = tf_concat([s_i[:, i] for i in range(cfg['state_shape'][0])], 3)
+        s_f = tf_concat([s_f[:, i] for i in range(cfg['state_shape'][0])], 3)
+
+        s_i = postprocess_std(s_i)
+        s_f = postprocess_std(s_f)
+
+        m = ConvNetwithBypasses()
+        with tf.variable_scope('encode_model'):
+            s_i = feedforward_conv_loop(s_i, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            s_f = feedforward_conv_loop(s_f, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = True, batch_normalize = False, no_nonlinearity_end = False)[-1]
+        
+        #action mlp
+        enc_i_flat = flatten(s_i)
+        enc_f_flat = flatten(s_f)
+        if cfg['action_model'].get('include_last_action'):
+            to_concat = [enc_i_flat, enc_f_flat, last_action]
+        else:
+            to_concat = [enc_i_flat, enc_f_flat]
+        enc_in = tf_concat(to_concat, 1)
+        self.act_pred = hidden_loop_with_bypasses(enc_in, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
+
+        #loss
+        loss_factor = cfg['action_model'].get('loss_factor', 1.)
+        self.act_loss = tf.nn.l2_loss(self.act_pred - tv_action) * loss_factor
+
+
+
+
 class LatentSpaceWorldModel(object):
     def __init__(self, cfg):
 	#states shape has one more timestep, because we have given and future times, shoved into gpu once, and then we cut it up
@@ -861,7 +904,8 @@ class LatentSpaceWorldModel(object):
         #action model time
         with tf.variable_scope('action_model'):
             loss_type = cfg['action_model'].get('loss_type', 'both_l2')
-            self.act_pred = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
+            encoded_concat = tf_concat([enc_i_flat, enc_f_flat], 1)
+            self.act_pred = hidden_loop_with_bypasses(encoded_concat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
             if loss_type == 'both_l2':
                 act_post_flat = flatten(self.action_post)
                 self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
