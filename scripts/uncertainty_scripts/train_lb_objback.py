@@ -21,7 +21,7 @@ STATE_DESC = 'depths1'
 arch_idx = int(sys.argv[2])
 lr_idx = int(sys.argv[3])
 opt_idx = int(sys.argv[4])
-EXP_ID = 'objback_' + str(arch_idx) + str(lr_idx) + str(opt_idx)
+EXP_ID = 'ob_redo_' + str(arch_idx) + str(lr_idx) + str(opt_idx)
 
 noobj_scene_info = [
         {

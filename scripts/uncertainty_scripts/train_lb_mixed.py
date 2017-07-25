@@ -22,7 +22,7 @@ arch_idx = int(sys.argv[2])
 lr_idx = int(sys.argv[3])
 opt_idx = int(sys.argv[4])
 mix_idx = int(sys.argv[5])
-EXP_ID = 'objback_' + str(arch_idx) + str(lr_idx) + str(opt_idx)
+EXP_ID = 'mixed_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx)
 
 noobj_scene_info = [
         {
@@ -85,6 +85,8 @@ weight_mixes = [{'action' : 1., 'future' : 0.}, {'action' : .5, 'future' : .5}, 
 
 updater_params = {
 	'mixed_loss_weighting' : weight_mixes[mix_idx]
+
+
 }
 
 
@@ -96,8 +98,6 @@ params = cfg_generation.generate_latent_standards(model_cfg = model_cfg, learnin
 params.update(save_params_config)
 
 params['data_params'] = dp_config
-
-params['updater_params'] = updater_params
 
 
 

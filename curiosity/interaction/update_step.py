@@ -176,10 +176,11 @@ class MixedLatentUncertaintyUpdater:
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
 		wm_feed_dict = {
-			self.wm.states : batch[state_desc]
-			self.wm.action : batch['action']
+			self.wm.states : batch[state_desc],
+			self.wm.action : batch['action'],
 			self.wm.action_post : batch['action_post']
 		}
+		#TODO finish
 
 
 

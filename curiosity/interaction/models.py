@@ -908,12 +908,12 @@ class LatentSpaceWorldModel(object):
             self.act_pred = hidden_loop_with_bypasses(encoded_concat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
             if loss_type == 'both_l2':
                 act_post_flat = flatten(self.action_post)
-		diff = act_pred - act_post_flat
+		diff = self.act_pred - act_post_flat
 		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
                 self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             elif loss_type == 'one_l2':
                 act_post_flat = self.action_post[:, -1]
-		diff = act_pred - act_post_flat
+		diff = self.act_pred - act_post_flat
 		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
                 self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             else:
@@ -1091,13 +1091,13 @@ class UncertaintyModel:
             x = tf_concat([x, ac], 1)
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
+            heat = cfg.get('heat', 1.)
+            x_tr /= heat
             prob = tf.nn.softmax(x_tr)
             log_prob = tf.nn.log_softmax(x_tr)
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-            loss_factor = cfg.get('loss_factor')
-            if loss_factor is None:
-                loss_factor = 1.
+            loss_factor = cfg.get('loss_factor', 1.)
             self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * loss_factor
             self.state_descriptor = cfg['state_descriptor']
             self.just_random = False
