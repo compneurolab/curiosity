@@ -908,10 +908,14 @@ class LatentSpaceWorldModel(object):
             self.act_pred = hidden_loop_with_bypasses(encoded_concat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
             if loss_type == 'both_l2':
                 act_post_flat = flatten(self.action_post)
-                self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
+		diff = act_pred - act_post_flat
+		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
+                self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             elif loss_type == 'one_l2':
                 act_post_flat = self.action_post[:, -1]
-                self.act_loss = tf.nn.l2_loss(self.act_pred - act_post_flat) * act_loss_factor
+		diff = act_pred - act_post_flat
+		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
+                self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             else:
                 raise Exception('loss type not recognized!')
 
@@ -1041,6 +1045,30 @@ mario_world_model_config = {
 
 
 }
+
+
+class MixedUncertaintyModel:
+	'''For both action and future uncertainty prediction, simultaneously, as separate predictions.
+	Consider merging with UncertaintyModel, but right now that might look too messy. Want to leave that functionality alone.
+	'''
+	def __init__(self, cfg):
+		with tf.variable_scope('uncertainty_model'):
+			self.s_i = x = tf.placeholder(tf.float32, [None] + cfg['state_shape'])
+			self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
+			self.true_act_loss = tf.placeholder(tf.float32, [None])
+			self.true_fut_loss = tf.placeholder(tf.float32, [None])
+			m = ConvNetwithBypasses()
+			x = postprocess_depths(x)
+			#concat temporal dims into channels
+			x = tf_concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
+			self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+			x = flatten(x)
+			x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
+			fc_inputs = tf_concat([x, ac], 1)
+			self.estimated_act_loss = hidden_loop_with_bypasses(fc_inputs, m, cfg['act_mlp'], reuse_weights = False, train = True)
+			self.estimated_fut_loss = hidden_loop_with_bypasses(fc_inpits, m, cfg['fut_mlp'], reuse_weights = False, train = True)
+			#TODO FINISH
+
 
 
 class UncertaintyModel:

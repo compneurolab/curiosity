@@ -58,10 +58,10 @@ def get_default_data_provider(data_params, model_params, action_model):
 	return data_provider
 
 
-def get_latent_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
+def get_latent_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
 	world_model = models['world_model']
 	uncertainty_model = models['uncertainty_model']
-        return LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
+        return LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
 
 
 def get_default_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
@@ -108,7 +108,8 @@ def train_from_params(
 		data_params = None,
 		inter_op_parallelism_threads = 40,
 		allow_growth = False,
-		per_process_gpu_memory_fraction = None
+		per_process_gpu_memory_fraction = None,
+		updater_params = None
 	):
 	model_cfg = model_params['cfg']
 	models_constructor = model_params['func']
@@ -120,7 +121,7 @@ def train_from_params(
 
 	postprocessor = get_default_postprocessor(what_to_save_params)
 
-	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor)
+	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
 
 	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 'what_to_save_params' : what_to_save_params, 'load_params' : load_params}
 
