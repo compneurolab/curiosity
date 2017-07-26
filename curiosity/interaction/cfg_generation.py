@@ -153,7 +153,7 @@ def generate_latent_save_params(exp_id, location = 'freud', state_desc = 'depths
 
 
 
-def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, n_action_samples = 1000, loss_factor = 1., state_desc = 'depths1'):
+def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, n_action_samples = 1000, loss_factor = 1., state_desc = 'depths1', heat = 1.):
 	return {
 					'state_shape' : [state_time_length] + list(image_shape) + [3],
 					'action_dim' : action_dim,
@@ -175,7 +175,8 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 						}		
 					},
 					'state_descriptor' : state_desc,
-					'loss_factor' : loss_factor
+					'loss_factor' : loss_factor,
+					'heat' : heat
 				}
 
 def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, act_loss_factor = 1., fut_loss_factor = 1.,

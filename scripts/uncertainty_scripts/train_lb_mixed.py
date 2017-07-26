@@ -22,7 +22,8 @@ arch_idx = int(sys.argv[2])
 lr_idx = int(sys.argv[3])
 opt_idx = int(sys.argv[4])
 mix_idx = int(sys.argv[5])
-EXP_ID = 'mixed_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx)
+heat_idx = int(sys.argv[6])
+EXP_ID = 'mixed_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx) + str(heat_idx)
 
 noobj_scene_info = [
         {
@@ -70,14 +71,14 @@ lr = lrs[lr_idx]
 opts = [tf.train.AdamOptimizer, tf.train.RMSPropOptimizer]
 opt = opts[opt_idx]
 
-
-
+heats = [1., .5, .1, .01, .001]
+heat = heats[heat_idx]
 
 dp_config = cfg_generation.generate_batching_data_provider(batch_size = BATCH_SIZE, image_scale = (64, 64), scene_info = noobj_scene_info)
 
 save_params_config = cfg_generation.generate_latent_save_params(EXP_ID, location = 'freud', state_desc = STATE_DESC)
 
-um_cfg = cfg_generation.generate_uncertainty_model_cfg(image_shape = (64, 64), state_desc = STATE_DESC, loss_factor = 1/ float(BATCH_SIZE))
+um_cfg = cfg_generation.generate_uncertainty_model_cfg(image_shape = (64, 64), state_desc = STATE_DESC, loss_factor = 1/ float(BATCH_SIZE), heat = heat)
 
 wm_cfg= cfg_generation.generate_latent_marioish_world_model_cfg(image_shape = (64, 64), act_loss_type = 'one_l2', **wm_params)
 

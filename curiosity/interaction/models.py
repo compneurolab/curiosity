@@ -1092,6 +1092,7 @@ class UncertaintyModel:
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             heat = cfg.get('heat', 1.)
+            print('Heat! ' + str(heat))
             x_tr /= heat
             prob = tf.nn.softmax(x_tr)
             log_prob = tf.nn.log_softmax(x_tr)
