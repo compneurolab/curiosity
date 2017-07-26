@@ -63,7 +63,7 @@ def replace_the_nones(my_list):
 	return [np.zeros(my_list[-1].shape, dtype = my_list[-1].dtype) if elt is None else elt for elt in my_list]
 
 
-def check_none_are_none(history, idx):
+def check_none_are_none(history, idx, keys_outside_obs):
 	#TODO make it check not just the last frame
 	for k, v in history.iteritems():
 		if k == 'obs':
@@ -71,35 +71,47 @@ def check_none_are_none(history, idx):
 				if v_obs[idx] is None:
 					return False
 		else:
-			if v[idx] is None:
-				return False
+			if k in keys_outside_obs:
+				if v[idx] is None:
+					return False
 	return True
 
-def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):
+def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):
 	chosen = []
+	print('Remembrance of things past!')
 	#counts from the end
 	while len(chosen) < batch_size:
 		proposed_idx = my_rng.randint(0, history_len)
-		if not check_none_are_none(history, - proposed_idx - 1) and not proposed_idx in chosen:
+		if check_none_are_none(history, - proposed_idx - 1, data_lengths.keys()) and not proposed_idx in chosen:
 			chosen.append(proposed_idx)
-	batch = {}
-	for k, v in history.iteritems():
+	batch = {'recent' : {}}
+	for k, v in data_lengths.iteritems():
 		if k == 'obs':
 			for k_obs, v_obs in v.iteritems():
 				collected_dat = []
 				for idx in chosen:
-					dat_raw = history[k][k_obs][- idx - data_lengths[k][k_obs] : -idx]
+					if idx == 0:
+						dat_raw = history[k][k_obs][-idx - v_obs:]
+					else:
+						dat_raw = history[k][k_obs][- idx - v_obs : -idx]
 					nones_replaced = replace_the_nones(dat_raw)
 					collected_dat.append(nones_replaced)
 				batch[k_obs] = np.array(collected_dat)
+				batch['recent'][k_obs] = np.array(history[k][k_obs][-recent_history_length : ])
 		else:
 			collected_dat = []
 			for idx in chosen:
-				dat_raw = history[k][-idx - data_lengths[k] : -idx]
+				if idx == 0:
+					dat_raw = history[k][-idx - v :]
+				else:
+					dat_raw = history[k][-idx - v : -idx]
 				nones_replaced = replace_the_nones(dat_raw)
 				collected_dat.append(nones_replaced)
 			batch[k] = np.array(collected_dat)
-	
+			batch['recent'][k] = np.array(history[k][-recent_history_length : ])
+	for desc in ['msg', 'other']:
+		batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
+	return batch
 
 
 	

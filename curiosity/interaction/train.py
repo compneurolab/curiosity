@@ -8,7 +8,7 @@ import curiosity.interaction.environment as environment
 import curiosity.interaction.data as data
 from curiosity.interaction.data import SimpleSamplingInteractiveDataProvider, SillyLittleListerator
 from curiosity.interaction.models import UncertaintyModel, DepthFuturePredictionWorldModel, UniformActionSampler, DamianModel, LatentSpaceWorldModel
-from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater
+from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater, ExperienceReplayPostprocessor
 import tensorflow as tf
 import os
 import cPickle
@@ -23,6 +23,8 @@ RENDER_1_ADDY = '10.102.2.161'
 def get_default_postprocessor(what_to_save_params):
 	return UncertaintyPostprocessor(** what_to_save_params)
 
+def get_experience_replay_postprocessor(what_to_save_params):
+	return ExperienceReplayPostprocessor(** what_to_save_params)
 
 def get_models_damianworld(cfg):
 	world_model = DamianModel(cfg['world_model'])
@@ -109,7 +111,8 @@ def train_from_params(
 		inter_op_parallelism_threads = 40,
 		allow_growth = False,
 		per_process_gpu_memory_fraction = None,
-		updater_params = None
+		updater_params = None,
+		postprocessor_params = None
 	):
 	model_cfg = model_params['cfg']
 	models_constructor = model_params['func']
@@ -119,7 +122,10 @@ def train_from_params(
 
 	data_provider = data_params['func'](data_params, model_params, action_model)
 
-	postprocessor = get_default_postprocessor(what_to_save_params)
+	if postprocessor_params is None:
+		postprocessor = get_default_postprocessor(what_to_save_params)
+	else:
+		postprocessor = postprocessor_params['func'](what_to_save_params)
 
 	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
 

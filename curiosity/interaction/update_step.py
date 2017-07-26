@@ -107,6 +107,31 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 	next_depths =  np.array([batch.next_state['depths1']])
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
+class ExperienceReplayPostprocessor:
+	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
+		self.big_save_keys = big_save_keys
+		self.little_save_keys = little_save_keys
+		self.big_save_len = big_save_len
+		self.big_save_freq = big_save_freq
+		self.state_descriptor = state_descriptor
+
+	def postprocess(self, training_results, batch):
+		global_step = training_results['global_step']
+		res = {}
+		if (global_step) % self.big_save_freq < self.big_save_len:
+			save_keys = self.big_save_keys
+			#est_losses = [other[1] for other in batch['other']]
+			#action_sample = [other[2] for other in batch['other']]
+			res['batch' ] = {'obs' : batch[self.state_descriptor][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1]}
+			res['recent'] = batch['recent']
+		else:
+			save_keys = self.little_save_keys
+		res.update(dict(pair for pair in training_results.iteritems() if pair[0] in save_keys))
+		entropies = [other[0] for other in batch['recent']['other']]
+                entropies = np.mean(entropies)
+                res['entropy'] = entropies
+                return res
+
 class UncertaintyPostprocessor:
 	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
 		self.big_save_keys = big_save_keys

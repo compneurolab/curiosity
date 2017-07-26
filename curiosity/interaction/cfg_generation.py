@@ -80,6 +80,45 @@ def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class =
 	return params
 
 
+def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
+	image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
+	history_len = 1000):
+	my_rng = np.random.RandomState(0)
+	return {
+		'func' : train.get_batching_data_provider,
+                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(6)]),
+                'environment_params' : {
+                        'random_seed' : 1,
+                        'unity_seed' : 1,
+                        'room_dims' : room_dims,
+                        'state_memory_len' : {
+                                        'depths1' : history_len + state_time_length + 1
+                                },
+                        'action_memory_len' : history_len + state_time_length,
+                        'message_memory_len' : 32,
+			'other_data_memory_length' : 32,
+                        'rescale_dict' : {
+                                        'depths1' : image_scale
+                                },
+                        'USE_TDW' : True,
+                        'host_address' : RENDER1_HOST_ADDRESS
+                },
+
+                'provider_params' : {
+                        'batching_fn' : lambda hist : data.uniform_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size),
+                        'capacity' : 5,
+                        'gather_per_batch' : batch_size / 4,
+                        'gather_at_beginning' : history_len + state_time_length + 1
+                },
+
+                'scene_list' : [scene_info],
+                'scene_lengths' : [scene_len],
+
+
+
+
+	}
+
 def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2, image_scale = (64, 64),
 	scene_info = environment.example_scene_info, scene_len = 1024 * 32
 	):
@@ -135,7 +174,7 @@ def generate_latent_save_params(exp_id, location = 'freud', state_desc = 'depths
 	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg']
+        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg', 'recent']
 	}}
 	
 	params['load_params'] = {
