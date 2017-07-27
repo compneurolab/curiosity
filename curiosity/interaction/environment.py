@@ -165,7 +165,6 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
     info = sock.recv()
-    print("got message")
     data = {'info': info}
     # Iterate over all cameras
     for cam in range(len(msg_names)):
