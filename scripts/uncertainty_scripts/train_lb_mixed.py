@@ -23,7 +23,7 @@ lr_idx = int(sys.argv[3])
 opt_idx = int(sys.argv[4])
 mix_idx = int(sys.argv[5])
 heat_idx = int(sys.argv[6])
-EXP_ID = 'mixed_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx) + str(heat_idx)
+EXP_ID = 'mixfix_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx) + str(heat_idx)
 
 noobj_scene_info = [
         {
@@ -100,7 +100,7 @@ params.update(save_params_config)
 
 params['data_params'] = dp_config
 
-
+params['updater_params'] = updater_params
 
 
 

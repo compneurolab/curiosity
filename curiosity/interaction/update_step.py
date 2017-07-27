@@ -230,7 +230,7 @@ class LatentUncertaintyUpdater:
 		if mixed_loss_weighting is None:
 			loss_per_example = self.wm.fut_loss_per_example
 		else:
-			print('Using mixed losses!')
+			print('Using mixed losses! ' +  str(mixed_loss_weighting['action']) + ' ' + str(mixed_loss_weighting['future']))
 			loss_per_example = mixed_loss_weighting['action'] * self.wm.act_loss_per_example + mixed_loss_weighting['future'] * self.wm.fut_loss_per_example
 		self.wm_targets = {'encoding_i' : self.wm.encoding_i, 'encoding_f' : self.wm.encoding_f,  
 						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 

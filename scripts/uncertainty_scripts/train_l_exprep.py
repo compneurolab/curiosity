@@ -23,7 +23,7 @@ lr_idx = int(sys.argv[3])
 opt_idx = int(sys.argv[4])
 mix_idx = int(sys.argv[5])
 heat_idx = int(sys.argv[6])
-EXP_ID = 'ufm_exp_rep_' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx) + str(heat_idx)
+EXP_ID = 'uer_mixfix' + str(arch_idx) + str(lr_idx) + str(opt_idx) + str(mix_idx) + str(heat_idx)
 
 one_obj_scene_info = [
         {
@@ -105,7 +105,7 @@ params['postprocessor_params'] = {
 
 }
 
-
+params['updater_params'] = updater_params
 
 
 if __name__ == '__main__':

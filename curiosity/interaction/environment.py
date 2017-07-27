@@ -455,6 +455,7 @@ class Environment:
 				msg = scene_switch_msg
 				self.sock.send_json(msg)
 		observation = self._observe_world()
+		print('heard back from unity!')
 		self._pad_memory()
 		observation, msg, action, action_post, other_dat  = self._memory_postprocess(observation, msg, None, None)
 		return observation, msg
@@ -490,7 +491,6 @@ class Environment:
 
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
-		print('got message')
 		self.observation['info'] = json.loads(self.observation['info'])
 		for (k, shape) in self.rescale_dict.iteritems():
 			self.observation[k] = imresize(self.observation[k], shape)
