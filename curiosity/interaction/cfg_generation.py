@@ -82,7 +82,7 @@ def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class =
 
 def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
 	image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
-	history_len = 1000):
+	history_len = 1000, do_torque = True):
 	my_rng = np.random.RandomState(0)
 	return {
 		'func' : train.get_batching_data_provider,
@@ -113,6 +113,7 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 
                 'scene_list' : [scene_info],
                 'scene_lengths' : [scene_len],
+		'do_torque' : do_torque
 
 
 
@@ -120,7 +121,7 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 	}
 
 def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2, image_scale = (64, 64),
-	scene_info = environment.example_scene_info, scene_len = 1024 * 32
+	scene_info = environment.example_scene_info, scene_len = 1024 * 32, do_torque = True
 	):
 	return {
 		'func' : train.get_batching_data_provider,
@@ -150,6 +151,7 @@ def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), b
 
 		'scene_list' : [scene_info],
 		'scene_lengths' : [scene_len],
+		'do_torque' : do_torque
 	}
 
 def generate_latent_save_params(exp_id, location = 'freud', state_desc = 'depths1'): 

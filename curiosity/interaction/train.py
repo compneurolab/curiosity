@@ -43,8 +43,8 @@ def get_latent_models(cfg):
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
 def get_batching_data_provider(data_params, model_params, action_model):
-	assert set(data_params.keys()) == set(['func', 'environment_params', 'scene_list', 'scene_lengths', 'provider_params', 'action_limits'])
-	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
+	assert set(data_params.keys()) == set(['func', 'environment_params', 'scene_list', 'scene_lengths', 'provider_params', 'action_limits', 'do_torque'])
+	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5, do_torque = data_params['do_torque'])
 	env = environment.Environment(action_to_message_fn = action_to_message, ** data_params['environment_params'])
 	scene_infos = data.SillyLittleListerator(data_params['scene_list'])
 	steps_per_scene = data.SillyLittleListerator(data_params['scene_lengths'])

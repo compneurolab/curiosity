@@ -104,7 +104,7 @@ def test_action_to_message_fn(action, env):
 	return msg
 
 
-def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None):
+def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True):
 	'''
 		Sends message given forward vel, y-angular speed, force, torque.
 		If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
@@ -114,6 +114,9 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	action = np.copy(action)
 	action_normalized = action
 	action = action * limits
+	action_len = len(action)
+	if not do_torque:
+		assert action_ken == 5
 	agent_vel = action[0]
 	if wall_safety is not None:
 		#check for wall safety
@@ -140,7 +143,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 		#if not in view
 		if len(xs) == 0:
 			msg['msg']['action_type'] = 'NO_OBJ_ACT'
-			for i in range(2, 8):
+			for i in range(2, action_len):
 				action_normalized[i] = 0.
 		#if in view
 		else:
@@ -150,14 +153,17 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			msg_action = {}
 			msg_action['use_absolute_coordinates'] = True
 			msg_action['force'] = list(action[2:5])
-			msg_action['torque'] = list(action[5:])
+			if do_torque:
+				msg_action['torque'] = list(action[5:])
+			else:
+				msg_action['torque'] = [0., 0., 0.]
 			msg_action['id'] = str(obj_id)
 			msg_action['object'] = str(obj_id)
 			msg_action['action_pos'] = list(map(float, seen_cm))
 			msg['msg']['actions'].append(msg_action)
 	else:
 		print('Warning! object not found!')
-		for i in range(2, 8):
+		for i in range(2, action_len):
 			msg['msg']['action_type'] = 'OBJ_NOT_PRESENT'
 			action_normalized[i] = 0.
 	return msg, action_normalized

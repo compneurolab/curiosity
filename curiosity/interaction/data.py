@@ -76,6 +76,21 @@ def check_none_are_none(history, idx, keys_outside_obs):
 					return False
 	return True
 
+
+class ObjectThereBatcher:
+	def __init__(self, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, there_to_not_there_ratio = 1. / .18):
+		self.history_len = history_len
+		self.my_rng = my_rng
+		self.bs = batch_size
+		self.recent_len = recent_history_length
+		self.data_lengths = data_lengths
+		self.ratio = there_to_not_there_ratio
+		self.is_there_mem = [
+
+	def get_batch(self
+
+
+
 def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):
 	chosen = []
 	print('Remembrance of things past!')
@@ -113,7 +128,6 @@ def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, rec
 		batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
 	return batch
 
-
 	
 
 
@@ -132,8 +146,8 @@ def batch_FIFO(history, batch_size = 32, data_lengths = {'obs' : {'depths1' : 3}
 			dat_raw = history[k]
 		nones_replaced = replace_the_nones(dat_raw[-(batch_size + dat_len - 1) : ])
 		batch[desc] = np.array([nones_replaced[sample_num : sample_num + dat_len] for sample_num in range(batch_size)])
-	batch['msg'] = copy.deepcopy(history['msg'])
-	batch['other'] = copy.deepcopy(history['other'])
+	for desc in ['msg', 'other']:
+		batch['recent'][desc] = copy.copy(history[desc])
 	return batch
 
 

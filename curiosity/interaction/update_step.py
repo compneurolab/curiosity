@@ -130,6 +130,8 @@ class ExperienceReplayPostprocessor:
 		entropies = [other[0] for other in batch['recent']['other']]
                 entropies = np.mean(entropies)
                 res['entropy'] = entropies
+		looking_at_obj = [1 if msg is not None and msg['msg']['action_type']['OBJ_ACT'] else 0 for msg in batch['recent']['msg']]
+                res['obj_freq'] = np.mean(looking_at_obj)
                 return res
 
 class UncertaintyPostprocessor:
@@ -150,18 +152,20 @@ class UncertaintyPostprocessor:
 		if (global_step) % self.big_save_freq < self.big_save_len:
 			print('big time')
 			save_keys = self.big_save_keys
-			est_losses = [other[1] for other in batch['other']]
-			action_sample = [other[2] for other in batch['other']]
+			est_losses = [other[1] for other in batch['recent']['other']]
+			action_sample = [other[2] for other in batch['recent']['other']]
 			res['batch'] = {'obs' : batch['depths1'][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1],  'est_loss' : est_losses, 'action_sample' : action_sample}
-			res['msg'] = batch['msg']
+			res['msg'] = batch['recent']['msg']
 		else:
 			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
 		#res['msg'] = batch['msg'][-1]
-		entropies = [other[0] for other in batch['other']]
+		entropies = [other[0] for other in batch['recent']['other']]
 		entropies = np.mean(entropies)
 		res['entropy'] = entropies
+		looking_at_obj = [1 if msg is not None and msg['msg']['action_type']['OBJ_ACT'] else 0 for msg in batch['recent']['msg']]
+		res['obj_freq'] = np.mean(looking_at_obj)
 		return res
 
 
