@@ -116,7 +116,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	action = action * limits
 	action_len = len(action)
 	if not do_torque:
-		assert action_ken == 5
+		assert action_len == 5
 	agent_vel = action[0]
 	if wall_safety is not None:
 		#check for wall safety

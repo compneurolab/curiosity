@@ -77,18 +77,64 @@ def check_none_are_none(history, idx, keys_outside_obs):
 	return True
 
 
-class ObjectThereBatcher:
-	def __init__(self, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, there_to_not_there_ratio = 1. / .18):
-		self.history_len = history_len
-		self.my_rng = my_rng
-		self.bs = batch_size
-		self.recent_len = recent_history_length
-		self.data_lengths = data_lengths
-		self.ratio = there_to_not_there_ratio
-		self.is_there_mem = [
 
-	def get_batch(self
 
+def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2},
+		there_not_there_ratio = 1. / .17):
+	#gathers which frames have object there and which don't. Can optimize considerably, if this becomes a bottleneck. Dumb implementation.
+	print('Emphasized remembrance of things past!')
+	assert len(history['msg']) == history_len
+	obj_there = []
+	obj_not_there = []
+	for idx, msg in enumerate(reversed(history['msg'])):
+		if msg is None:
+			continue
+		if msg['msg']['action_type'] == 'OBJ_ACT':
+			obj_there.append(idx)
+		else:
+			obj_not_there.append(idx)
+	#now to choose
+	chosen = []
+	there_prob = there_not_there_ratio * len(obj_there) / (there_not_there_ratio * len(obj_there) + len(obj_not_there))
+	while len(chosen) < batch_size:
+		there_choice = my_rng.rand()
+		if there_choice < there_prob:
+			proposed_choice = my_rng.choice(obj_there)
+		else:
+			proposed_choice = my_rng.choice(obj_not_there)
+		if not proposed_choice in chosen:
+			chosen.append(proposed_choice)
+        batch = {'recent' : {}}
+        for k, v in data_lengths.iteritems():
+                if k == 'obs':
+                        for k_obs, v_obs in v.iteritems():
+                                collected_dat = []
+                                for idx in chosen:
+                                        if idx == 0:
+                                                dat_raw = history[k][k_obs][-idx - v_obs:]
+                                        else:
+                                                dat_raw = history[k][k_obs][- idx - v_obs : -idx]
+                                        nones_replaced = replace_the_nones(dat_raw)
+                                        collected_dat.append(nones_replaced)
+                                batch[k_obs] = np.array(collected_dat)
+                                batch['recent'][k_obs] = np.array(history[k][k_obs][-recent_history_length : ])
+                else:
+                        collected_dat = []
+                        for idx in chosen:
+                                if idx == 0:
+                                        dat_raw = history[k][-idx - v :]
+                                else:
+                                        dat_raw = history[k][-idx - v : -idx]
+                                nones_replaced = replace_the_nones(dat_raw)
+                                collected_dat.append(nones_replaced)
+                        batch[k] = np.array(collected_dat)
+                        batch['recent'][k] = np.array(history[k][-recent_history_length : ])
+        for desc in ['msg', 'other']:
+                batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
+        return batch
+
+		
+	
 
 
 def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):

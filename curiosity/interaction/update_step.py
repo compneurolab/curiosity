@@ -100,8 +100,7 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 		action_msg = batch.next_state['msg'][i]['msg']['actions'] if batch.next_state['msg'][i] is not None else []
 # 		if len(action_msg):
 # 			idx = int(action_msg[0]['id'])
-# 		else:
-# 			idx = -10000
+
 # 		action_ids_list.append(idx)
 # 	action_ids = np.array([action_ids_list])
 # 	next_depths =  np.array([batch.next_state['depths1']])
@@ -130,7 +129,7 @@ class ExperienceReplayPostprocessor:
 		entropies = [other[0] for other in batch['recent']['other']]
                 entropies = np.mean(entropies)
                 res['entropy'] = entropies
-		looking_at_obj = [1 if msg is not None and msg['msg']['action_type']['OBJ_ACT'] else 0 for msg in batch['recent']['msg']]
+		looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
                 res['obj_freq'] = np.mean(looking_at_obj)
                 return res
 

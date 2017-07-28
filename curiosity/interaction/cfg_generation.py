@@ -84,9 +84,10 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 	image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
 	history_len = 1000, do_torque = True):
 	my_rng = np.random.RandomState(0)
+	act_dim = 8 if do_torque else 5
 	return {
 		'func' : train.get_batching_data_provider,
-                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(6)]),
+                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(act_dim - 2)]),
                 'environment_params' : {
                         'random_seed' : 1,
                         'unity_seed' : 1,
@@ -120,12 +121,58 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 
 	}
 
-def generate_batching_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2, image_scale = (64, 64),
-	scene_info = environment.example_scene_info, scene_len = 1024 * 32, do_torque = True
-	):
+
+def generate_object_there_experience_replay_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
+        image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
+        history_len = 1000, do_torque = True, ratio = 1. / .17):
+        my_rng = np.random.RandomState(0)
+	act_dim = 8 if do_torque else 5
+        return {
+                'func' : train.get_batching_data_provider,
+                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(act_dim - 2)]),
+                'environment_params' : {
+                        'random_seed' : 1,
+                        'unity_seed' : 1,
+                        'room_dims' : room_dims,
+                        'state_memory_len' : {
+                                        'depths1' : history_len + state_time_length + 1
+                                },
+                        'action_memory_len' : history_len + state_time_length,
+                        'message_memory_len' : history_len,
+                        'other_data_memory_length' : 32,
+                        'rescale_dict' : {
+                                        'depths1' : image_scale
+                                },
+                        'USE_TDW' : True,
+                        'host_address' : RENDER1_HOST_ADDRESS
+                },
+
+                'provider_params' : {
+                        'batching_fn' : lambda hist : data.obj_there_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size, there_not_there_ratio = ratio),
+                        'capacity' : 5,
+                        'gather_per_batch' : batch_size / 4,
+                        'gather_at_beginning' : history_len + state_time_length + 1
+                },
+
+                'scene_list' : [scene_info],
+                'scene_lengths' : [scene_len],
+                'do_torque' : do_torque
+	}
+
+
+
+def generate_batching_data_provider(force_scaling = 80., 
+					room_dims = (5., 5.), 
+					batch_size = 32, 
+					state_time_length = 2, 
+					image_scale = (64, 64), 
+					scene_info = environment.example_scene_info, 
+					scene_len = 1024 * 32, 
+					do_torque = True):
+	act_dim = 8 if do_torque else 5
 	return {
 		'func' : train.get_batching_data_provider,
-		'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(6)]),
+		'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(act_dim - 2)]),
 		'environment_params' : {
 			'random_seed' : 1,
 			'unity_seed' : 1,
@@ -224,7 +271,7 @@ def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape 
 				encode_deets = {'sizes' : [3, 3, 3, 3], 'strides' : [2, 2, 2, 2], 'nf' : [32, 32, 32, 32]},
 				action_deets = {'nf' : [256]},
 				future_deets = {'nf' : [512]},
-				act_loss_type = 'both_l2'
+				act_loss_type = 'both_l2', num_classes = 21, include_previous_action = False
 				):
 	params = {'state_shape' : [state_time_length] + list(image_shape) + [3], 'action_shape' : [state_time_length, action_dim]}
 	encode_params = {'encode' : {}, 'encode_depth' : 0}
@@ -236,10 +283,12 @@ def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape 
 	#action cfg construction
 	act_hidden_depth = len(action_deets['nf']) + 1
 	act_pred_time_length = 2 if act_loss_type == 'both_l2' else 1
-	action_mlp_params = {'hidden_depth' : act_hidden_depth, 'hidden' : {act_hidden_depth : {'num_features' : act_pred_time_length * action_dim, 'activation' : 'identity'}}}
+	if act_loss_type != 'one_cat':
+		num_classes = 1
+	action_mlp_params = {'hidden_depth' : act_hidden_depth, 'hidden' : {act_hidden_depth : {'num_features' : act_pred_time_length * action_dim * num_classes, 'activation' : 'identity'}}}
 	for i, nf in enumerate(action_deets['nf']):
 		action_mlp_params['hidden'][i + 1] = {'num_features' : nf}
-	params['action_model'] = {'mlp' : action_mlp_params, 'loss_factor' : act_loss_factor, 'loss_type' : act_loss_type}
+	params['action_model'] = {'mlp' : action_mlp_params, 'loss_factor' : act_loss_factor, 'loss_type' : act_loss_type, 'num_classes' : num_classes, 'include_previous_action' : include_previous_action}
 	future_hidden_depth = len(future_deets['nf']) + 1
 	latent_space_dim = 1
 	for i in range(2):

@@ -94,7 +94,6 @@ def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
     deconv_nodes = [input_node]
     # deconvolving
     deconv_depth = cfg[desc + '_depth']
-    print('deconv depth: %d' % deconv_depth)
     cfs0 = None
 
     if bypass_nodes is None:
@@ -140,8 +139,6 @@ def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
                     out_shape = cfg[desc][i]['deconv']['output_shape']
                 else:
                     out_shape = None
-                if do_print:
-                    print('deconv in: ', m.output)
                 if no_nonlinearity_end and i == deconv_depth:
                     m.deconv(nf, cfs, cs, activation = None, 
                             fixed_output_shape=out_shape)
@@ -172,7 +169,6 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
         encode_nodes = [input_node]
         #encoding
         encode_depth = cfg[desc + '_depth']
-        print('conv depth: %d' % encode_depth)
         cfs0 = None
 
         if bypass_nodes is None:
@@ -216,20 +212,14 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                             cfs0 = cfs
                             nf = cfg[desc][i]['conv']['num_filters']
                             cs = cfg[desc][i]['conv']['stride']
-                            if do_print:
-                                print('conv in', m.output)
                             if no_nonlinearity_end and i == encode_depth:
                                 m.conv(nf, cfs, cs, activation = None)
                             else:
                                 my_activation = cfg[desc][i].get('nonlinearity')
                                 if my_activation is None:
                                         my_activation = 'relu'
-                                else:
-                                        print('NONLIN: ' + my_activation)
                                 m.conv(nf, cfs, cs, activation = my_activation)
-                            if do_print:
-                                print('conv out', m.output)
-        #TODO add print function
+       #TODO add print function
                         pool = cfg[desc][i].get('pool')
                         if pool:
                             pfs = pool['size']
@@ -241,6 +231,23 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
             return [encode_nodes, bypass_nodes]
         return encode_nodes
 
+
+def action_softmax_loss(prediction, tv, num_classes = 21, min_value = -1., max_value = 1.):
+	#get into the right shape
+	tv_shape = tv.get_shape().as_list()
+	pred_shape = prediction.get_shape().as_list()
+	print(tv_shape)
+	print(pred_shape)
+	assert len(tv_shape) == 2 and tv_shape[1] * num_classes == pred_shape[1], (len(tv_shape), tv_shape[1] * num_classes, pred_shape[1])
+	pred = tf.reshape(prediction, [-1, tv_shape[1], num_classes])
+	#discretize tv
+	tv = float(num_classes) * (tv - min_value) / (max_value - min_value)
+	tv = tf.cast(tv, tf.int32)
+	loss_per_example = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+				labels = tv, logits = pred))
+	loss = tf.reduce_mean(loss_per_example)
+	return loss_per_example, loss
+	
 
 def softmax_cross_entropy_loss_vel_one(outputs, tv, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
@@ -652,8 +659,6 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         assert len(input_node.get_shape().as_list()) == 2, len(input_node.get_shape().as_list())
         hidden_depth = cfg['hidden_depth']
         m.output = input_node
-        print('in hidden loop')
-        print(m.output)
         for i in range(1, hidden_depth + 1):
                 with tf.variable_scope('hidden' + str(i)) as scope:
                         if reuse_weights:
@@ -670,13 +675,8 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
                                 my_dropout = cfg['hidden'][i].get('dropout')
                         else:
                                 my_dropout = None
-                        print(nf)
-                        print(my_activation)
-                        print(stddev)
-                        print(my_dropout)
                         m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = my_dropout)
                         nodes_for_bypass.append(m.output)
-                        print(m.output)
         return m.output
 
 
@@ -875,9 +875,6 @@ class LatentSpaceWorldModel(object):
 	self.action_post = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 
         #flatten out time dim
-        print('about to flatten time dim')
-        print(s_i)
-        print(s_f)
         s_i = tf_concat([s_i[:, i] for i in range(cfg['state_shape'][0])], 3)
         s_f = tf_concat([s_f[:, i] for i in range(cfg['state_shape'][0])], 3)
 
@@ -904,7 +901,12 @@ class LatentSpaceWorldModel(object):
         #action model time
         with tf.variable_scope('action_model'):
             loss_type = cfg['action_model'].get('loss_type', 'both_l2')
-            encoded_concat = tf_concat([enc_i_flat, enc_f_flat], 1)
+            include_prev_action = cfg['action_model'].get('include_previous_action', False)
+            to_concat = [enc_i_flat, enc_f_flat]
+            if include_prev_action:
+                print('including previous action!')
+                to_concat.append(self.action[:, 0])
+            encoded_concat = tf_concat(to_concat, 1)
             self.act_pred = hidden_loop_with_bypasses(encoded_concat, m, cfg['action_model']['mlp'], reuse_weights = False, train = True)
             if loss_type == 'both_l2':
                 act_post_flat = flatten(self.action_post)
@@ -916,6 +918,11 @@ class LatentSpaceWorldModel(object):
 		diff = self.act_pred - act_post_flat
 		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
                 self.act_loss = tf.reduce_mean(self.act_loss_per_example)
+            elif loss_type == 'one_cat':
+		print('cat')
+		num_classes = cfg['action_model']['num_classes']
+		act_post_flat = self.action_post[:, -1]
+		self.act_loss_per_example, self.act_loss = action_softmax_loss(self.act_pred, act_post_flat, num_classes = num_classes)
             else:
                 raise Exception('loss type not recognized!')
 
@@ -1092,7 +1099,6 @@ class UncertaintyModel:
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             heat = cfg.get('heat', 1.)
-            print('Heat! ' + str(heat))
             x_tr /= heat
             prob = tf.nn.softmax(x_tr)
             log_prob = tf.nn.log_softmax(x_tr)
