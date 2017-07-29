@@ -131,7 +131,7 @@ def train_from_params(
 
 	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 
 		'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 
-		'what_to_save_params' : what_to_save_params, 'load_params' : load_params
+		'what_to_save_params' : what_to_save_params, 'load_params' : load_params,
 		'data_params' : data_params, 'inter_op_parallelism_threads' : inter_op_parallelism_threads,
 		'allow_growth' : allow_growth, 'per_process_gpu_memory_fraction' : per_process_gpu_memory_fraction,
 		'updater_params' : updater_params, 'postprocessor_params' : postprocessor_params

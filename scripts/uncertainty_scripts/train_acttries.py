@@ -34,7 +34,7 @@ image_scales = [(64, 64), (128, 128)]
 image_scale = image_scales[which_resolution]
 
 
-EXP_ID = 'at_more' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(which_batching) + str(incl_prev_action) + str(which_resolution)
+EXP_ID = 'at_test' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(which_batching) + str(incl_prev_action) + str(which_resolution)
 
 one_obj_scene_info = [
         {
