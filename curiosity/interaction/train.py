@@ -8,7 +8,7 @@ import curiosity.interaction.environment as environment
 import curiosity.interaction.data as data
 from curiosity.interaction.data import SimpleSamplingInteractiveDataProvider, SillyLittleListerator
 from curiosity.interaction.models import UncertaintyModel, DepthFuturePredictionWorldModel, UniformActionSampler, DamianModel, LatentSpaceWorldModel
-from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater
+from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater, ExperienceReplayPostprocessor
 import tensorflow as tf
 import os
 import cPickle
@@ -20,32 +20,11 @@ import numpy as np
 RENDER_2_ADDY = '10.102.2.162'
 RENDER_1_ADDY = '10.102.2.161'
 
-class LocalSaver:
-	def __init__(self, how_much, how_often, save_dir):
-		self.how_much = how_much
-		self.how_often = how_often
-		self.save_dir = save_dir
-		self.storage = dict((k, []) for k in how_much)
-		self.ctr = 0
-		with open(os.path.join(self.save_dir, 'test.pkl'), 'w') as stream:
-			cPickle.dump([], stream)
-
-	def update(self, results):
-		for k in self.how_much:
-			if len(self.storage[k]) < self.how_much[k]:
-				self.storage[k].append(results[k])
-		self.ctr += 1
-		if self.ctr % self.how_often == 0:
-			print('saving...')
-			fn = os.path.join(self.save_dir, 'sv_' + str(self.ctr // self.how_often) + '.pkl')
-			with open(fn, 'w') as stream:
-				cPickle.dump(self.storage, stream)
-				self.storage = dict((k, []) for k in self.how_much)
-
-
 def get_default_postprocessor(what_to_save_params):
 	return UncertaintyPostprocessor(** what_to_save_params)
 
+def get_experience_replay_postprocessor(what_to_save_params):
+	return ExperienceReplayPostprocessor(** what_to_save_params)
 
 def get_models_damianworld(cfg):
 	world_model = DamianModel(cfg['world_model'])
@@ -63,6 +42,14 @@ def get_latent_models(cfg):
 	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
+def get_batching_data_provider(data_params, model_params, action_model):
+	assert set(data_params.keys()) == set(['func', 'environment_params', 'scene_list', 'scene_lengths', 'provider_params', 'action_limits', 'do_torque'])
+	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5, do_torque = data_params['do_torque'])
+	env = environment.Environment(action_to_message_fn = action_to_message, ** data_params['environment_params'])
+	scene_infos = data.SillyLittleListerator(data_params['scene_list'])
+	steps_per_scene = data.SillyLittleListerator(data_params['scene_lengths'])
+	data_provider = data.BSInteractiveDataProvider(env, action_model, scene_infos, steps_per_scene, UniformActionSampler(model_params['cfg']), ** data_params['provider_params'])
+	return data_provider
 
 def get_default_data_provider(data_params, model_params, action_model):
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
@@ -73,10 +60,10 @@ def get_default_data_provider(data_params, model_params, action_model):
 	return data_provider
 
 
-def get_latent_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
+def get_latent_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
 	world_model = models['world_model']
 	uncertainty_model = models['uncertainty_model']
-        return LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor)
+        return LatentUncertaintyUpdater(world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
 
 
 def get_default_updater(models, data_provider, optimizer_params, learning_rate_params, postprocessor):
@@ -104,7 +91,7 @@ LATENT_WHAT_TO_SAVE_PARAMS = {
 	'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
 	'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
 	'big_save_len' : 100,
-	'big_save_freq' : 10000,
+	'big_save_freq' : 100,
 	'state_descriptor' : STATE_DESC
 }
 
@@ -122,7 +109,10 @@ def train_from_params(
 		load_params = None,
 		data_params = None,
 		inter_op_parallelism_threads = 40,
-		allow_growth = False
+		allow_growth = False,
+		per_process_gpu_memory_fraction = None,
+		updater_params = None,
+		postprocessor_params = None
 	):
 	model_cfg = model_params['cfg']
 	models_constructor = model_params['func']
@@ -132,16 +122,24 @@ def train_from_params(
 
 	data_provider = data_params['func'](data_params, model_params, action_model)
 
-	postprocessor = get_default_postprocessor(what_to_save_params)
+	if postprocessor_params is None:
+		postprocessor = get_default_postprocessor(what_to_save_params)
+	else:
+		postprocessor = postprocessor_params['func'](what_to_save_params)
 
-	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor)
+	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
 
 	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 'what_to_save_params' : what_to_save_params, 'load_params' : load_params}
 
 
 	config = tf.ConfigProto(allow_soft_placement = True,
                 log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
-	config.gpu_options.allow_growth = allow_growth
+	if allow_growth:
+		#including this weird conditional because I'm running into a weird bug
+		config.gpu_options.allow_growth = allow_growth
+	if per_process_gpu_memory_fraction is not None:
+		print('limiting mem fraction')
+		config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
 	sess = tf.Session(config = config)
 	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
@@ -175,6 +173,15 @@ def train(sess, updater, dbinterface):
 		#res.update(batch_to_save)
 		dbinterface.save(train_res = res, validation_only = False)
 
+example_scene_local = [
+        {
+        'type' : 'SHAPENET',
+        'scale' : 2.,
+        'mass' : 1.,
+        'scale_var' : .01,
+        'num_items' : 1,
+        }
+        ]
 
 
 
@@ -200,21 +207,25 @@ def train_local(
 	else:
 		os.mkdir(save_dir)
 
-	how_much = {'um_loss' : 1500, 'wm_loss' : 1500, 'wm_prediction' : 50, 'wm_tv' : 50, 'wm_given' : 50}
-	saver = LocalSaver(how_much, how_often, save_dir)
-
 	#set up data provider
 	state_memory_len = {
-		STATE_DESC : 3
+		STATE_DESC : 4,
 	}
 	rescale_dict = {
-		# STATE_DESC : (64, 64)
+		STATE_DESC : (64, 64)
 	}
+	provider_params = {
+		'batching_fn' : lambda hist : data.batch_FIFO(hist, batch_size = 2),
+		'capacity' : 5,
+		'gather_per_batch' : 2,
+		'gather_at_beginning' : 4
+	}
+
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5)
-	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = True, host_address = RENDER_1_ADDY, state_memory_len = state_memory_len, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
-	scene_infos = data.SillyLittleListerator([environment.example_scene_info])
+	env = environment.Environment(1, 1, action_to_message, SCREEN_DIMS = (128, 170), USE_TDW = False, host_address = None, state_memory_len = state_memory_len, action_memory_len = 3, message_memory_len = 2, rescale_dict = rescale_dict, room_dims = (5., 5.), rng_source = environment.PeriodicRNGSource(3, seed = 1))
+	scene_infos = data.SillyLittleListerator([example_scene_local])
 	steps_per_scene = data.SillyLittleListerator([100])
-	data_provider = SimpleSamplingInteractiveDataProvider(env, uncertainty_model, 1, scene_infos, steps_per_scene, UniformActionSampler(cfg), full_info_action = data_params['full_info_action'], capacity = 5)
+	data_provider = data.BSInteractiveDataProvider(env, uncertainty_model, scene_infos, steps_per_scene, UniformActionSampler(cfg), ** provider_params)
 
 	#set up updater
 	postprocessor = get_default_postprocessor(what_to_save_params = LATENT_WHAT_TO_SAVE_PARAMS)
@@ -227,7 +238,7 @@ def train_local(
 		res = updater.update(sess, visualize)
 		print('updated')
 		if 'batch' in res:
-			depths = res['batch']['obs']
+			depths = res['batch']['obs'][1]
 			print('after: ' + str(depths.shape))
 			print(np.linalg.norm(depths))
 			depths = depths.astype(np.uint8)
@@ -249,6 +260,8 @@ def train_local(
 			# print(np.linalg.norm(depths[:, :, 0] - depths[:, :, 1]))
 			# print(np.linalg.norm(depths[:, :, 1] - depths[:, :, 2]))
 			cv2.waitKey(1)
+			print(res['msg'])
+			print(res['batch']['act_post'])
 		# saver.update(res)
 
 

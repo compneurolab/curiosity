@@ -104,7 +104,7 @@ def test_action_to_message_fn(action, env):
 	return msg
 
 
-def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None):
+def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True):
 	'''
 		Sends message given forward vel, y-angular speed, force, torque.
 		If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
@@ -114,6 +114,9 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	action = np.copy(action)
 	action_normalized = action
 	action = action * limits
+	action_len = len(action)
+	if not do_torque:
+		assert action_len == 5
 	agent_vel = action[0]
 	if wall_safety is not None:
 		#check for wall safety
@@ -140,7 +143,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 		#if not in view
 		if len(xs) == 0:
 			msg['msg']['action_type'] = 'NO_OBJ_ACT'
-			for i in range(2, 8):
+			for i in range(2, action_len):
 				action_normalized[i] = 0.
 		#if in view
 		else:
@@ -150,17 +153,24 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			msg_action = {}
 			msg_action['use_absolute_coordinates'] = True
 			msg_action['force'] = list(action[2:5])
-			msg_action['torque'] = list(action[5:])
+			if do_torque:
+				msg_action['torque'] = list(action[5:])
+			else:
+				msg_action['torque'] = [0., 0., 0.]
 			msg_action['id'] = str(obj_id)
 			msg_action['object'] = str(obj_id)
 			msg_action['action_pos'] = list(map(float, seen_cm))
 			msg['msg']['actions'].append(msg_action)
+	else:
+		print('Warning! object not found!')
+		for i in range(2, action_len):
+			msg['msg']['action_type'] = 'OBJ_NOT_PRESENT'
+			action_normalized[i] = 0.
 	return msg, action_normalized
 
 
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
     info = sock.recv()
-    print("got message")
     data = {'info': info}
     # Iterate over all cameras
     for cam in range(len(msg_names)):
@@ -280,7 +290,9 @@ class Environment:
 			action_memory_len = 2,
 			local_pickled_query = None,
 			rng_source = None,
-			rng_periodicity = None
+			rng_periodicity = None,
+			scene_switch_memory_pad = 2, 
+			other_data_memory_length = 1
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.rng = np.random.RandomState(random_seed)
@@ -296,6 +308,7 @@ class Environment:
 				self.msg_names.append(msg_names[i][k])
 		self.msg_names = [self.msg_names] * n_cameras
 		self.num_frames_per_msg = 1 + n_cameras * len(shaders)
+		self.scene_switch_memory_pad = scene_switch_memory_pad
 		#self.num_frames_per_msg = 15
 		# #borrowing a hack from old curiosity
 		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -345,7 +358,11 @@ class Environment:
 		self.rng_source = rng_source
 		if rng_periodicity is not None:
 			self.rng_source = PeriodicRNGSource(rng_periodicity, seed = 1)
-
+		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
+		self.msg_memory = [None for _ in range(self.msg_memory_len)]
+		self.action_memory = [None for _ in range(self.action_memory_len)]
+		self.action_post_memory = [None for _ in range(self.action_memory_len)]
+		self.other_data_memory = [None for _ in range(other_data_memory_length)]
 
 
 	def get_items(self, q, num_items, scale, mass, var = .01):
@@ -443,46 +460,57 @@ class Environment:
 				msg = scene_switch_msg
 				self.sock.send_json(msg)
 		observation = self._observe_world()
-		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
-		self.msg_memory = [None for _ in range(self.msg_memory_len)]
-		self.action_memory = [None for _ in range(self.action_memory_len)]
-		self.action_post_memory = [None for _ in range(self.action_memory_len)]
-		observation, msg, action, action_post  = self._memory_postprocess(observation, msg, None, None)
+		print('heard back from unity!')
+		self._pad_memory()
+		observation, msg, action, action_post, other_dat  = self._memory_postprocess(observation, msg, None, None)
 		return observation, msg
 
-	def _memory_postprocess(self, observation, msg, action, action_post):
+	def _pad_memory(self):
+		for _ in range(self.scene_switch_memory_pad):
+			for k in self.state_memory:
+				self.state_memory[k].pop(0)
+				self.state_memory[k].append(None)
+			self.msg_memory.pop(0)
+			self.msg_memory.append(None)
+			self.action_memory.pop(0)
+			self.action_memory.append(None)
+			self.action_post_memory.pop(0)
+			self.action_post_memory.append(None)
+			self.other_data_memory.pop(0)
+			self.other_data_memory.append(None)
+
+
+	def _memory_postprocess(self, observation, msg, action, action_post, other_data = None):
 		for k in self.state_memory:
 			self.state_memory[k].pop(0)
 			self.state_memory[k].append(observation[k])
-			observation[k] = copy.copy(self.state_memory[k])
 		self.msg_memory.pop(0)
 		self.msg_memory.append(msg)
 		self.action_memory.pop(0)
 		self.action_memory.append(action)
 		self.action_post_memory.pop(0)
 		self.action_post_memory.append(action_post)
-		return observation, copy.copy(self.msg_memory), copy.copy(self.action_memory), copy.copy(self.action_post_memory)
+		self.other_data_memory.pop(0)
+		self.other_data_memory.append(other_data)
+		return self.state_memory, self.msg_memory, self.action_memory, self.action_post_memory, self.other_data_memory
 
 	def _observe_world(self):
 		self.observation = handle_message_new(self.sock, self.msg_names)
-		print('got message')
-		#info, self.narray, self.oarray, self.darray, self.imarray, self.narray2, self.oarray2, self.darray2, self.imarray2 = handle_message(self.sock)
 		self.observation['info'] = json.loads(self.observation['info'])
-		#observation = {'info' : info, 'normals' : self.narray, 'objects' : self.oarray, 'depth' : self.darray, 'image' : self.imarray,
-    		#			'normals2' : self.narray2, 'objects2' : self.oarray2, 'depth2' : self.darray2, 'image2' : self.imarray2}
 		for (k, shape) in self.rescale_dict.iteritems():
 			self.observation[k] = imresize(self.observation[k], shape)
 		return self.observation
 
-	def step(self, action):
+	def step(self, action, other_data = None):
 		#gets message. action_to_message_fn can make adjustments to action
+		#other data is included so that we can manage a cache of data all in one place, but the environment otherwise does not interact with it
 		msg, action_post = self.action_to_message_fn(action, self)
 		if self.USE_TDW:
 			self.sock.send_json(msg)
 		else:
 			self.sock.send_json(msg['msg'])
 		observation = self._observe_world()
-		return self._memory_postprocess(observation, msg, action, action_post)
+		return self._memory_postprocess(observation, msg, action, action_post, other_data = other_data)
 
 
 

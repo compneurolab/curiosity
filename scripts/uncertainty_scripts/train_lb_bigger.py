@@ -1,5 +1,6 @@
 '''
-Like marioish3, but 1000 action samples and hopefully better normalization.
+Training with latent model as in mario paper, this time with batches of size 32, 
+repeated once, no experience replay.
 '''
 
 import sys
@@ -7,7 +8,7 @@ sys.path.append('curiosity')
 sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment
+from curiosity.interaction import train, environment, data
 from curiosity.interaction.models import mario_world_model_config
 from tfutils import base, optimizer
 import numpy as np
@@ -16,13 +17,17 @@ import os
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
 
-EXP_ID = 'rand_lat_na_s'
+EXP_ID = 'lb_bigger1'
 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
 CACHE_DIR = os.path.join(CACHE_ID_PREFIX, EXP_ID)
 if not os.path.exists(CACHE_DIR):
 	os.mkdir(CACHE_DIR)
 
-STATE_DESC = 'images1'
+STATE_DESC = 'depths1'
+
+BATCH_SIZE = 128
+
+
 
 cfg = {
 				'world_model' : mario_world_model_config,
@@ -47,10 +52,9 @@ cfg = {
 						}		
 					},
 					'state_descriptor' : STATE_DESC,
-					'just_random' : 0,
-					'loss_factor' : 100.
+					'loss_factor' : 1. / float(BATCH_SIZE)
 				},
-				'seed' : 0,
+				'seed' : 0
 }
 
 params = {
@@ -61,13 +65,13 @@ params = {
 		'dbname' : 'uncertain_agent',
 		'collname' : 'uniform_action',
 		'exp_id' : EXP_ID,
-		'save_valid_freq' : 10000,
-        'save_filters_freq': 200000,
-        'cache_filters_freq': 100000,
-	'save_metrics_freq' : 10000,
+		'save_valid_freq' : 1000,
+        'save_filters_freq': 50000,
+        'cache_filters_freq': 20000,
+	'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
 	'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['encoding_i', 'encoding_f', 'act_pred', 'fut_pred', 'batch']
+        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg']
 	},
 
 
@@ -79,10 +83,10 @@ params = {
 
 
 	'what_to_save_params' : {
-	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'encoding_i', 'encoding_f', 'act_pred', 'fut_pred'],
+	        'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred'],
 	        'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
-		'big_save_len' : 50,
-		'big_save_freq' : 10000,
+		'big_save_len' : 1,
+		'big_save_freq' : 1000,
 		'state_descriptor' : STATE_DESC
 	},
 
@@ -93,25 +97,32 @@ params = {
 	},
 
 	'data_params' : {
-		'func' : train.get_default_data_provider,
+		'func' : train.get_batching_data_provider,
 		'action_limits' : np.array([1., 1.] + [80. for _ in range(6)]),
 		'environment_params' : {
 			'random_seed' : 1,
 			'unity_seed' : 1,
 			'room_dims' : (5., 5.),
 			'state_memory_len' : {
-					STATE_DESC : 3
+					'depths1' : BATCH_SIZE + 3 - 1
 				},
+			'action_memory_len' : BATCH_SIZE + 2 - 1,
 			'rescale_dict' : {
-					STATE_DESC : (64, 64)
+					'depths1' : (64, 64)
 				},
 			'USE_TDW' : True,
 			'host_address' : RENDER1_HOST_ADDRESS
 		},
+		
+		'provider_params' : { 
+			'batching_fn' : lambda hist : data.batch_FIFO(hist, batch_size = BATCH_SIZE),
+			'capacity' : 5,
+			'gather_per_batch' : BATCH_SIZE,
+			'gather_at_beginning' : BATCH_SIZE
+		},
+
 		'scene_list' : [environment.example_scene_info],
 		'scene_lengths' : [1024 * 32],
-		'capacity' : 5,
-		'full_info_action' : True
 	},
 
 	'train_params' : {

@@ -23,7 +23,7 @@ params = {
 		'cfg' : {
 				'world_model' : mario_world_model_config,
 				'uncertainty_model' : {
-					'state_shape' : [2, 128, 170, 3],
+					'state_shape' : [2, 64, 64, 3],
 					'action_dim' : 8,
 					'n_action_samples' : 50,
 					'encode' : {

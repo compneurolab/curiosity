@@ -100,12 +100,38 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 		action_msg = batch.next_state['msg'][i]['msg']['actions'] if batch.next_state['msg'][i] is not None else []
 # 		if len(action_msg):
 # 			idx = int(action_msg[0]['id'])
-# 		else:
-# 			idx = -10000
+
 # 		action_ids_list.append(idx)
 # 	action_ids = np.array([action_ids_list])
 # 	next_depths =  np.array([batch.next_state['depths1']])
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
+
+class ExperienceReplayPostprocessor:
+	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
+		self.big_save_keys = big_save_keys
+		self.little_save_keys = little_save_keys
+		self.big_save_len = big_save_len
+		self.big_save_freq = big_save_freq
+		self.state_descriptor = state_descriptor
+
+	def postprocess(self, training_results, batch):
+		global_step = training_results['global_step']
+		res = {}
+		if (global_step) % self.big_save_freq < self.big_save_len:
+			save_keys = self.big_save_keys
+			#est_losses = [other[1] for other in batch['other']]
+			#action_sample = [other[2] for other in batch['other']]
+			res['batch' ] = {'obs' : batch[self.state_descriptor][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1]}
+			res['recent'] = batch['recent']
+		else:
+			save_keys = self.little_save_keys
+		res.update(dict(pair for pair in training_results.iteritems() if pair[0] in save_keys))
+		entropies = [other[0] for other in batch['recent']['other']]
+                entropies = np.mean(entropies)
+                res['entropy'] = entropies
+		looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
+                res['obj_freq'] = np.mean(looking_at_obj)
+                return res
 
 class UncertaintyPostprocessor:
 	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
@@ -116,24 +142,78 @@ class UncertaintyPostprocessor:
 		self.state_descriptor = state_descriptor
 
 	def postprocess(self, training_results, batch):
-		obs, msg, act, act_post = batch
 		global_step = training_results['global_step']
 		res = {}
-		if (global_step - 1) % self.big_save_freq < self.big_save_len:
+		print('postprocessor deets')
+		print(global_step)
+		print(self.big_save_freq)
+		print(self.big_save_len)
+		if (global_step) % self.big_save_freq < self.big_save_len:
 			print('big time')
 			save_keys = self.big_save_keys
-			res['batch'] = {'obs' : obs[self.state_descriptor][-1], 'act' : act[-1], 'act_post' : act_post[-1],  'est_loss' : obs['est_loss'], 'action_sample' : obs['action_sample']}
+			est_losses = [other[1] for other in batch['recent']['other']]
+			action_sample = [other[2] for other in batch['recent']['other']]
+			res['batch'] = {'obs' : batch['depths1'][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1],  'est_loss' : est_losses, 'action_sample' : action_sample}
+			res['msg'] = batch['recent']['msg']
 		else:
 			print('little time')
 			save_keys = self.little_save_keys
 		res.update(dict((k, v) for (k, v) in training_results.iteritems() if k in save_keys))
-		res['msg'] = msg[-1]
-		if 'entropy' in obs:
-			res['entropy'] = obs['entropy']
+		#res['msg'] = batch['msg'][-1]
+		entropies = [other[0] for other in batch['recent']['other']]
+		entropies = np.mean(entropies)
+		res['entropy'] = entropies
+		looking_at_obj = [1 if msg is not None and msg['msg']['action_type']['OBJ_ACT'] else 0 for msg in batch['recent']['msg']]
+		res['obj_freq'] = np.mean(looking_at_obj)
 		return res
 
+
+class MixedLatentUncertaintyUpdater:
+	'''
+	Like LatentUncertaintyModel, but where we ask the uncertainty model to predict a weighted sum of action loss and future loss.
+	Consider merging, but for now let's make things clean.
+	'''
+	def __init__(self, world_model, uncertainty_model, weight_params, data_provider, optimizer_params, learning_rate_params, postprocessor):
+		self.data_provider = data_provider
+		self.wm = world_model
+		self.um = uncertainty_model
+		self.postprocessor = postprocessor
+		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initalier(0, dtype = tf.int32))
+		self.act_lr_params, act_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['act_model'])
+		self.fut_lr_params, fut_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['fut_model'])
+		self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+		act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+                fut_opt_params, fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.global_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
+                um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		self.global_step = self.global_step / 3
+		loss_combination = weight_params['act_loss_weight'] * self.wm.act_loss_per_example + weight_params['fut_loss_weight'] * self.wm.fut_loss_per_example
+		self.wm_targets = {'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred,
+					'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt,
+					'act_lr' : act_lr, 'fut_lr' : fut_lr,
+					'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss,
+					'loss_combination' : loss_combination}
+		self.um_targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 'global_step' : self.global_step}
+		for k in self.wm_targets:
+			assert k not in self.um_targets, k
+	
+	def start(self, sess):
+		self.data_provider.start_runner(sess)
+		sess.run(tf.global_variables_initializer())
+
+	def update(self, sess, visualize = False):
+		batch = self.data_provider.dequeue_batch()
+		state_desc = self.um.state_descriptor
+		wm_feed_dict = {
+			self.wm.states : batch[state_desc],
+			self.wm.action : batch['action'],
+			self.wm.action_post : batch['action_post']
+		}
+		#TODO finish
+
+
+
 class LatentUncertaintyUpdater:
-	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor):
+	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = None):
 		self.data_provider = data_provider
 		self.wm = world_model
 		self.um = uncertainty_model
@@ -145,12 +225,21 @@ class LatentUncertaintyUpdater:
 		act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
 		fut_opt_params, fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.global_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
 		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
-		self.global_step = self.global_step / 3		
+		self.global_step = self.global_step / 3
+		if updater_params is None:
+			mixed_loss_weighting = None
+		else:
+			mixed_loss_weighting = updater_params.get('mixed_loss_weighting')
+		if mixed_loss_weighting is None:
+			loss_per_example = self.wm.fut_loss_per_example
+		else:
+			print('Using mixed losses! ' +  str(mixed_loss_weighting['action']) + ' ' + str(mixed_loss_weighting['future']))
+			loss_per_example = mixed_loss_weighting['action'] * self.wm.act_loss_per_example + mixed_loss_weighting['future'] * self.wm.fut_loss_per_example
 		self.wm_targets = {'encoding_i' : self.wm.encoding_i, 'encoding_f' : self.wm.encoding_f,  
 						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
 						'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt, 
 						'act_lr' : act_lr, 'fut_lr' : fut_lr,
-						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss
+						'fut_loss' : self.wm.fut_loss, 'loss_per_example' : loss_per_example, 'act_loss' : self.wm.act_loss
 						}
 		self.um_targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 'global_step' : self.global_step}
 		#checking that we don't have repeat names
@@ -164,18 +253,17 @@ class LatentUncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
+		#depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
-			self.wm.s_i : depths,
-			self.wm.action : actions,
-			self.wm.action_post : actions_post,
-			self.wm.s_f : next_depth
+			self.wm.states : batch[state_desc],
+			self.wm.action : batch['action'],
+			self.wm.action_post : batch['action_post']
 		}
 		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
 		um_feed_dict = {
-			self.um.s_i : depths,
-			self.um.action_sample : actions[:, -1],
-			self.um.true_loss : np.array([wm_res['fut_loss']])
+			self.um.s_i : batch[state_desc][:, :-1],
+			self.um.action_sample : batch['action'][:, -1],
+			self.um.true_loss : wm_res['loss_per_example']
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
 		res = wm_res
@@ -192,7 +280,7 @@ class UncertaintyUpdater:
 		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
 		self.wm_lr_params, wm_learning_rate = get_learning_rate(self.global_step, ** learning_rate_params['world_model'])
 		self.wm_opt_params, wm_opt = get_optimizer(wm_learning_rate, self.world_model.loss, self.global_step, optimizer_params['world_model'])
-		self.world_model_targets = {'given' : self.world_model.processed_input,  'loss' : self.world_model.loss, 'learning_rate' : wm_learning_rate, 'optimizer' : wm_opt, 'prediction' : self.world_model.pred, 'tv' : self.world_model.tv}
+		self.world_model_targets = {'given' : self.world_model.processed_input,  'loss' : self.world_model.loss, 'loss_per_example' : self.world_model.loss_per_example, 'learning_rate' : wm_learning_rate, 'optimizer' : wm_opt, 'prediction' : self.world_model.pred, 'tv' : self.world_model.tv}
 		self.inc_step = self.global_step.assign_add(1)
 		self.um_lr_params, um_learning_rate = get_learning_rate(self.global_step, **learning_rate_params['uncertainty_model'])
 		self.um_lr_params, um_opt = get_optimizer(um_learning_rate, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
@@ -209,24 +297,15 @@ class UncertaintyUpdater:
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
 		state_desc = self.um.state_descriptor
-		depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
 		wm_feed_dict = {
-			self.world_model.s_i : depths,
-			self.world_model.s_f : next_depth,
-			self.world_model.action : actions[:, - self.world_action_time : ]
+			self.world_model.states : batch[state_desc],
+			self.world_model.action : batch['action'][:, -self.world_action_time : ]
 		}
 		world_model_res = sess.run(self.world_model_targets, feed_dict = wm_feed_dict)
-		if visualize:
-			cv2.imshow('pred', world_model_res['prediction'][0] / 4.)#TODO clean up w colors
-			cv2.imshow('tv', world_model_res['tv'][0] / 4.)
-			cv2.imshow('processed0', world_model_res['given'][0, 0] / 4.)
-			cv2.imshow('processed1', world_model_res['given'][0, 1] / 4.)
-			cv2.waitKey(1)
-			print('wm loss: ' + str(world_model_res['loss']))
 		um_feed_dict = {
-			self.um.s_i : depths,
-			self.um.action_sample : actions[:, -1],
-			self.um.true_loss : np.array([world_model_res['loss']])
+			self.um.s_i : batch[state_desc][:, :-1],
+			self.um.action_sample : batch['action'][:, -1],
+			self.um.true_loss : world_model_res['loss_per_example']
 		}
 		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
 		wm_res_new = dict(('wm_' + k, v) for k, v in world_model_res.iteritems())
