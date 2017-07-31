@@ -335,7 +335,12 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
                 depths = f['depths1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 vels = f['velocities1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 vels_curr = f['velocities_current1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
-                particles = f['particles'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                unpadded_particles = f['particles'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
+                #pad particles with zeros to 10,000 * 7 dim
+                particles = np.zeros((BATCH_SIZE, 10000 * 7))
+                for p_index, p in enumerate(unpadded_particles):
+                    particles[p_index,:p.shape[0]] = p
+
         actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = [json.loads(act) for act in actions_raw]
         indicators = get_subset_indicators(actions_raw)
