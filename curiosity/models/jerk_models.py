@@ -1944,7 +1944,7 @@ def softmax_cross_entropy_loss_vel_one(outputs, gpu_id = 0, eps = 0.0,
 def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256, use_relations_in_loss=False, use_next_depth=True,
         segmented_jerk=True, **kwargs):
-    debug = False
+    debug = True
     with tf.device('/gpu:%d' % gpu_id):
         undersample = False
         if undersample:
