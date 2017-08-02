@@ -13,8 +13,8 @@ from multiprocessing import Pool
 #SECOND_DATASET_LOCS = ['dataset0', 'dataset1', 'dataset2', 'dataset3']
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
-GRID_DIM = 64
-OUTPUT_SPARSE_ONLY = True
+GRID_DIM = 32 #64
+OUTPUT_SPARSE_ONLY = False #True
 assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
