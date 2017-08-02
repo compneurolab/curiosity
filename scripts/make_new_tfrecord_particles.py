@@ -353,9 +353,13 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     ids = object_data[:, :, 0]
     n_particles = object_data[:, :, 13].astype(np.int32) / 7
     actions = np.array(actions)
-    assert (np.sum(n_particles, axis=0) == n_particles[0] * BATCH_SIZE).all(), \
-            '%d != %d' % (np.sum(n_particles, axis=0), n_particles[0] * BATCH_SIZE)
-    particles = particles[:, :np.sum(n_particles[0])]
+    all_particles = np.sum(n_particles[0])
+    for n in n_particles:
+        assert np.sum(n) == all_particles
+    #assert (np.sum(n_particles, axis=0) == n_particles[0] * BATCH_SIZE).all(), \
+    #        str(np.sum(n_particles, axis=0)) + ' != ' + str(n_particles[0]*BATCH_SIZE)\
+    #        + ' | ' + str(ids)
+    particles = particles[:, :all_particles]
     # Assemble the state by adding forces, torques and ids
     # map ids to 0 = first object and 1 = second object such that 
     # taking the mean over the ids makes sense, i.e. that 
@@ -367,7 +371,9 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
         for n_index, n in enumerate(batch_n_particles):
             assert len(n.shape) == 0,  'len(n.shape) = %d, n = %d' % (len(n.shape), n)
             assert ids[batch_index, n_index] not in [-1, 0]
-            particle_ids[batch_index, offset:offset+n, 0] = n_index
+            assert ids[batch_index, n_index] in [23, 24]
+            particle_ids[batch_index, offset:offset+n, 0] = \
+                    0 if ids[batch_index, n_index] == 23 else 1
             particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, n_index]
             if actions[batch_index, n_index, 8] not in [-1, 0]:
                 assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
