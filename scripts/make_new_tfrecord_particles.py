@@ -14,6 +14,7 @@ from multiprocessing import Pool
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
 GRID_DIM = 32
+assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
@@ -429,17 +430,17 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 3))
     for batch, sc in enumerate(sparse_coordinates):
         tmp[batch, 0:sc.shape[0]] = sc[:,0:3]
-    sparse_coordinates = np.array(tmp)
+    sparse_coordinates = np.array(tmp).astype(np.uint8)
     tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 15))
     for batch, sp in enumerate(sparse_particles):
         tmp[batch, 0:sp.shape[0]] = sp
-    sparse_particles = np.array(tmp)
+    sparse_particles = np.array(tmp).astype(np.float32)
     # format
     grid = np.array(grid).astype(np.float16) #TODO USE HALF PRECISION AND NORMALIZE DATA!!!
-    sparse_length = np.array(sparse_length)
-    sparse_shape = np.array(sparse_shape)
-    max_coordinates = np.array(max_coordinates)
-    min_coordinates = np.array(min_coordinates)
+    sparse_length = np.array(sparse_length).astype(np.int32)
+    sparse_shape = np.array(sparse_shape).astype(np.int32)
+    max_coordinates = np.array(max_coordinates).astype(np.float32)
+    min_coordinates = np.array(min_coordinates).astype(np.float32)
     return grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates
 
 def get_batch_data((file_num, bn), with_non_object_images = True):
