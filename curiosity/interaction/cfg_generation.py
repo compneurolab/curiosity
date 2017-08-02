@@ -124,9 +124,11 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 
 def generate_object_there_experience_replay_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
         image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
-        history_len = 1000, do_torque = True, ratio = 1. / .17):
+        history_len = 1000, do_torque = True, ratio = 1. / .17, num_gathered_per_batch = None):
         my_rng = np.random.RandomState(0)
 	act_dim = 8 if do_torque else 5
+	if num_gathered_per_batch is None:
+		num_gathered_per_batch = batch_size / 4
         return {
                 'func' : train.get_batching_data_provider,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(act_dim - 2)]),
@@ -150,7 +152,7 @@ def generate_object_there_experience_replay_provider(force_scaling = 80., room_d
                 'provider_params' : {
                         'batching_fn' : lambda hist : data.obj_there_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size, there_not_there_ratio = ratio),
                         'capacity' : 5,
-                        'gather_per_batch' : batch_size / 4,
+                        'gather_per_batch' : num_gathered_per_batch,
                         'gather_at_beginning' : history_len + state_time_length + 1
                 },
 

@@ -94,17 +94,15 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
 		else:
 			obj_not_there.append(idx)
 	#now to choose
-	chosen = []
 	there_prob = there_not_there_ratio * len(obj_there) / (there_not_there_ratio * len(obj_there) + len(obj_not_there))
-	while len(chosen) < batch_size:
-		there_choice = my_rng.rand()
-		if there_choice < there_prob:
-			proposed_choice = my_rng.choice(obj_there)
-		else:
-			proposed_choice = my_rng.choice(obj_not_there)
-		if not proposed_choice in chosen:
-			chosen.append(proposed_choice)
-        batch = {'recent' : {}}
+	num_there = my_rng.binomial(batch_size, there_prob)
+	if num_there > len(obj_there):
+		num_there = len(obj_there)
+	elif batch_size - num_there > len(obj_not_there):
+		num_there = batch_size - len(obj_not_there)
+	chosen = list(my_rng.choice(obj_there, size = num_there, replace = False))
+	chosen = chosen + list(my_rng.choice(obj_not_there, size = batch_size - num_there, replace = False))
+	batch = {'recent' : {}}
         for k, v in data_lengths.iteritems():
                 if k == 'obs':
                         for k_obs, v_obs in v.iteritems():

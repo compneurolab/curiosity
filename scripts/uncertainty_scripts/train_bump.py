@@ -25,16 +25,28 @@ arch_idx = 0
 opt_idx = 0
 
 which_loss_func = int(sys.argv[5])
-which_batching = int(sys.argv[6])
+num_per_batch_idx = int(sys.argv[6])
 incl_prev_action = int(sys.argv[7])
-which_resolution = int(sys.argv[8])
+mem_idx = int(sys.argv[8])
+sampling_ratio_idx = int(sys.argv[9])
+
+sampling_ratios = [2. / .17, 1. / .17, .5 / .17]
+sampling_ratio = sampling_ratios[sampling_ratio_idx]
 
 image_scales = [(64, 64), (128, 128)]
+which_batching = 1
 
+num_per_batch_options = [8, 32, 64]
+
+num_per_batch = num_per_batch_options[num_per_batch_idx]
+
+history_len_options = [1000, 10000]
+history_len = history_len_options[mem_idx]
+
+which_resolution = 0
 image_scale = image_scales[which_resolution]
 
-
-EXP_ID = 'at_test' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(which_batching) + str(incl_prev_action) + str(which_resolution)
+EXP_ID = 'act_bump' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(num_per_batch_idx) + str(incl_prev_action) + str(mem_idx) + str(sampling_ratio_idx)
 
 one_obj_scene_info = [
         {
@@ -86,9 +98,9 @@ heats = [1., .5, .1, .01, .001]
 heat = heats[heat_idx]
 
 if which_batching == 0:
-	dp_config = cfg_generation.generate_experience_replay_data_provider(batch_size = BATCH_SIZE, image_scale = image_scale, scene_info = one_obj_scene_info, history_len = 1000, do_torque = False)
+	dp_config = cfg_generation.generate_experience_replay_data_provider(batch_size = BATCH_SIZE, image_scale = image_scale, scene_info = one_obj_scene_info, history_len = history_len, do_torque = False)
 else:
-	dp_config = cfg_generation.generate_object_there_experience_replay_provider(batch_size = BATCH_SIZE, image_scale = image_scale, scene_info = one_obj_scene_info, history_len = 1000, do_torque = False, ratio = 2. / .17)
+	dp_config = cfg_generation.generate_object_there_experience_replay_provider(batch_size = BATCH_SIZE, image_scale = image_scale, scene_info = one_obj_scene_info, history_len = history_len, do_torque = False, ratio = 2. / .17, num_gathered_per_batch = num_per_batch)
 
 
 save_params_config = cfg_generation.generate_latent_save_params(EXP_ID, location = 'freud', state_desc = STATE_DESC)
