@@ -14,6 +14,7 @@ from multiprocessing import Pool
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
 GRID_DIM = 32
+OUTPUT_GRID = True
 assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
@@ -22,16 +23,22 @@ NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'objects', 'depths', 'vels', 'vels_curr', 
         'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles'] 
-for k in ['grid', 'sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
+for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
     ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM)) 
 HEIGHT = 128
 WIDTH = 170
 
 MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (GRID_DIM, GRID_DIM, GRID_DIM, 15), (MAX_PARTICLES, 3), (MAX_PARTICLES, 15), (1,), (4,)]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 3), (MAX_PARTICLES, 15), (1,), (4,)]
+
+if OUTPUT_GRID:
+    ATTRIBUTE_NAMES.append('grid_' + str(GRID_DIM))
+    datum_shapes.append((GRID_DIM, GRID_DIM, GRID_DIM, 15))
+
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
+#TODO CREATE META.PKL OUT OF SHAPES!!!
 my_files = [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
 BATCH_SIZE = 256
 NUM_BATCHES = len(my_files[0]['actions']) / 256
@@ -470,7 +477,8 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         reference_ids = get_reference_ids((file_num, bn))
         to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates}
         # add grid data
-        to_ret['grid' + '_' + str(GRID_DIM)] = grid
+        if OUTPUT_GRID:
+            to_ret['grid' + '_' + str(GRID_DIM)] = grid
         to_ret['sparse_coordinates' + '_' + str(GRID_DIM)] = sparse_coordinates
         to_ret['sparse_particles' + '_' + str(GRID_DIM)] = sparse_particles
         to_ret['sparse_length' + '_' + str(GRID_DIM)] = sparse_length
