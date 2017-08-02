@@ -13,18 +13,22 @@ from multiprocessing import Pool
 #SECOND_DATASET_LOCS = ['dataset0', 'dataset1', 'dataset2', 'dataset3']
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
+GRID_DIM = 32
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
 NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'objects', 'depths', 'vels', 'vels_curr', 
-        'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'particles']
+        'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles'] 
+for k in ['grid', 'sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
+    ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM)) 
 HEIGHT = 128
 WIDTH = 170
 
+MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), None]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (GRID_DIM, GRID_DIM, GRID_DIM, 15), (MAX_PARTICLES, 3), (MAX_PARTICLES, 15), (1,), (4,)]
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
 my_files = [h5py.File(loc, 'r') for loc in SECOND_DATASET_LOCS]
@@ -32,7 +36,7 @@ BATCH_SIZE = 256
 NUM_BATCHES = len(my_files[0]['actions']) / 256
 
 OTHER_CAM_ROT = np.array([[1., 0., 0.], [0., np.cos(np.pi / 6.), np.sin(np.pi / 6.)], [0., - np.sin(np.pi / 6.), np.cos(np.pi / 6.)]])
-OTHER_CAM_POS = np.array([0., 10, 0.]) #TODO Shouldn't this be 10?
+OTHER_CAM_POS = np.array([0., 0.5, 0.]) #TODO Shouldn't this be 10?
 MY_CM_CENTER = np.array([HEIGHT / 2., WIDTH / 2.])
 MY_F = np.diag([-134., 136.])
 
@@ -275,10 +279,19 @@ def get_actions(actions, coordinate_transformations):
                 if 'actions' in act and len(act['actions']) and 'teleport_to' not in act['actions'][0]:
 			fr_act_data = []
 			for act_data in act['actions']:
-                        	force = transform_to_local(act_data['force'], rot_mat)
-                        	torque = transform_to_local(act_data['torque'], rot_mat)
-                        	force2 = transform_to_local(force, OTHER_CAM_ROT)
-                        	torque2 = transform_to_local(torque, OTHER_CAM_ROT)
+                                if(len(act_data['force']) == 0):
+                                    force2 = force = np.array([0,0,0])
+                                else:
+                                    force2 = force = act_data['force']
+                                if(len(act_data['torque']) == 0):
+                                    torque2 = torque = np.array([0,0,0])
+                                else:
+                                    torque2 = torque = act_data['torque']
+                                # TODO: UNCOMMENT THIS IF RELATIVE TO AGENT
+                                #force = transform_to_local(force, rot_mat)
+                        	#torque = transform_to_local(torque, rot_mat)
+                        	#force2 = transform_to_local(force, OTHER_CAM_ROT)
+                        	#torque2 = transform_to_local(torque, OTHER_CAM_ROT)
                         	pos = np.array(act_data['action_pos'])
                         	if len(pos) != 2:
                                 	pos = np.array([-100., -100.])
@@ -326,6 +339,103 @@ def get_reference_ids((file_num, bn)):
             file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
+def create_occupancy_grid(particles, object_data, actions, grid_dim):
+    state_dim = 7 + 6 + 2 #pos, mass, vel, force, torque, 0/1 id, id
+    if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
+        assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
+    else:
+        grid_dim = [grid_dim] * 3
+    grid_dim = np.array(grid_dim).astype(np.int32)
+    grid = np.zeros([BATCH_SIZE] + list(grid_dim) + [state_dim])
+    # create particle state vectors
+    particles = np.reshape(particles, [BATCH_SIZE, particles.shape[1] / 7, 7])
+    object_data = np.array(object_data) #id: 0, num_particles: 13
+    ids = object_data[:, :, 0]
+    n_particles = object_data[:, :, 13].astype(np.int32) / 7
+    actions = np.array(actions)
+    assert (np.sum(n_particles, axis=0) == n_particles[0] * BATCH_SIZE).all(), \
+            '%d != %d' % (np.sum(n_particles, axis=0), n_particles[0] * BATCH_SIZE)
+    particles = particles[:, :np.sum(n_particles[0])]
+    # Assemble the state by adding forces, torques and ids
+    # map ids to 0 = first object and 1 = second object such that 
+    # taking the mean over the ids makes sense, i.e. that 
+    # the mean equals to the part of the voxel that belongs to the second object
+    particle_ids = np.zeros((particles.shape[0], particles.shape[1], 2))
+    particle_actions = np.zeros((particles.shape[0], particles.shape[1], 6))
+    for batch_index, batch_n_particles in enumerate(n_particles):
+        offset = 0
+        for n_index, n in enumerate(batch_n_particles):
+            assert len(n.shape) == 0,  'len(n.shape) = %d, n = %d' % (len(n.shape), n)
+            assert ids[batch_index, n_index] not in [-1, 0]
+            particle_ids[batch_index, offset:offset+n, 0] = n_index
+            particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, n_index]
+            if actions[batch_index, n_index, 8] not in [-1, 0]:
+                assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
+                particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, n_index, 0:6]
+            offset += n
+    states = np.concatenate([particles, particle_actions, particle_ids], axis = -1)
+
+    # create indices for occupancy grid
+    indices = particles[:,:,0:3]
+    max_coordinates = np.amax(indices, axis=1)
+    min_coordinates = np.amin(indices, axis=1)
+    indices = (indices - min_coordinates[:,np.newaxis,:]) / (max_coordinates[:,np.newaxis,:] - min_coordinates[:,np.newaxis,:])
+    indices = np.round(indices * (grid_dim - 1))
+    batch_indices = np.reshape(np.tile(np.arange(BATCH_SIZE)[:,np.newaxis],
+        [1,particles.shape[1]]), [BATCH_SIZE, particles.shape[1], 1])
+    coordinates = np.concatenate([batch_indices, indices], axis=-1).astype(np.int32)
+
+    # melt together points at the same index, if two different object are at the same position, reflect that in the relation grid, and set id to be belonging to both
+    sparse_coordinates = []
+    sparse_particles = []
+    sparse_length = []
+    sparse_shape = []
+    for batch, (batch_coordinates, batch_states) in enumerate(zip(coordinates, states)):
+        particle_coordinates = \
+                [tuple(particle_coordinate) for particle_coordinate in batch_coordinates]
+        sorted_particle_coordinates_indices = sorted(range(len(particle_coordinates)), \
+                key=particle_coordinates.__getitem__)
+        #sorted_particle_coordinates = sorted(particle_coordinates)
+        sorted_particle_coordinates = [particle_coordinates[i] \
+                for i in sorted_particle_coordinates_indices]
+        unique_coordinates, idx_start, counts = np.unique(sorted_particle_coordinates, \
+                return_index=True, return_counts=True, axis=0)
+        identical_coordinates_sets = np.split(sorted_particle_coordinates_indices, \
+                idx_start[1:])
+        # mean position, sum mass, mean velocity, mean force, mean torque, mean ids
+        particle_states = np.array([np.sum(batch_states[particle_coordinate], \
+                axis=0) / counts[i] for i, particle_coordinate in enumerate(identical_coordinates_sets)])
+        particle_states[:,3] *= counts # sum mass 
+        particle_states[:,-1] *= counts # sum real ids, but not binary ones
+        # store data for sparse tensor
+        sparse_coordinates.append(unique_coordinates)
+        sparse_particles.append(particle_states)
+        sparse_length.append([len(sparse_coordinates)])
+        sparse_shape.append(grid.shape[1:])
+
+        # fill grid
+        grid[unique_coordinates[:,0], \
+             unique_coordinates[:,1], \
+             unique_coordinates[:,2], \
+             unique_coordinates[:,3]] = particle_states
+
+    # pad with zeros
+    tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 3))
+    for batch, sc in enumerate(sparse_coordinates):
+        tmp[batch, 0:sc.shape[0]] = sc[:,0:3]
+    sparse_coordinates = np.array(tmp)
+    tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 15))
+    for batch, sp in enumerate(sparse_particles):
+        tmp[batch, 0:sp.shape[0]] = sp
+    sparse_particles = np.array(tmp)
+    # format
+    grid = np.array(grid).astype(np.float16) #TODO USE HALF PRECISION AND NORMALIZE DATA!!!
+    sparse_length = np.array(sparse_length)
+    sparse_shape = np.array(sparse_shape)
+    max_coordinates = np.array(max_coordinates)
+    min_coordinates = np.array(min_coordinates)
+    return grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates
+
 def get_batch_data((file_num, bn), with_non_object_images = True):
         f = my_files[file_num]
         start = time.time()
@@ -337,7 +447,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
                 vels_curr = f['velocities_current1'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 unpadded_particles = f['particles'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
                 #pad particles with zeros to 10,000 * 7 dim
-                particles = np.zeros((BATCH_SIZE, 10000 * 7))
+                particles = np.zeros((BATCH_SIZE, MAX_PARTICLES * 7))
                 for p_index, p in enumerate(unpadded_particles):
                     particles[p_index,:p.shape[0]] = p
 
@@ -348,16 +458,24 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
         actions = get_actions(actions_raw, coordinate_transformations)
         object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
+        grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates = create_occupancy_grid(particles, object_data, actions, GRID_DIM)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
-        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles}
+        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates}
+        # add grid data
+        to_ret['grid' + '_' + str(GRID_DIM)] = grid
+        to_ret['sparse_coordinates' + '_' + str(GRID_DIM)] = sparse_coordinates
+        to_ret['sparse_particles' + '_' + str(GRID_DIM)] = sparse_particles
+        to_ret['sparse_length' + '_' + str(GRID_DIM)] = sparse_length
+        to_ret['sparse_shape' + '_' + str(GRID_DIM)] = sparse_shape
+
         if with_non_object_images:
-                to_ret.update({'images' : images})
+            to_ret.update({'images' : images})
         to_ret.update(indicators)
-        ATTRIBUTE_SHAPES['particles'] = particles[0].shape
         for i in range(BATCH_SIZE):
             for k in to_ret:
-                assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
+                if ATTRIBUTE_SHAPES[k] is not None:
+                    assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
         return to_ret
 
 def remove_frames(data):
@@ -396,7 +514,7 @@ def write_in_thread((file_num, batches, write_path, prefix)):
         for i, output_file in enumerate(output_files):
             if os.path.isfile(output_file):
                 print('Skipping file %s' % output_file)
-                return 
+                continue 
     writers = dict((attr_name, tf.python_io.TFRecordWriter(file_name)) \
             for (attr_name, file_name) in zip(ATTRIBUTE_NAMES, output_files))
 
