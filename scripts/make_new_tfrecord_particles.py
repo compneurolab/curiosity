@@ -192,8 +192,7 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
         action_ids = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
         retval = []
         for (frame_act_ids, frame_observed_objects) in zip(action_ids, observed_objects):
-                other_obj_ids = [i for i in [f[1] for f in frame_observed_objects] if i not in frame_act_ids and i != -1 and \
-                        [s for s in frame_observed_objects if s[1] == i][0][4] == False]
+                other_obj_ids = [i for i in frame_observed_objects if i not in frame_act_ids and i != -1 and frame_observed_objects[i][4] == False]
                 if None not in frame_act_ids:
                     if len(other_obj_ids) < 1:
                         if LAST_both_ids is None:
@@ -225,8 +224,8 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
         Data: id, pose, position, center of mass in image frame
         '''
         #TODO: rotate to agent frame
-        #observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
-        observed_objects = [[o for o in info['observed_objects'] if not o[4]] for info in worldinfos]
+        observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
+        original_id_order = np.array([[int(o[1]) for o in info['observed_objects'] if not o[4]] for info in worldinfos])
         ids_to_include = get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
         ret_list = []
         is_object_there = []
@@ -242,14 +241,12 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
                                 obj_data = [np.array([-1.]).astype(np.float32)]
                         else:
                                 obj_data = [np.array([idx])]
-                        if idx is None or idx not in [f[1] for f in frame_obs_objects]:
+                        if idx is None or idx not in frame_obs_objects:
                                 obj_data.append(np.zeros(13))
                                 frame_obj_there_data.append(0)
                                 frame_obj_in_view_data.append(0)
                         else:
-                                o = [f for f in frame_obs_objects if f[1] == idx]
-                                assert len(o) == 1
-                                o = o[0]
+                                o = frame_obs_objects[idx]
                                 pose = quat_mult(q_rot, np.array(o[3]))
                                 pose2 = quat_mult(OTHER_CAM_QUAT, pose)
                                 obj_data.append(pose2)
@@ -275,7 +272,7 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
                 is_object_in_view.append(np.array(frame_obj_in_view_data).astype(np.int32))
                 frame_data = np.array(frame_data).astype(np.float32)
                 ret_list.append(frame_data)
-        return ret_list, is_object_there, is_object_in_view
+        return ret_list, is_object_there, is_object_in_view, original_id_order
 
 def get_agent_data(worldinfos):
         '''returns num_frames x dim_data
@@ -353,7 +350,7 @@ def get_reference_ids((file_num, bn)):
             file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
-def create_occupancy_grid(particles, object_data, actions, grid_dim):
+def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
     state_dim = 7 + 6 + 2 #pos, mass, vel, force, torque, 0/1 id, id
     if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
         assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
@@ -380,6 +377,27 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     # the mean equals to the part of the voxel that belongs to the second object
     particle_ids = np.zeros((particles.shape[0], particles.shape[1], 2))
     particle_actions = np.zeros((particles.shape[0], particles.shape[1], 6))
+    for batch_index, batch_id_order in enumerate(original_id_order):
+        offset = 0
+        for i_index, i in enumerate(batch_id_order):
+            assert len(i.shape) == 0, 'len(i.shape) = %d, i = %d' % (len(i.shape), i)
+            idx = -1
+            # as the order of the items in object_data and actions doesn't agree with the particle order we need to correct the order here
+            for obj_id_idx, obj_id in enumerate(ids[batch_index]):
+                if obj_id == i:
+                    idx = obj_id_idx
+                    break
+            assert idx != -1
+            assert ids[batch_index, idx] not in [-1, 0]
+            assert ids[batch_index, idx] in [23, 24]
+            n = n_particles[batch_index, idx]
+            particle_ids[batch_index, offset:offset+n, 0] = idx
+            particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, idx]
+            if actions[batch_index, idx, 8] not in [-1, 0]:
+                assert ids[batch_index, idx] == actions[batch_index, idx, 8]
+                particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, idx, 0:6]
+            offset += n
+    '''
     for batch_index, batch_n_particles in enumerate(n_particles):
         offset = 0
         for n_index, n in enumerate(batch_n_particles):
@@ -392,6 +410,7 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
                 assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
                 particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, n_index, 0:6]
             offset += n
+    '''
     states = np.concatenate([particles, particle_actions, particle_ids], axis = -1)
 
     # create indices for occupancy grid
@@ -478,8 +497,8 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
         coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
         actions = get_actions(actions_raw, coordinate_transformations)
-        object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
-        grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates = create_occupancy_grid(particles, object_data, actions, GRID_DIM)
+        object_data, is_object_there, is_object_in_view, original_id_order = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
+        grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates = create_occupancy_grid(particles, object_data, original_id_order, actions, GRID_DIM)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
         to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates}
