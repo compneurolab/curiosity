@@ -513,6 +513,105 @@ def reverse_projection(inputs, P):
         inputs = tf.reduce_max(inputs, axis=3, keep_dims=True)
         return tf.maximum(0, inputs)
 
+def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None,
+        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
+    with tf.device('/gpu:%d' % gpu_id):
+        # rescale inputs to be divisible by 8
+        rinputs = {}
+        pd = 3 #padding 3
+        nh = 32 #new height 64
+        nw = 44 #new width 88
+        nd = 32 #new depth 64
+        #world coordinates! in contrast to above screen coordinates!
+        input_grid_dim = 32
+        discretization_shape = np.array([input_grid_dim, input_grid_dim, input_grid_dim]) 
+        for k in inputs:
+            if k in ['depths', 'objects', 'vels', 'accs', 'jerks',
+                    'vels_curr', 'accs_curr', 'actions_map', 'segmentation_map']:
+                rinputs[k] = tf.pad(inputs[k],
+                        [[0,0], [0,0], [0,0], [pd,pd], [0,0]], "CONSTANT")
+                # RESIZING IMAGES
+                rinputs[k] = tf.unstack(rinputs[k], axis=1)
+                for i, _ in enumerate(rinputs[k]):
+                    rinputs[k][i] = tf.image.resize_images(rinputs[k][i], [nh, nw])
+                rinputs[k] = tf.stack(rinputs[k], axis=1)
+            else:
+                rinputs[k] = inputs[k]
+
+       # preprocess input data
+        BATCH_SIZE, time_seen, height, width = \
+                rinputs['depths'].get_shape().as_list()[:4]
+        assert time_seen == 3, 'Wrong input data time'
+        time_seen -= 1
+        base_net = fp_base.ShortLongFuturePredictionBase(
+                rinputs, store_jerk = False,
+                normalization_method = normalization_method,
+                time_seen = time_seen, stats_file = stats_file,
+                scale_down_height = None,
+                scale_down_width = None,
+                add_depth_gaussian = False,
+                add_gaussians = False,
+                get_hacky_segmentation_map = True, #TODO HACKY only use six dataset!!!
+                get_actions_map = True,
+                norm_depths=False,
+                use_particles=True,
+                grid_dim=input_grid_dim)
+        inputs = base_net.inputs
+
+        grids = inputs['sparse_grids_per_time']
+        grid = tf.sparse_tensor_to_dense(grids[0])
+        grid = tf.cast(tf.minimum(grid, 65504), tf.float32)[:,:,:,:,6]
+        grid32 = tf.cast(inputs['grid'], tf.float32)[:,0,:,:,:,6]
+        #grid = tf.cast(tf.greater(grid, 0), tf.int32)
+        #grid32 = tf.cast(tf.greater(grid32, 0), tf.int32)
+        delta = tf.reduce_sum(grid32 - grid) 
+        delta = tf.Print(delta, [delta], message='delta=')
+
+        #num_particles_per_object = inputs['num_particles_per_object']
+        #batch_size, time_dim, max_num_particles, state_dim = particles.get_shape().as_list() 
+
+        '''
+        min_coordinates = []
+        max_coordinates = []
+        #across particles
+        for coordinate in range(3):
+            min_coordinates.append(tf.reduce_min(particles[:,0:2,:,coordinate], axis=2))
+            max_coordinates.append(tf.reduce_max(particles[:,0:2,:,coordinate], axis=2))
+        #across time
+        for coordinate in range(3):
+            min_coordinates[coordinate] = tf.reduce_min(min_coordinates[coordinate], axis=1)
+            max_coordinates[coordinate] = tf.reduce_max(max_coordinates[coordinate], axis=1)
+        min_coordinates = tf.reshape(tf.stack(min_coordinates, axis=-1), [-1, 1, 1, 3])
+        max_coordinates = tf.reshape(tf.stack(max_coordinates, axis=-1), [-1, 1, 1, 3])
+        particle_coordinates = (particles[:,:,:,0:3] - min_coordinates) / (max_coordinates - min_coordinates)
+        particle_indices = tf.cast(tf.round(particle_coordinates * (discretization_shape - 1)), tf.int32)
+        '''
+
+        tester = delta
+        output = tf.cast(tester, tf.float32) * tf.get_variable(name='dummy', shape=[1],
+                initializer=tf.constant_initializer(0), dtype=tf.float32)
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
+
+        retval = {
+                'output': output,
+                #'pred_vel_flat': pred_vel_flat,
+                #'pred_vel': pred_vel,
+                #'state': state_grid,
+                #'next_vel': next_vel_grid,
+                #'relation_same': relations_same[0],
+                #'relation_solid': relations_solid[0],
+                #'bypasses': bypass_nodes,
+                }
+        retval.update(base_net.inputs)
+        print('------NETWORK END-----')
+        print('------BYPASSES-------')
+        #for i, node in enumerate(bypass_nodes[0]):
+        #    print(i, bypass_nodes[0][i])
+        return retval, m.params
+
+
 def particle_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
@@ -1805,6 +1904,9 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs))]
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
+
+def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
+    return [tf.nn.l2_loss(outputs['output'])]
 
 def particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     state = outputs['state']
