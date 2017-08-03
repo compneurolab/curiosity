@@ -192,7 +192,8 @@ def get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
         action_ids = [[idx] for idx in get_acted_ids(actions, subset_indicators)]
         retval = []
         for (frame_act_ids, frame_observed_objects) in zip(action_ids, observed_objects):
-                other_obj_ids = [i for i in frame_observed_objects if i not in frame_act_ids and i != -1 and frame_observed_objects[i][4] == False]
+                other_obj_ids = [i for i in [f[1] for f in frame_observed_objects] if i not in frame_act_ids and i != -1 and \
+                        [s for s in frame_observed_objects if s[1] == i][0][4] == False]
                 if None not in frame_act_ids:
                     if len(other_obj_ids) < 1:
                         if LAST_both_ids is None:
@@ -224,7 +225,8 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
         Data: id, pose, position, center of mass in image frame
         '''
         #TODO: rotate to agent frame
-        observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
+        #observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
+        observed_objects = [[o for o in info['observed_objects'] if not o[4]] for info in worldinfos]
         ids_to_include = get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
         ret_list = []
         is_object_there = []
@@ -240,12 +242,14 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
                                 obj_data = [np.array([-1.]).astype(np.float32)]
                         else:
                                 obj_data = [np.array([idx])]
-                        if idx is None or idx not in frame_obs_objects:
+                        if idx is None or idx not in [f[1] for f in frame_obs_objects]:
                                 obj_data.append(np.zeros(13))
                                 frame_obj_there_data.append(0)
                                 frame_obj_in_view_data.append(0)
                         else:
-                                o = frame_obs_objects[idx]
+                                o = [f for f in frame_obs_objects if f[1] == idx]
+                                assert len(o) == 1
+                                o = o[0]
                                 pose = quat_mult(q_rot, np.array(o[3]))
                                 pose2 = quat_mult(OTHER_CAM_QUAT, pose)
                                 obj_data.append(pose2)
@@ -382,8 +386,7 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
             assert len(n.shape) == 0,  'len(n.shape) = %d, n = %d' % (len(n.shape), n)
             assert ids[batch_index, n_index] not in [-1, 0]
             assert ids[batch_index, n_index] in [23, 24]
-            particle_ids[batch_index, offset:offset+n, 0] = \
-                    0 if ids[batch_index, n_index] == 23 else 1
+            particle_ids[batch_index, offset:offset+n, 0] = n_index
             particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, n_index]
             if actions[batch_index, n_index, 8] not in [-1, 0]:
                 assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
