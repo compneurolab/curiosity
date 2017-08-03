@@ -438,7 +438,7 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     # pad with zeros
     tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 3))
     for batch, sc in enumerate(sparse_coordinates):
-        tmp[batch, 0:sc.shape[0]] = sc[:,0:3]
+        tmp[batch, 0:sc.shape[0]] = sc[:,1:4]
     sparse_coordinates = np.array(tmp).astype(np.uint8)
     tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 15))
     for batch, sp in enumerate(sparse_particles):
@@ -491,7 +491,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
             to_ret.update({'images' : images})
         to_ret.update(indicators)
         for i in range(BATCH_SIZE):
-            for k in to_ret:
+            for k in ATTRIBUTE_SHAPES:
                 if ATTRIBUTE_SHAPES[k] is not None:
                     assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
         return to_ret
