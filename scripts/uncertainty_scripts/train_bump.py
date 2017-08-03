@@ -29,6 +29,8 @@ num_per_batch_idx = int(sys.argv[6])
 incl_prev_action = int(sys.argv[7])
 mem_idx = int(sys.argv[8])
 sampling_ratio_idx = int(sys.argv[9])
+optimizer_idx = int(sys.argv[10])
+
 
 sampling_ratios = [2. / .17, 1. / .17, .5 / .17]
 sampling_ratio = sampling_ratios[sampling_ratio_idx]
@@ -40,13 +42,13 @@ num_per_batch_options = [8, 32, 64]
 
 num_per_batch = num_per_batch_options[num_per_batch_idx]
 
-history_len_options = [1000, 10000]
+history_len_options = [1000, 10000, 50000]
 history_len = history_len_options[mem_idx]
 
 which_resolution = 0
 image_scale = image_scales[which_resolution]
 
-EXP_ID = 'act_bump' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(num_per_batch_idx) + str(incl_prev_action) + str(mem_idx) + str(sampling_ratio_idx)
+EXP_ID = 'act_bump' + str(lr_idx) + str(mix_idx) + str(heat_idx) + str(which_loss_func) + str(num_per_batch_idx) + str(incl_prev_action) + str(mem_idx) + str(sampling_ratio_idx) + str(optimizer_idx) 
 
 one_obj_scene_info = [
         {
@@ -128,6 +130,36 @@ updater_params = {
 model_cfg = cfg_generation.generate_latent_model_cfg(world_cfg = wm_cfg, uncertainty_cfg = um_cfg)
 
 params = cfg_generation.generate_latent_standards(model_cfg = model_cfg, learning_rate = lr, optimizer_class = opt)
+
+if optimizer_idx == 1:
+	optimizer_class = tf.train.MomentumOptimizer
+	params['optimizer_params'] = {
+		'world_model' : {
+			'act_model' : {
+				'func': optimizer.ClipOptimizer,
+				'optimizer_class': optimizer_class,
+				'clip': True,
+				'momentum' : .9
+			},
+			'fut_model' : {
+                                'func': optimizer.ClipOptimizer,
+                                'optimizer_class': optimizer_class,
+                                'clip': True,
+				'momentum' : .9
+                }
+		},
+		'uncertainty_model' : {
+			'func': optimizer.ClipOptimizer,
+			'optimizer_class': optimizer_class,
+			'clip': True,
+			'momentum' : .9
+		}
+
+	}
+ 
+
+
+
 
 params.update(save_params_config)
 

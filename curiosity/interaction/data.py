@@ -228,10 +228,10 @@ class BSInteractiveDataProvider(threading.Thread):
 		while True:
 			history = next(yielded)
 			batch = self.batching_fn(history)
-			self.queue.put(batch, timeout = 600.0)
+			self.queue.put(batch, timeout = 5000.0)
 
 	def dequeue_batch(self):
-		return self.queue.get(timeout = 600.0)
+		return self.queue.get(timeout = 5000.0)
 
 	def run_env(self):
 		#initialize counters
