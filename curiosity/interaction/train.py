@@ -97,6 +97,58 @@ LATENT_WHAT_TO_SAVE_PARAMS = {
 
 
 
+def get_session(gpu_params):
+	log_device_placement = gpu_params.get('log_device_placement', False)
+	inter_op_parallelism_threads = gpu_params.get('inter_op_parallelism_threads', 40)
+	allow_growth = gpu_params.get('allow_growth', True)
+	per_process_gpu_memory_fraction = gpu_params.get('per_process_gpu_memory_fraction')
+	config = tf.ConfigProto(allow_soft_placement = True,
+                log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
+        if allow_growth:
+                #including this weird conditional because I'm running into a weird bug
+                config.gpu_options.allow_growth = allow_growth
+        if per_process_gpu_memory_fraction is not None:
+                print('limiting mem fraction')
+                config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
+        sess = tf.Session(config = config)
+	return sess
+
+
+
+def test_from_params(
+		save_params,
+		load_params,
+		model_params,
+		validate_params,
+		data_params,
+		gpu_params = {}
+		):
+	model_cfg = model_params['cfg']
+	models_constructor = model_params['func']
+	models = models_constructor(model_cfg)
+	
+	action_model = models[model_params['action_model_desc']]
+	
+	data_provider = data_params['func'](data_params, model_params, action_model)
+	
+	validater = validate_params['func'](models, data_provider, ** validate_params['kwargs'])
+	params = {'save_params' : save_params,
+		'load_params' : load_params,
+		'model_params' : model_params,
+		'validate_params' : validate_params,
+		'data_params' : data_params,
+		'gpu_params' : gpu_params
+		}
+
+	sess = get_session(gpu_params)
+	dbinterface = base.DBInterface(sess = sess, global_step = validater.global_step, params = params, save_params = save_params, load_params = load_params)
+
+        dbinterface.initialize()
+        data_provider.start_runner(sess)
+
+	test(sess, validater, dbinterface)
+
+
 
 def train_from_params(
 		save_params,
