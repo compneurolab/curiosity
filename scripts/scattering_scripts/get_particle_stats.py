@@ -12,7 +12,7 @@ import numpy as np
 import cPickle 
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = str(0)
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NUM_BATCHES = 6 * 64
 BATCH_SIZE = 256.
