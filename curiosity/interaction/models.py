@@ -1089,13 +1089,14 @@ class UncertaintyModel:
         with tf.variable_scope(um_scope):
             m = ConvNetwithBypasses()
             self.action_sample = ac = world_model.action[:, -1]
+            self.s_i = x = world_model.s_i
             if cfg.get('only_model_ego', False):
                 ac = ac[:, :2]
             self.true_loss = tr_loss = cfg['wm_loss']['func'](world_model, **cfg['wm_loss']['kwargs'])
             if cfg.get('use_world_encoding', False):
                 self.encoded = x = world_model.encoding_i
             else:
-                self.s_i = x = world_model.s_i
+                x = self.s_i
                 x = postprocess_depths(x)
                 #concatenate temporal dimension into channels
                 x = tf_concat([x[:, i] for i in range(x.get_shape().as_list()[1])], 3)

@@ -39,6 +39,8 @@ parser.add_argument('--ratio', default = 2 / .17, type = float)
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'umtries'
 NUM_BATCHES_PER_EPOCH = 1e8
+IMAGE_SCALE = (64, 64)
+ACTION_DIM = 5
 
 args = vars(parser.parse_args())
 
@@ -91,7 +93,8 @@ um_mlp_choices = [
 	},
 	{
 		'num_features' : [50, 50, 1],
-		'nonlinearities' : ['relu', 'relu', 'identity']
+		'nonlinearities' : ['relu', 'relu', 'identity'],
+		'dropout' : [None, None, None]
 	},
 	{
 		'num_features' : [500, 1],
