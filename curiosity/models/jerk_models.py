@@ -540,32 +540,33 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
                 rinputs[k] = inputs[k]
 
        # preprocess input data
-        BATCH_SIZE, time_seen, height, width = \
-                rinputs['depths'].get_shape().as_list()[:4]
+        BATCH_SIZE, time_seen = \
+                rinputs['object_data'].get_shape().as_list()[:2]
         assert time_seen == 3, 'Wrong input data time'
         time_seen -= 1
         base_net = fp_base.ShortLongFuturePredictionBase(
                 rinputs, store_jerk = False,
                 normalization_method = normalization_method,
                 time_seen = time_seen, stats_file = stats_file,
-                scale_down_height = None,
-                scale_down_width = None,
+                scale_down_height = nh,
+                scale_down_width = nw,
                 add_depth_gaussian = False,
                 add_gaussians = False,
-                get_hacky_segmentation_map = True, #TODO HACKY only use six dataset!!!
-                get_actions_map = True,
+                get_hacky_segmentation_map = False, #TODO HACKY only use six dataset!!!
+                get_actions_map = False,
                 norm_depths=False,
                 use_particles=True,
+                normalize_particles={'states': 'minmax', 'actions': 'minmax'},
                 grid_dim=input_grid_dim)
         inputs = base_net.inputs
 
         grids = inputs['sparse_grids_per_time']
         grid = tf.sparse_tensor_to_dense(grids[0])
-        grid = tf.cast(tf.minimum(grid, 65504), tf.float32)[:,:,:,:,6]
-        grid32 = tf.cast(inputs['grid'], tf.float32)[:,0,:,:,:,6]
+        grid = tf.cast(tf.minimum(grid, 65504), tf.float32)[:,:,:,:,0:3]
+        #grid32 = tf.cast(inputs['grid'], tf.float32)[:,0,:,:,:,0:3]
         #grid = tf.cast(tf.greater(grid, 0), tf.int32)
         #grid32 = tf.cast(tf.greater(grid32, 0), tf.int32)
-        delta = tf.reduce_sum(grid32 - grid) 
+        delta = tf.reduce_sum(grid) 
         delta = tf.Print(delta, [delta], message='delta=')
 
         #num_particles_per_object = inputs['num_particles_per_object']

@@ -200,7 +200,8 @@ class ShortLongFuturePredictionBase:
                 get_hacky_segmentation_map = False,
                 norm_depths = True,
                 use_particles = False,
-                grid_dim=32,
+                normalize_particles = None,
+                grid_dim = 32,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -217,10 +218,12 @@ class ShortLongFuturePredictionBase:
         else:
             screen_normalize = False
 
+        self.stats = None
         if self.normalization_method is not None:
             if stats_file is not None:
             	normalization = tb.Normalizer(stats_file, self.normalization_method)
             	normed_inputs = normalization.normalize(inputs)
+                self.stats = normalization._stats
             else:
 		raise Exception('Not implememted!')
 
@@ -237,7 +240,9 @@ class ShortLongFuturePredictionBase:
             img_height = im_sh[2]
             img_width = im_sh[3]
 	else:
-	    assert img_height is not None and img_width is not None
+            img_height = scale_down_height
+            img_width = scale_down_width
+	assert img_height is not None and img_width is not None
 
         if add_gaussians:
             gaussians = []
@@ -365,6 +370,7 @@ class ShortLongFuturePredictionBase:
 
         # create segmented action maps
 	if get_actions_map or get_segmentation or get_hacky_segmentation_map:
+                assert 'objects' in inputs_not_normed, 'to use get_actions_map, get_segmentation or get_hacky_segmentation_map \'objects\' needs to be provided in the input'
         	objects = tf.cast(inputs_not_normed['objects'], tf.int32)
         	shape = objects.get_shape().as_list()
         	objects = tf.unstack(objects, axis=len(shape)-1)
@@ -411,6 +417,28 @@ class ShortLongFuturePredictionBase:
             for time_step, (sparse_particles, sparse_coordinates, sparse_shape) in \
                     enumerate(zip(sparse_particles_all_times, sparse_coordinates_all_times, sparse_shape_all_times)):
                 batch_size, num_particles, feature_size = sparse_particles.get_shape().as_list()
+                # normalize particles if requested
+                if normalize_particles is not None:
+                    assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+                    if normalize_particles['states'] == 'minmax':
+                        minimum = self.stats['particles']['min'][:,0:7]; maximum = self.stats['particles']['max'][:,0:7]
+                        normalized_states = (sparse_particles[:,:,0:7] - minimum) / (maximum - minimum)
+                    elif normalize_particles['states'] == 'standard':
+                        mean = self.stats['particles']['mean'][:,0:7]; std = self.stats['particles']['std'][:,0:7]; eps = 1e-4
+                        normalized_states = (sparse_particles[:,:,0:7] - mean) / (std + eps)
+                    else:
+                        raise KeyError('Unknown normalization method for particle states')
+
+                    if normalize_particles['actions'] == 'minmax':
+                        minimum = self.stats['actions']['min'][0,0:6]; maximum = self.stats['actions']['max'][0,0:6]
+                        normalized_actions = (sparse_particles[:,:,7:13] - minimum) / (maximum - minimum)
+                    elif normalize_particles['actions'] == 'standard':
+                        mean = self.stats['actions']['mean'][0,0:6]; std = self.stats['actions']['std'][0,0:6]; eps = 1e-4
+                        normalized_actions = (sparse_particles[:,:,7:13] - mean) / (std + eps)
+                    else:
+                        raise KeyError('Unknown normalization method for particle actions')
+                    sparse_particles = tf.concat([normalized_states, normalized_actions, sparse_particles[:,:,13:15]], axis=-1)    
+
                 # flatten particles across batch
                 sparse_particles = tf.reshape(sparse_particles, [-1])
                 # add batch and feature dimensions and flatten coordinates across batch
