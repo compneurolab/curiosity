@@ -397,20 +397,6 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
                 assert ids[batch_index, idx] == actions[batch_index, idx, 8]
                 particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, idx, 0:6]
             offset += n
-    '''
-    for batch_index, batch_n_particles in enumerate(n_particles):
-        offset = 0
-        for n_index, n in enumerate(batch_n_particles):
-            assert len(n.shape) == 0,  'len(n.shape) = %d, n = %d' % (len(n.shape), n)
-            assert ids[batch_index, n_index] not in [-1, 0]
-            assert ids[batch_index, n_index] in [23, 24]
-            particle_ids[batch_index, offset:offset+n, 0] = n_index
-            particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, n_index]
-            if actions[batch_index, n_index, 8] not in [-1, 0]:
-                assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
-                particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, n_index, 0:6]
-            offset += n
-    '''
     states = np.concatenate([particles, particle_actions, particle_ids], axis = -1)
 
     # create indices for occupancy grid
@@ -444,6 +430,7 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
         particle_states = np.array([np.sum(batch_states[particle_coordinate], \
                 axis=0) / counts[i] for i, particle_coordinate in enumerate(identical_coordinates_sets)])
         particle_states[:,3] *= counts # sum mass 
+        particle_states[:,-2] += 1 # add 1 to distinguish from empty pixels -> range: [1,2]
         particle_states[:,-1] *= counts # sum real ids, but not binary ones
         # store data for sparse tensor
         sparse_coordinates.append(unique_coordinates)
