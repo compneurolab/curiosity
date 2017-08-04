@@ -224,27 +224,18 @@ class LatentUncertaintyUpdater:
 		self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
 		act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
 		fut_opt_params, fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.global_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
-		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'])
+		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
 		self.global_step = self.global_step / 3
-		if updater_params is None:
-			mixed_loss_weighting = None
-		else:
-			mixed_loss_weighting = updater_params.get('mixed_loss_weighting')
-		if mixed_loss_weighting is None:
-			loss_per_example = self.wm.fut_loss_per_example
-		else:
-			print('Using mixed losses! ' +  str(mixed_loss_weighting['action']) + ' ' + str(mixed_loss_weighting['future']))
-			loss_per_example = mixed_loss_weighting['action'] * self.wm.act_loss_per_example + mixed_loss_weighting['future'] * self.wm.fut_loss_per_example
-		self.wm_targets = {'encoding_i' : self.wm.encoding_i, 'encoding_f' : self.wm.encoding_f,  
+		self.targets = {'encoding_i' : self.wm.encoding_i, 'encoding_f' : self.wm.encoding_f,  
 						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
 						'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt, 
 						'act_lr' : act_lr, 'fut_lr' : fut_lr,
-						'fut_loss' : self.wm.fut_loss, 'loss_per_example' : loss_per_example, 'act_loss' : self.wm.act_loss
+						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss
 						}
-		self.um_targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 'global_step' : self.global_step}
+		self.targets.update({'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 
+						'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss})
+		self.state_desc = updater_params['state_desc']
 		#checking that we don't have repeat names
-		for k in self.wm_targets:
-			assert k not in self.um_targets, k
 
 	def start(self, sess):
 		self.data_provider.start_runner(sess)
@@ -252,22 +243,14 @@ class LatentUncertaintyUpdater:
 
 	def update(self, sess, visualize = False):
 		batch = self.data_provider.dequeue_batch()
-		state_desc = self.um.state_descriptor
+		state_desc = self.state_desc
 		#depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
-		wm_feed_dict = {
+		feed_dict = {
 			self.wm.states : batch[state_desc],
 			self.wm.action : batch['action'],
 			self.wm.action_post : batch['action_post']
 		}
-		wm_res = sess.run(self.wm_targets, feed_dict = wm_feed_dict)
-		um_feed_dict = {
-			self.um.s_i : batch[state_desc][:, :-1],
-			self.um.action_sample : batch['action'][:, -1],
-			self.um.true_loss : wm_res['loss_per_example']
-		}
-		um_res = sess.run(self.um_targets, feed_dict = um_feed_dict)
-		res = wm_res
-		res.update(um_res)
+		res = sess.run(self.targets, feed_dict = feed_dict)
 		res = self.postprocessor.postprocess(res, batch)
 		return res
 

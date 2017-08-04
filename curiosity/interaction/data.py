@@ -251,7 +251,9 @@ class BSInteractiveDataProvider(threading.Thread):
 					action = None
 				#select action and act on world
 				action_sample = self.action_sampler.sample_actions()
-				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs, full_info = True)
+				state_desc = obs.keys()[0]
+				obs_for_actor = replace_the_nones(obs[state_desc][-2:])
+				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, full_info = True)
 				action = self.policy.act(self.sess, action_sample, obs)
 				obs, msg, action, action_post, other_mem = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
 			
