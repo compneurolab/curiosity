@@ -14,7 +14,7 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
-NUM_BATCHES = 6 * 64
+NUM_BATCHES = 4 * 84
 BATCH_SIZE = 256.
 ATTRIBUTES = ['actions', 'agent_data', 'depths', 'images', 'is_acting', \
         'is_not_dropping', 'is_not_teleporting', 'is_not_waiting', 'is_object_in_view', \
