@@ -54,7 +54,7 @@ def linear(x, size, name, initializer=None, bias_init=0):
 
 class UniformActionSampler:
 	def __init__(self, cfg):
-		self.action_dim = cfg['uncertainty_model']['action_dim']
+		self.action_dim = cfg['world_model']['action_shape'][1]
 		self.num_actions = cfg['uncertainty_model']['n_action_samples']
 		self.rng = np.random.RandomState(cfg['seed'])
 
@@ -1077,8 +1077,8 @@ class MixedUncertaintyModel:
 			#TODO FINISH
 
 
-def get_mixed_loss(world_model, cfg):
-	weighting = cfg['mixed_loss_weighting']
+def get_mixed_loss(world_model, weighting):
+	print(weighting.keys())
 	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
 
 
@@ -1091,14 +1091,14 @@ class UncertaintyModel:
             self.action_sample = ac = world_model.action[:, -1]
             if cfg.get('only_model_ego', False):
                 ac = ac[:, :2]
-            self.true_loss = tr_loss = cfg['get_loss_func'](world_model, cfg)
+            self.true_loss = tr_loss = cfg['wm_loss']['func'](world_model, **cfg['wm_loss']['kwargs'])
             if cfg.get('use_world_encoding', False):
                 self.encoded = x = world_model.encoding_i
             else:
                 self.s_i = x = world_model.s_i
                 x = postprocess_depths(x)
                 #concatenate temporal dimension into channels
-                x = tf_concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
+                x = tf_concat([x[:, i] for i in range(x.get_shape().as_list()[1])], 3)
                 #encode
                 self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             x = flatten(x)
@@ -1114,7 +1114,6 @@ class UncertaintyModel:
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
             self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
-            self.state_descriptor = cfg['state_descriptor']
             self.just_random = False
             if 'just_random' in cfg:
                 self.just_random = True

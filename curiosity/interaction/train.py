@@ -39,7 +39,7 @@ def get_default_models(cfg):
 
 def get_latent_models(cfg):
 	world_model = LatentSpaceWorldModel(cfg['world_model'])
-	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'])
+	uncertainty_model = UncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
 def get_batching_data_provider(data_params, model_params, action_model):
@@ -163,7 +163,6 @@ def train_from_params(
 		inter_op_parallelism_threads = 40,
 		allow_growth = False,
 		per_process_gpu_memory_fraction = None,
-		updater_params = None,
 		postprocessor_params = None
 	):
 	model_cfg = model_params['cfg']
@@ -179,14 +178,14 @@ def train_from_params(
 	else:
 		postprocessor = postprocessor_params['func'](what_to_save_params)
 
-	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = updater_params)
+	updater = train_params['updater_func'](models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = train_params['updater_kwargs'])
 
 	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 
 		'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 
 		'what_to_save_params' : what_to_save_params, 'load_params' : load_params,
 		'data_params' : data_params, 'inter_op_parallelism_threads' : inter_op_parallelism_threads,
 		'allow_growth' : allow_growth, 'per_process_gpu_memory_fraction' : per_process_gpu_memory_fraction,
-		'updater_params' : updater_params, 'postprocessor_params' : postprocessor_params
+		'postprocessor_params' : postprocessor_params
 		}
 
 

@@ -12,6 +12,8 @@ import os
 import numpy as np
 from curiosity.interaction import train, environment, data
 import tensorflow as tf
+import cPickle
+
 
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
@@ -203,6 +205,65 @@ def generate_batching_data_provider(force_scaling = 80.,
 		'do_torque' : do_torque
 	}
 
+
+
+def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1'):
+        if location == 'freud':
+                CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
+        elif location == 'cluster':
+                CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
+        else:
+                raise Exception('Where are we, again?')
+	exps_there_fn = os.path.join(CACHE_ID_PREFIX, 'exps_used.pkl')
+	if not os.path.isfile(exps_there_fn):
+		expids_used = []
+	else:
+		with open(exps_there_fn) as stream:
+			expids_used = cPickle.load(stream)
+	exp_id = None
+	while exp_id is None:
+		proposed = raw_input('Please enter expid: ')
+		proposed = proposed if prefix is None else prefix + '_' + proposed
+		if proposed not in expids_used:
+			expids_used.append(proposed)
+			exp_id = proposed
+	with open(exps_there_fn, 'w') as stream:
+		cPickle.dump(expids_used, stream)
+        CACHE_DIR = os.path.join(CACHE_ID_PREFIX, exp_id)
+        if not os.path.exists(CACHE_DIR):
+                os.mkdir(CACHE_DIR)
+	params = {'save_params' : {     
+                'host' : 'localhost',
+                'port' : 15841,
+                'dbname' : 'uncertain_agent',
+                'collname' : 'uniform_action_latent',
+                'exp_id' : exp_id,
+                'save_valid_freq' : 1000,
+        'save_filters_freq': 60000,
+        'cache_filters_freq': 20000,
+        'save_metrics_freq' : 1000,
+        'save_initial_filters' : False,
+        'cache_dir' : CACHE_DIR,
+        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg', 'recent', 'loss_per_example']
+        }}
+
+        params['load_params'] = {
+                'exp_id' : exp_id,
+                'load_param_dict' : None
+        }
+        params['what_to_save_params'] = {
+                'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example'],
+                'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
+                'big_save_len' : 2,
+                'big_save_freq' : 1000,
+                'state_descriptor' : state_desc
+        }
+        return params
+
+	
+
+
+
 def generate_latent_save_params(exp_id, location = 'freud', state_desc = 'depths1'): 
 	if location == 'freud':
 		CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
@@ -268,6 +329,27 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 					'loss_factor' : loss_factor,
 					'heat' : heat
 				}
+
+
+def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], strides = [2, 1, 2, 1, 2], num_filters = [20, 20, 20, 10, 4], bypass = [None, None, None, None, None], nonlinearity = None):
+	retval = {}
+	if nonlinearity is None:
+		nonlinearity = ['relu' for _ in sizes]
+	assert len(sizes) ==  len(strides) and len(num_filters) == len(strides) and len(bypass) == len(strides)
+	retval[desc + '_depth'] = len(sizes)
+	retval[desc] = {}
+	for i, (sz, stride, nf, byp, nl) in enumerate(zip(sizes, strides, num_filters, bypass, nonlinearity)):
+		retval[desc][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : nf}, 'bypass' : byp, 'nonlinearity' : nl}
+	return retval
+
+def generate_mlp_architecture_cfg(num_features = [20, 1], dropout = [None, None], nonlinearities = ['relu', 'identity']):
+	retval = {}
+	assert len(num_features) == len(dropout) and len(dropout) == len(nonlinearities)
+	retval['hidden_depth'] = len(num_features)
+	retval['hidden'] = {}
+	for i, (nf, drop, nl) in enumerate(zip(num_features, dropout, nonlinearities)):
+		retval['hidden'][i + 1] = {'num_features' : nf, 'dropout' : drop, 'activation' : nl}
+	return retval
 
 def generate_latent_marioish_world_model_cfg(state_time_length = 2, image_shape = (64, 64), action_dim = 8, act_loss_factor = 1., fut_loss_factor = 1.,
 				encode_deets = {'sizes' : [3, 3, 3, 3], 'strides' : [2, 2, 2, 2], 'nf' : [32, 32, 32, 32]},
