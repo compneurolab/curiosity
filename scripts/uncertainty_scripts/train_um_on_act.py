@@ -37,8 +37,6 @@ parser.add_argument('--historylen', default = 1000, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
 
 N_ACTION_SAMPLES = 1000
-ACTION_DIM = 5
-IMAGE_SCALE = (64, 64)
 EXP_ID_PREFIX = 'umtries'
 NUM_BATCHES_PER_EPOCH = 1e8
 
@@ -88,15 +86,15 @@ um_encoding_choices = [
 um_mlp_choices = [
 	{}, #default
 	{
-		'num_filters' : [100, 1],
+		'num_features' : [100, 1],
 		'nonlinearities' : ['relu', 'identity']
 	},
 	{
-		'num_filters' : [50, 50, 1],
+		'num_features' : [50, 50, 1],
 		'nonlinearities' : ['relu', 'relu', 'identity']
 	},
 	{
-		'num_filters' : [500, 1],
+		'num_features' : [500, 1],
 		'nonlinearities' : ['relu', 'identity']
 	},
 
