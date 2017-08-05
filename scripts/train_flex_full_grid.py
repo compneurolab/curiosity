@@ -216,7 +216,7 @@ validation_params = [{
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
                     'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                    'sparse_coordinates_32', 'sparse_particles_32', 'sparse_shape_32'],
+                    'grid_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -258,7 +258,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                'sparse_coordinates_32', 'sparse_particles_32', 'sparse_shape_32'],
+                'grid_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
