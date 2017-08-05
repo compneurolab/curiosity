@@ -14,10 +14,20 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
-VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
-#DATA_PATH = '/data/two_world_dataset/new_tfdata'
-#VALDATA_PATH = '/data/two_world_dataset/new_tfvaldata'
+CACHE_NUM = 2
+LOCAL = False
+if LOCAL:
+    DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfdata'
+    VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfvaldata'
+    CACHE_DIR = '/data2/mrowca/cache' + str(CACHE_NUM)
+    STATS_FILE = '/data2/mrowca/datasets/eight_world_dataset/new_stats/stats_std.pkl'
+else:
+    DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
+    VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
+    CACHE_DIR = '/mnt/fs0/mrowca/cache' + str(CACHE_NUM)
+    STATS_FILE = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
+BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
+BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
@@ -26,18 +36,14 @@ TIME_SEEN = 2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 3
 MIN_LEN = 3
-CACHE_DIR = '/mnt/fs0/mrowca/cache4/'
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
-STATS_FILE = '/mnt/fs1/datasets/six_world_dataset/new_stats/stats_std_fixed.pkl'
-BIN_PATH = '/mnt/fs1/datasets/eight_world_dataset/'
-BIN_FILE = '/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['particles_flat3', #'particles_bypass3', 
-'particles_flat',
+EXP_ID = ['flex', 
+'flex_2d',
 'particles_deep', 
 'particles_downsampled']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
@@ -45,11 +51,12 @@ LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
 buckets = 0
 min_particle_distance = 0.01
-CFG = [ 
-        modelsource.particle_flat_cfg(n_classes * 32, nonlin='relu'),
+DEPTH_DIM = 32
+CFG = [
+        modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
+        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         modelsource.particle_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu')
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
@@ -96,7 +103,7 @@ SAVE_TO_GFS = []#['pred_vel_flat', 'reference_ids']
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
-    batch_size = outputs['output'].get_shape().as_list()[0]
+    batch_size = outputs['prediction'].get_shape().as_list()[0]
     retval['loss'] = modelsource.flex_loss( 
             outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
@@ -142,9 +149,9 @@ save_params = [{
     'dbname' : 'future_prediction',
     'collname' : 'particles',
     'exp_id' : EXP_ID[0],
-    'save_valid_freq' : 2000,
+    'save_valid_freq' : 4000,
     'save_filters_freq': 30000,
-    'cache_filters_freq': 2000,
+    'cache_filters_freq': 4000,
     'save_metrics_freq': 200,
     'save_initial_filters' : False,
     'cache_dir' : CACHE_DIR,
@@ -166,7 +173,6 @@ model_params = [{
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
-        #'object_data' : 'screen_normalize', 
         'actions' : 'minmax'},
     'stats_file' : STATS_FILE,
     'image_height' : IMG_HEIGHT,
@@ -208,10 +214,9 @@ validation_params = [{
             'func' : ShortLongSequenceDataProvider,
             'data_path' : VALDATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
-            'long_sources' : ['depths', 'actions', 'objects', 'object_data', \
-                    'reference_ids', 'max_coordinates', 'min_coordinates', \
-                    'grid_32', 'sparse_coordinates_32', 'sparse_particles_32', \
-                    'sparse_length_32', 'sparse_shape_32'],
+            'long_sources' : ['actions', #'depths', 'objects', 
+                    'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
+                    'sparse_coordinates_32', 'sparse_particles_32', 'sparse_shape_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -225,7 +230,7 @@ validation_params = [{
             'is_in_view_subsetting_rule' : 'first_there',
             },
         'queue_params' : {
-            'queue_type' : 'random',
+            'queue_type' : 'fifo',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : SEED,
             'capacity' : MODEL_BATCH_SIZE * 30,
@@ -241,7 +246,7 @@ validation_params = [{
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : 20,
+        'num_steps' : round(256.0 * 12 * 4 / MODEL_BATCH_SIZE),
     },
 }] * N_GPUS
 
@@ -251,10 +256,9 @@ train_params =  {
         'func' : ShortLongSequenceDataProvider,
         'data_path' : DATA_PATH,
         'short_sources' : [], #'depths2', 'normals2', 'images' 
-        'long_sources' : ['depths', 'actions', 'objects', 'object_data', \
-                'reference_ids', 'max_coordinates', 'min_coordinates', \
-                'grid_32', 'sparse_coordinates_32', 'sparse_particles_32', \
-                'sparse_length_32', 'sparse_shape_32'],
+        'long_sources' : ['actions', #'depths', 'objects', 
+                'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
+                'sparse_coordinates_32', 'sparse_particles_32', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
