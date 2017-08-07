@@ -35,6 +35,8 @@ parser.add_argument('--batchsize', default = 32, type = int)
 parser.add_argument('--numperbatch', default = 8, type = int)
 parser.add_argument('--historylen', default = 1000, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
+parser.add_argument('--objsize', default = .4, type = float)
+
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'umtries'
@@ -245,7 +247,7 @@ model_params = {
 one_obj_scene_info = [
         {
         'type' : 'SHAPENET',
-        'scale' : .4,
+        'scale' : args['objsize'],
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
