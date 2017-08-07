@@ -330,7 +330,8 @@ def get_subset_indicators(actions):
         is_not_dropping = []
         is_acting = []
         is_not_teleporting = []
-        assert len(action_types) == BATCH_SIZE
+        if len(action_types) != BATCH_SIZE:
+            raise ValueError('Not enough data. Batch length: %d' % len(action_types))
         for act_type in action_types:
                 not_waiting_now = int('WAIT' not in act_type)
                 not_dropping_now = int('DROPPING' not in act_type)
@@ -424,6 +425,7 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
     states = np.concatenate([particles, particle_actions, particle_ids, next_velocity], \
             axis = -1)
     full_particles[:, :all_particles] = states
+    full_particles = full_particles.astype(np.float32)
 
     # create indices for occupancy grid
     indices = particles[:,:,0:3]
@@ -506,6 +508,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
                 particles = np.zeros((BATCH_SIZE, MAX_PARTICLES * 7))
                 for p_index, p in enumerate(unpadded_particles):
                     particles[p_index,:p.shape[0]] = p
+                particles = particles.astype(np.float32)
 
         actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = [json.loads(act) for act in actions_raw]

@@ -16,10 +16,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NUM_BATCHES = 4 * 84
 BATCH_SIZE = 256.
-ATTRIBUTES = ['actions', 'agent_data', 'depths', 'images', 'is_acting', \
+FILTER = 'is_moving'
+ATTRIBUTES = ['actions', 'agent_data', 'depths', 'images', 'is_acting', 'is_moving', \
         'is_not_dropping', 'is_not_teleporting', 'is_not_waiting', 'is_object_in_view', \
         'is_object_there', 'max_coordinates', 'min_coordinates', 'object_data', \
-        'objects', 'particles', 'reference_ids', 'vels', 'vels_curr']
+        'objects', 'particles', 'full_particles', 'reference_ids', 'vels', 'vels_curr']
 
 STATS_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats.pkl'
 STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
@@ -81,11 +82,16 @@ def update_stats(old_stats, batch_stats, num_batches_seen):
 def get_batch_stats(inputs, key):
     batch_data = inputs[key]
     batch_data = tf.cast(batch_data, tf.float32)
+    if FILTER is not None:
+        f = tf.cast(inputs[FILTER] * tf.expand_dims(tf.range(BATCH_SIZE), 1), tf.int32)
+        f = tf.boolean_mask(f, tf.not_equal(tf.squeeze(f), 0))
+        batch_data = tf.gather(batch_data, tf.squeeze(f))
+        batch_data.set_shape([None] + list(inputs[key].get_shape().as_list()[1:]))
     if key in ['actions']:
         batch_mean = tf.reduce_mean(batch_data, axis = [0,1])
         batch_mean = tf.tile(tf.expand_dims(batch_mean, axis=0), \
                 [tf.shape(batch_data)[1],1])
-    elif key in ['particles']:
+    elif key in ['particles', 'full_particles']:
         batch_mean = tf.reduce_sum(batch_data, axis = [0,1])
         n = tf.reduce_sum(inputs['object_data'][:,:,13] / 7, axis = [0,1])
         batch_mean /= n
@@ -102,7 +108,7 @@ def get_batch_stats(inputs, key):
                 [tf.shape(batch_data)[1],1])
         my_min = tf.tile(tf.expand_dims(my_min, axis=0), \
                 [tf.shape(batch_data)[1],1])
-    elif key in ['particles']:
+    elif key in ['particles', 'full_particles']:
         # process each dimension separately
         batch_data = tf.unstack(batch_data, axis=2)
         my_maxs = []
