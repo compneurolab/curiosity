@@ -31,21 +31,21 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 2
-TIME_SEEN = 2
+MODEL_BATCH_SIZE = 64
+TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 3
-MIN_LEN = 3
+LONG_LEN = 1 #3
+MIN_LEN = 1 #3
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['flex', 
-'flex_2d',
-'particles_deep', 
-'particles_downsampled']
+EXP_ID = ['flex2dBott', 
+'flexBott',
+'flex2d', 
+'flex']
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
@@ -56,7 +56,7 @@ CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
         modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
@@ -147,7 +147,7 @@ save_params = [{
     'host' : 'localhost',
     'port' : 24444,
     'dbname' : 'future_prediction',
-    'collname' : 'particles',
+    'collname' : 'flex',
     'exp_id' : EXP_ID[0],
     'save_valid_freq' : 4000,
     'save_filters_freq': 30000,
@@ -162,7 +162,7 @@ load_params = [{
     'host' : 'localhost',
     'port' : 24444,
     'dbname' : 'future_prediction',
-    'collname': 'particles',
+    'collname': 'flex',
     'exp_id' : EXP_ID[0],
     'do_restore': False,
     'load_query': None

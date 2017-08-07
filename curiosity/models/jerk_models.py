@@ -542,8 +542,10 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
        # preprocess input data
         BATCH_SIZE, time_seen = \
                 rinputs['object_data'].get_shape().as_list()[:2]
-        assert time_seen == 3, 'Wrong input data time'
+        #assert time_seen == 3, 'Wrong input data time'
+        #TODO This is just a dummy value to make ShortLong work
         time_seen -= 1
+
         base_net = fp_base.ShortLongFuturePredictionBase(
                 rinputs, store_jerk = False,
                 normalization_method = normalization_method,
@@ -564,12 +566,12 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
             grids = inputs['sparse_grids_per_time']
             grid = tf.sparse_tensor_to_dense(grids[0])
             #next_grid = tf.sparse_tensor_to_dense(grids[1])
-            next_velocity = tf.sparse_tensor_to_dense(grids[1])[:,:,:,:,15:18]
+            next_velocity = tf.sparse_tensor_to_dense(grids[0])[:,:,:,:,15:18]
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
             grid = grids[:,0]
             #next_grid = grids[:,1]
-            next_velocity = grids[:,1,:,:,:,15:18]
+            next_velocity = grids[:,0,:,:,:,15:18]
 
         #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
         grid = grid[:,:,:,:,0:14] # 3 pos + 1 mass + 3 vel + 3 force + 3 torque + 1 continous id = 14
@@ -577,6 +579,7 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
 
         # encode per time input
         main_input_per_time = [grid]
+        time_seen = 1 + 1 # See TODO below
                 
         # initial bypass, state and external actions
         bypass_nodes = [[grid]]
