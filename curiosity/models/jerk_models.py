@@ -574,7 +574,13 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
             next_velocity = grids[:,0,:,:,:,15:18]
 
         #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
-        grid = grid[:,:,:,:,0:14] # 3 pos + 1 mass + 3 vel + 3 force + 3 torque + 1 continous id = 14
+        #grid = tf.concat([
+        #    grid[:,:,:,:,0:10], # 3 pos + 1 mass + 3 vel + 3 force
+            #grid[:,:,:,:,10:13], # torque #NOTE NO TORQUE SINCE NOT USED AS INPUT!
+            #grid[:,:,:,:,13:14], # 1 continous id NOTE NO RELATIONS USED
+        #   ], axis=-1)
+        grid = grid[:,:,:,:,0:10]
+
         grid.set_shape([BATCH_SIZE, 32, 32, 32, 14])
 
         # encode per time input
