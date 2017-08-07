@@ -54,7 +54,7 @@ def linear(x, size, name, initializer=None, bias_init=0):
 
 class UniformActionSampler:
 	def __init__(self, cfg):
-		self.action_dim = cfg['uncertainty_model']['action_dim']
+		self.action_dim = cfg['world_model']['action_shape'][1]
 		self.num_actions = cfg['uncertainty_model']['n_action_samples']
 		self.rng = np.random.RandomState(cfg['seed'])
 
@@ -1077,21 +1077,31 @@ class MixedUncertaintyModel:
 			#TODO FINISH
 
 
+def get_mixed_loss(world_model, weighting):
+	print(weighting.keys())
+	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
+
+
 
 class UncertaintyModel:
-    def __init__(self, cfg):
+    def __init__(self, cfg, world_model):
 	um_scope = cfg.get('scope_name', 'uncertainty_model')
         with tf.variable_scope(um_scope):
-            self.s_i = x = tf.placeholder(tf.float32, [None] + cfg['state_shape'])
-            self.action_sample = ac = tf.placeholder(tf.float32, [None, cfg['action_dim']])
-            self.num_timesteps = cfg['state_shape'][0]
-            self.true_loss = tr_loss = tf.placeholder(tf.float32, [None])
             m = ConvNetwithBypasses()
-            x = postprocess_depths(x)
-            #concatenate temporal dimension into channels
-            x = tf_concat([x[:, i] for i in range(cfg['state_shape'][0])], 3)
-            #encode
-            self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            self.action_sample = ac = world_model.action[:, -1]
+            self.s_i = x = world_model.s_i
+            if cfg.get('only_model_ego', False):
+                ac = ac[:, :2]
+            self.true_loss = tr_loss = cfg['wm_loss']['func'](world_model, **cfg['wm_loss']['kwargs'])
+            if cfg.get('use_world_encoding', False):
+                self.encoded = x = world_model.encoding_i
+            else:
+                x = self.s_i
+                x = postprocess_depths(x)
+                #concatenate temporal dimension into channels
+                x = tf_concat([x[:, i] for i in range(x.get_shape().as_list()[1])], 3)
+                #encode
+                self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             x = flatten(x)
             x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
             # x = tf.tile(x, [cfg['n_action_samples'], 1])
@@ -1104,32 +1114,25 @@ class UncertaintyModel:
             log_prob = tf.nn.log_softmax(x_tr)
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-            loss_factor = cfg.get('loss_factor', 1.)
-            self.uncertainty_loss = tf.nn.l2_loss(self.estimated_world_loss - self.true_loss) * loss_factor
-            self.state_descriptor = cfg['state_descriptor']
+            self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
             self.just_random = False
             if 'just_random' in cfg:
                 self.just_random = True
             	self.rng = np.random.RandomState(cfg['just_random'])
+        self.var_list = [var for var in tf.global_variables() if um_scope in var.name]
 
-    def act(self, sess, action_sample, state, full_info = False):
-        last_depths = state[self.state_descriptor][-1]#assuming this is always not None, as it should be getting an actual observation
-        depths = state[self.state_descriptor][-2:]
-        depths = [np.zeros(last_depths.shape, dtype = last_depths.dtype) if depth_t is None else depth_t for depth_t in depths]
-        depths_batch = np.array([depths])
-        if full_info:
-            chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.estimated_world_loss], 
+    def act(self, sess, action_sample, state):
+        depths_batch = np.array([state])
+        chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.estimated_world_loss], 
 							feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
-            chosen_idx = chosen_idx[0]
-            if self.just_random:
-                print('random act!')
-                chosen_idx = self.rng.randint(len(action_sample))
-            return action_sample[chosen_idx], entropy, estimated_world_loss
-        chosen_idx = sess.run(self.sample, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})[0]
+        chosen_idx = chosen_idx[0]
         if self.just_random:
             print('random act!')
             chosen_idx = self.rng.randint(len(action_sample))
-        return action_sample[chosen_idx]
+        return action_sample[chosen_idx], entropy, estimated_world_loss
+
+def l2_loss(tv, pred, cfg):
+	return tf.nn.l2_loss(tv - pred) * cfg.get('loss_factor', 1.)
 
 sample_cfg = {
 	'uncertainty_model' : {
