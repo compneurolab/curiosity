@@ -563,11 +563,13 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
         try:
             grids = inputs['sparse_grids_per_time']
             grid = tf.sparse_tensor_to_dense(grids[0])
-            next_grid = tf.sparse_tensor_to_dense(grids[1])
+            #next_grid = tf.sparse_tensor_to_dense(grids[1])
+            next_velocity = tf.sparse_tensor_to_dense(grids[1])[:,:,:,:,15:18]
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
             grid = grids[:,0]
-            next_grid = grids[:,1]
+            #next_grid = grids[:,1]
+            next_velocity = grids[:,1,:,:,:,15:18]
 
         #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
         grid = grid[:,:,:,:,0:14] # 3 pos + 1 mass + 3 vel + 3 force + 3 torque + 1 continous id = 14
@@ -653,7 +655,7 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
 
         retval = {
                 'prediction': encoded_input_main[0],
-                'next_grid': next_grid,
+                'next_velocity': next_velocity,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
                 'bypasses': bypass_nodes,
@@ -1960,7 +1962,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
 def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
-    gt_next_vel = outputs['next_grid'][:,:,:,:,4:7]
+    gt_next_vel = outputs['next_velocity']
     pred_next_vel = outputs['prediction']
     return [tf.reduce_mean(tf.nn.l2_loss(pred_next_vel - gt_next_vel))]
 
