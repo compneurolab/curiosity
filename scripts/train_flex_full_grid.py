@@ -31,7 +31,7 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 64
+MODEL_BATCH_SIZE = 64 #64
 TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 1 #3
@@ -42,10 +42,11 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['flex2dBott', 
-'flexBott',
-'flex2d', 
-'flex']
+EXP_ID = [#'flex2dBott_2', 
+'flexBott_3',
+#'flex2d_2', 
+#'flex_2',
+]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
@@ -54,8 +55,8 @@ min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
+        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
@@ -149,10 +150,10 @@ save_params = [{
     'dbname' : 'future_prediction',
     'collname' : 'flex',
     'exp_id' : EXP_ID[0],
-    'save_valid_freq' : 4000,
-    'save_filters_freq': 30000,
-    'cache_filters_freq': 4000,
-    'save_metrics_freq': 1000,
+    'save_valid_freq' : np.round(256 * 84 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
+    'save_filters_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE * 10).astype(np.int32),
+    'cache_filters_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
+    'save_metrics_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE / 10).astype(np.int32),
     'save_initial_filters' : False,
     'cache_dir' : CACHE_DIR,
     'save_to_gfs' : SAVE_TO_GFS
@@ -246,7 +247,7 @@ validation_params = [{
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : round(256.0 * 12 * 4 / MODEL_BATCH_SIZE),
+        'num_steps' : np.round(256.0 * 12 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
     },
 }] * N_GPUS
 
