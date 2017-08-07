@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import cPickle
+import copy
 
 class Normalizer:
     # epsilon used during normalization to avoid division by zero
@@ -45,6 +46,7 @@ class Normalizer:
                     idx = np.where(self.stats[source]['min'] == 0)
                     _max = self.stats[source]['max']
                     _max[(idx[0][_max[idx] == 0], idx[1][_max[idx] == 0])] = 1.0
+        self._stats = copy.deepcopy(self.stats)
 
     def normalize(self, inputs):
         for source in self.methods:

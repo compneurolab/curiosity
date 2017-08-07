@@ -513,6 +513,170 @@ def reverse_projection(inputs, P):
         inputs = tf.reduce_max(inputs, axis=3, keep_dims=True)
         return tf.maximum(0, inputs)
 
+def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None,
+        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+    print('------NETWORK START-----')
+    with tf.device('/gpu:%d' % gpu_id):
+        # rescale inputs to be divisible by 8
+        rinputs = {}
+        pd = 3 #padding 3
+        nh = 32 #new height 64
+        nw = 44 #new width 88
+        nd = 32 #new depth 64
+        #world coordinates! in contrast to above screen coordinates!
+        input_grid_dim = 32
+        discretization_shape = np.array([input_grid_dim, input_grid_dim, input_grid_dim]) 
+        for k in inputs:
+            if k in ['depths', 'objects', 'vels', 'accs', 'jerks',
+                    'vels_curr', 'accs_curr', 'actions_map', 'segmentation_map']:
+                rinputs[k] = tf.pad(inputs[k],
+                        [[0,0], [0,0], [0,0], [pd,pd], [0,0]], "CONSTANT")
+                # RESIZING IMAGES
+                rinputs[k] = tf.unstack(rinputs[k], axis=1)
+                for i, _ in enumerate(rinputs[k]):
+                    rinputs[k][i] = tf.image.resize_images(rinputs[k][i], [nh, nw])
+                rinputs[k] = tf.stack(rinputs[k], axis=1)
+            else:
+                rinputs[k] = inputs[k]
+
+       # preprocess input data
+        BATCH_SIZE, time_seen = \
+                rinputs['object_data'].get_shape().as_list()[:2]
+        #assert time_seen == 3, 'Wrong input data time'
+        #TODO This is just a dummy value to make ShortLong work
+        time_seen -= 1
+
+        base_net = fp_base.ShortLongFuturePredictionBase(
+                rinputs, store_jerk = False,
+                normalization_method = normalization_method,
+                time_seen = time_seen, stats_file = stats_file,
+                scale_down_height = nh,
+                scale_down_width = nw,
+                add_depth_gaussian = False,
+                add_gaussians = False,
+                get_hacky_segmentation_map = False, #TODO HACKY only use six dataset!!!
+                get_actions_map = False,
+                norm_depths=False,
+                use_particles=True,
+                normalize_particles={'states': 'minmax', 'actions': 'minmax'},
+                grid_dim=input_grid_dim)
+        inputs = base_net.inputs
+
+        try:
+            grids = inputs['sparse_grids_per_time']
+            grid = tf.sparse_tensor_to_dense(grids[0])
+            #next_grid = tf.sparse_tensor_to_dense(grids[1])
+            next_velocity = tf.sparse_tensor_to_dense(grids[0])[:,:,:,:,15:18]
+        except KeyError:
+            grids = tf.cast(inputs['grid'], tf.float32)
+            grid = grids[:,0]
+            #next_grid = grids[:,1]
+            next_velocity = grids[:,0,:,:,:,15:18]
+
+        #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
+        #grid = tf.concat([
+        #    grid[:,:,:,:,0:10], # 3 pos + 1 mass + 3 vel + 3 force
+            #grid[:,:,:,:,10:13], # torque #NOTE NO TORQUE SINCE NOT USED AS INPUT!
+            #grid[:,:,:,:,13:14], # 1 continous id NOTE NO RELATIONS USED
+        #   ], axis=-1)
+        grid = grid[:,:,:,:,0:10]
+
+        grid.set_shape([BATCH_SIZE, 32, 32, 32, 10])
+
+        # encode per time input
+        main_input_per_time = [grid]
+        time_seen = 1 + 1 # See TODO below
+                
+        # initial bypass, state and external actions
+        bypass_nodes = [[grid]]
+
+        # init network
+        m = ConvNetwithBypasses(**kwargs)
+
+        # main
+        encoded_input_main = []
+        reuse_weights = False
+        for t in range(time_seen-1): # TODO -1 as first input skipped as velocity input
+            print('DAMIAN', main_input_per_time[t])
+            enc, bypass_nodes[t] = feedforward_conv_loop(
+                    main_input_per_time[t], m, cfg, desc = '3d_encode',
+                    bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
+                    batch_normalize = False, no_nonlinearity_end = False,
+                    do_print=(not reuse_weights), return_bypass = True, use_3d=True)
+            encoded_input_main.append(enc[-1])
+            reuse_weights = True
+
+        if '2d_encode' in cfg:
+            print('Using 2D Compression')
+            #reshape to 2D array
+            shapes = []
+            for t, inp in enumerate(encoded_input_main):
+                shapes.append(inp.get_shape().as_list())
+                encoded_input_main[t] = tf.reshape(inp, shapes[t][0:3] + [-1])
+            bypass_shapes = []
+            for t, bypass_node in enumerate(bypass_nodes):
+                bypass_shape = []
+                for i, byp in enumerate(bypass_node):
+                    bypass_shape.append(byp.get_shape().as_list())
+                    bypass_nodes[t][i] = tf.reshape(byp, bypass_shape[i][0:3] + [-1])
+                bypass_shapes.append(bypass_shape)
+            #do 2D convolution
+            reuse_weights = False
+            for t in range(time_seen-1): # TODO -1 as first input skipped
+                enc, bypass_nodes[t] = feedforward_conv_loop(
+                        encoded_input_main[t], m, cfg, desc = '2d_encode',
+                        bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True, use_3d=False)
+                encoded_input_main[t] = enc[-1]
+                reuse_weights = True
+            if '2d_decode' in cfg:
+                reuse_weights = False
+                for t in range(time_seen-1): # TODO -1 as first input skipped
+                    enc, bypass_nodes[t] = deconv_loop(
+                            encoded_input_main[t], m, cfg, desc = '2d_decode',
+                            bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
+                            batch_normalize = False, no_nonlinearity_end = False,
+                            do_print=(not reuse_weights), return_bypass = True, use_3d=False)
+                    encoded_input_main[t] = enc[-1]
+                    reuse_weights = True
+            #reshape back to 3D
+            for t, inp in enumerate(encoded_input_main):
+                encoded_input_main[t] = tf.reshape(inp, shapes[t][0:4] + [-1])
+            for t, bypass_node in enumerate(bypass_nodes):
+                for i, byp in enumerate(bypass_node):
+                    try:
+                        byp = tf.reshape(byp, bypass_shapes[t][i])
+                    except IndexError:
+                        bypass_shape = byp.get_shape().as_list()
+                        bypass_nodes[t][i] = tf.reshape(byp, bypass_shape[0:3] + [1] + [-1])
+
+        if '3d_decode' in cfg:
+            reuse_weights = False
+            for t in range(time_seen-1): # TODO -1 as first input skipped
+                enc, bypass_nodes[t] = deconv_loop(
+                        encoded_input_main[t], m, cfg, desc = '3d_decode',
+                        bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True, use_3d=True)
+                encoded_input_main[t] = enc[-1]
+                reuse_weights = True
+
+        retval = {
+                'prediction': encoded_input_main[0],
+                'next_velocity': next_velocity,
+                #'relation_same': relations_same[0],
+                #'relation_solid': relations_solid[0],
+                'bypasses': bypass_nodes,
+                }
+        retval.update(base_net.inputs)
+        print('------NETWORK END-----')
+        print('------BYPASSES-------')
+        for i, node in enumerate(bypass_nodes[0]):
+            print(i, bypass_nodes[0][i])
+        return retval, m.params
+
+
 def particle_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
     print('------NETWORK START-----')
@@ -1806,6 +1970,13 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
+def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
+    gt_next_vel = outputs['next_velocity']
+    pred_next_vel = outputs['prediction']
+    #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
+    loss = tf.reduce_sum((pred_next_vel - gt_next_vel) ** 2, axis=-1) / 2
+    return [tf.reduce_mean(loss)]
+
 def particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     state = outputs['state']
     positions = state[:,:,:,:,0:3]
@@ -2727,35 +2898,103 @@ def cfg_mom_complete_flat(n_classes, use_segmentation=True,
         }
 }
 
-def particle_flat_cfg(n_classes, nonlin='relu'):
+def particle_bottleneck_cfg(n_classes, nonlin='relu'):
     return {
         # Encoding the inputs
-        'main_encode_depth': 1,
-        'main_encode' : {
+        '3d_encode_depth': 6,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_depth': 3,
+        '3d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                #'bypass': 4
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
+                #'bypass': 4
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                #'bypass': 2
+                },
+        },
+}
+
+def particle_2d_bottleneck_cfg(n_classes, nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 1,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+        },
+        '2d_encode_depth': 6,
+        '2d_encode' : {
             1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'},
                 'nonlinearity': nonlin
                 },
             2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'},
                 'nonlinearity': nonlin
                 },
-            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 300},
+                'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'},
                 'nonlinearity': nonlin
                 },
-            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 300},
                 'nonlinearity': nonlin
                 },
-            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' :6*50},
-                'nonlinearity': nonlin # up to 6 effects with each 50 dim
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 300},
+                'nonlinearity': nonlin 
                 },
-            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 100},
-                'bypass': [0, 1], 'nonlinearity': nonlin
-                # concat effects state and actions
-                },
-            7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 300},
                 'nonlinearity': nonlin
-                }
+                },
         },
+        '2d_decode_depth': 3,
+        '2d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 150},
+                #'bypass': 4
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 150},
+                #'bypass': 4
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_classes},
+                #'bypass': 2
+                },
+        }
+}
+
+def particle_2d_cfg(n_classes, nonlin='relu'):
+    return {
         # Encoding the inputs
+        '3d_encode_depth': 1,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 5, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin
+                },
+        },
         '2d_encode_depth': 7,
         '2d_encode' : {
             1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
@@ -2770,12 +3009,12 @@ def particle_flat_cfg(n_classes, nonlin='relu'):
             4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
                 'nonlinearity': nonlin
                 },
-            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' :6*50},
-                'nonlinearity': nonlin # up to 6 effects with each 50 dim
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin # up to 6 effects with each 50 dim 6*50
                 },
             6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 100},
-                'bypass': [0, 1], 'nonlinearity': nonlin
-                # concat effects state and actions
+                #'bypass': 0,  # concat effects state and actions
+                'nonlinearity': nonlin
                 },
             7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
                 'nonlinearity': nonlin
@@ -2786,8 +3025,8 @@ def particle_flat_cfg(n_classes, nonlin='relu'):
 def particle_cfg(n_classes, nonlin='relu'):
     return {
         # Encoding the inputs
-        'main_encode_depth': 7,
-        'main_encode' : {
+        '3d_encode_depth': 7,
+        '3d_encode' : {
             1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
                 'nonlinearity': nonlin
                 },
@@ -2800,12 +3039,12 @@ def particle_cfg(n_classes, nonlin='relu'):
             4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
                 'nonlinearity': nonlin
                 },
-            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' :6*50},
-                'nonlinearity': nonlin # up to 6 effects with each 50 dim
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 150},
+                'nonlinearity': nonlin # up to 6 effects with each 50 dim 6*50
                 },
             6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 100},
-                'bypass': [0, 1], 'nonlinearity': nonlin
-                # concat effects state and actions
+                #'bypass': 0, # concat effects state and actions
+                'nonlinearity': nonlin
                 },
             7 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
                 'nonlinearity': nonlin

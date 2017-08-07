@@ -198,6 +198,10 @@ class ShortLongFuturePredictionBase:
 		get_actions_map = False,
 		get_segmentation = False,
                 get_hacky_segmentation_map = False,
+                norm_depths = True,
+                use_particles = False,
+                normalize_particles = None,
+                grid_dim = 32,
                 *args,  **kwargs):
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
@@ -214,10 +218,12 @@ class ShortLongFuturePredictionBase:
         else:
             screen_normalize = False
 
+        self.stats = None
         if self.normalization_method is not None:
             if stats_file is not None:
             	normalization = tb.Normalizer(stats_file, self.normalization_method)
             	normed_inputs = normalization.normalize(inputs)
+                self.stats = normalization._stats
             else:
 		raise Exception('Not implememted!')
 
@@ -234,7 +240,9 @@ class ShortLongFuturePredictionBase:
             img_height = im_sh[2]
             img_width = im_sh[3]
 	else:
-	    assert img_height is not None and img_width is not None
+            img_height = scale_down_height
+            img_width = scale_down_width
+	assert img_height is not None and img_width is not None
 
         if add_gaussians:
             gaussians = []
@@ -334,7 +342,8 @@ class ShortLongFuturePredictionBase:
                 depths = tf.cast(inputs_not_normed[desc], tf.float32)
                 depths = (depths[:,:,:,:,0:1] * 256 + depths[:,:,:,:,1:2] + \
                         depths[:,:,:,:,2:3] / 256.0) / 1000.0 
-                depths /= 17.32 # normalization
+                if norm_depths:
+                    depths /= 17.32 # normalization
                 depths = depths[:, :time_seen]
                 self.inputs[desc] = depths
 
@@ -361,6 +370,7 @@ class ShortLongFuturePredictionBase:
 
         # create segmented action maps
 	if get_actions_map or get_segmentation or get_hacky_segmentation_map:
+                assert 'objects' in inputs_not_normed, 'to use get_actions_map, get_segmentation or get_hacky_segmentation_map \'objects\' needs to be provided in the input'
         	objects = tf.cast(inputs_not_normed['objects'], tf.int32)
         	shape = objects.get_shape().as_list()
         	objects = tf.unstack(objects, axis=len(shape)-1)
@@ -393,6 +403,159 @@ class ShortLongFuturePredictionBase:
                     tf.expand_dims(tf.cast(tf.equal(objects, 23), tf.float32) * 0.5, -1),
                     tf.expand_dims(tf.cast(tf.equal(objects, 24), tf.float32) * 1, -1)]
             self.inputs['segmentation_map'] = tf.concat(segmentation_list, -1)
+
+        if use_particles:
+            particles_loaded = False
+            try:
+                grid = inputs_not_normed['grid_' + str(grid_dim)]
+                # normalize particles if requested
+                if normalize_particles is not None:
+                    assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+                    if normalize_particles['states'] == 'minmax':
+                        # pos, mass, vel
+                        minimum = self.stats['full_particles']['min'][0,0:7]
+                        maximum = self.stats['full_particles']['max'][0,0:7]
+                        normalized_states = (grid[:,:,:,:,:,0:7] - minimum) \
+                                / (maximum - minimum)
+                        # next_vel
+                        minimum = self.stats['full_particles']['min'][0,15:18]
+                        maximum = self.stats['full_particles']['max'][0,15:18]
+                        normalized_next_velocity = (grid[:,:,:,:,:,15:18] - \
+                                minimum) / (maximum - minimum)
+                    elif normalize_particles['states'] == 'standard':
+                        # pos, mass, vel
+                        mean = self.stats['full_particles']['mean'][0,0:7]
+                        std = self.stats['full_particles']['std'][0,0:7]
+                        eps = 1e-4
+                        normalized_states = (grid[:,:,:,:,:,0:7] - mean) \
+                                / (std + eps)
+                        # next_vel
+                        mean = self.stats['full_particles']['mean'][0,15:18]
+                        std = self.stats['full_particles']['std'][0,15:18]
+                        eps = 1e-4
+                        normalized_next_velocity = (grid[:,:,:,:,:,15:18] - \
+                                mean) / (std + eps)
+                    else:
+                        raise KeyError('Unknown normalization method for particle states')
+
+                    if normalize_particles['actions'] == 'minmax':
+                        minimum = self.stats['actions']['min'][0,0:6]
+                        maximum = self.stats['actions']['max'][0,0:6]
+                        normalized_actions = (grid[:,:,:,:,:,7:13] - minimum) \
+                                / (maximum - minimum)
+                    elif normalize_particles['actions'] == 'standard':
+                        mean = self.stats['actions']['mean'][0,0:6]
+                        std = self.stats['actions']['std'][0,0:6]
+                        eps = 1e-4
+                        normalized_actions = (grid[:,:,:,:,:,7:13] - mean) \
+                                / (std + eps)
+                    else:
+                        raise KeyError('Unknown normalization method for particle actions')
+                    grid = tf.concat([normalized_states, normalized_actions, grid[:,:,:,:,:,13:15], normalized_next_velocity], axis=-1) 
+
+                self.inputs['grid'] = grid
+                particles_loaded = True
+            except KeyError:
+                print('WARNING: Grid grid dimensions ' + str(grid_dim) + ' not loaded!')
+
+            # sparse version
+            try:
+                sparse_particles_all_times = tf.unstack(inputs_not_normed['sparse_particles_' + str(grid_dim)], axis=1)
+                sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
+                sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
+                
+                sparse_grids = []
+                for time_step, (sparse_particles, sparse_coordinates, sparse_shape) in \
+                        enumerate(zip(sparse_particles_all_times, sparse_coordinates_all_times, sparse_shape_all_times)):
+                    batch_size, num_particles, feature_size = sparse_particles.get_shape().as_list()
+                    # normalize particles if requested
+                    if normalize_particles is not None:
+                        assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+                        if normalize_particles['states'] == 'minmax':
+                            # pos, mass, vel
+                            minimum = self.stats['full_particles']['min'][:,0:7]
+                            maximum = self.stats['full_particles']['max'][:,0:7]
+                            normalized_states = (sparse_particles[:,:,0:7] - minimum) \
+                                    / (maximum - minimum)
+                            # next_vel
+                            minimum = self.stats['full_particles']['min'][:,15:18]
+                            maximum = self.stats['full_particles']['max'][:,15:18]
+                            normalized_next_velocity = (sparse_particles[:,:,15:18] - \
+                                    minimum) / (maximum - minimum)
+                        elif normalize_particles['states'] == 'standard':
+                            # pos, mass, vel
+                            mean = self.stats['full_particles']['mean'][:,0:7]
+                            std = self.stats['full_particles']['std'][:,0:7]
+                            eps = 1e-4
+                            normalized_states = (sparse_particles[:,:,0:7] - mean) \
+                                    / (std + eps)
+                            # next_vel
+                            mean = self.stats['full_particles']['mean'][:,15:18]
+                            std = self.stats['full_particles']['std'][:,15:18]
+                            eps = 1e-4
+                            normalized_next_velocity = (sparse_particles[:,:,15:18] - \
+                                    mean) / (std + eps)
+                        else:
+                            raise KeyError('Unknown normalization method for particle states')
+
+                        if normalize_particles['actions'] == 'minmax':
+                            minimum = self.stats['actions']['min'][0,0:6]
+                            maximum = self.stats['actions']['max'][0,0:6]
+                            normalized_actions = (sparse_particles[:,:,7:13] - minimum) \
+                                    / (maximum - minimum)
+                        elif normalize_particles['actions'] == 'standard':
+                            mean = self.stats['actions']['mean'][0,0:6]
+                            std = self.stats['actions']['std'][0,0:6]
+                            eps = 1e-4
+                            normalized_actions = (sparse_particles[:,:,7:13] - mean) \
+                                    / (std + eps)
+                        else:
+                            raise KeyError('Unknown normalization method for particle actions')
+                        sparse_particles = tf.concat([normalized_states, normalized_actions, sparse_particles[:,:,13:15], normalized_next_velocity], axis=-1)    
+
+                    # flatten particles across batch
+                    sparse_particles = tf.reshape(sparse_particles, [-1])
+                    # add batch and feature dimensions and flatten coordinates across batch
+                    sparse_coordinates = tf.cast(tf.reshape(tf.tile(sparse_coordinates, [1, 1, feature_size]), 
+                            [-1, sparse_coordinates.get_shape().as_list()[-1]]), tf.int32)
+                    batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(tf.range(batch_size), axis=-1), 
+                        [1, num_particles * feature_size]), [-1, 1])
+                    feature_coordinates = tf.expand_dims(tf.tile(tf.range(feature_size), [batch_size * num_particles]), axis=-1)
+                    sparse_coordinates = tf.concat([batch_coordinates, sparse_coordinates, feature_coordinates], axis=-1)
+                    # reorder in lexographical order
+                    with tf.control_dependencies([tf.assert_equal(
+                                    tf.reduce_prod(sparse_shape, axis=-1), 
+                                    tf.reduce_prod(sparse_shape[0]))]):
+                        sparse_shape = tf.cast(tf.concat([[batch_size], sparse_shape[0]], axis=0), tf.int64)
+                    sparse_coordinates = tf.cast(sparse_coordinates, tf.int64)
+                    sparse_grid = tf.SparseTensor(indices=sparse_coordinates, values=sparse_particles, dense_shape=sparse_shape)
+                    sparse_grid = tf.sparse_reorder(sparse_grid)
+                    sparse_coordinates = tf.cast(sparse_grid.indices, tf.int32)
+                    sparse_shape = tf.cast(sparse_shape, tf.int32)
+                    sparse_particles = sparse_grid.values
+                    # remove duplicate (especially padded all zero) indices:
+                    cum = tf.cumprod(sparse_shape, axis=-1, reverse=True, exclusive=True)
+                    linearized_coordinates = tf.matmul(sparse_coordinates, tf.expand_dims(cum, axis=-1))
+                    unique_coordinates, unique_coordinates_indices = tf.unique(tf.squeeze(linearized_coordinates))
+                    i = tf.expand_dims(unique_coordinates, 1)
+                    idx0 = i // cum[0]
+                    i = i - idx0 * cum[0]
+                    idx1 = i // cum[1]
+                    i = i - idx1 * cum[1]
+                    idx2 = i // cum[2]
+                    i = i - idx2 * cum[2]
+                    idx3 = i // cum[3]
+                    i = i - idx3 * cum[3]
+                    idx4 = i // cum[4]
+                    sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3, idx4], axis=-1), tf.int64)
+                    sparse_particles = tf.segment_sum(sparse_particles, unique_coordinates_indices)
+                    sparse_shape = tf.cast(sparse_shape, tf.int64)
+
+                    sparse_grid = tf.SparseTensor(indices=sparse_coordinates, values=sparse_particles, dense_shape=sparse_shape)
+                    sparse_grids.append(sparse_grid)
+                self.inputs['sparse_grids_per_time'] = sparse_grids
+            except KeyError:
+                print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + str(grid_dim) + ' not loaded!')
 
 
 	if store_jerk:

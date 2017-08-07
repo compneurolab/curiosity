@@ -323,7 +323,7 @@ class ConvNetwithBypasses(ConvNet):
 			fixed_output_shape = [in_shape[0], \
 				in_shape[1] * stride, in_shape[2] * stride, \
                                 in_shape[3] * stride, out_shape]
-                deconv = tf.nn.conv2d_transpose(in_layer, kernel, fixed_output_shape,
+                deconv = tf.nn.conv3d_transpose(in_layer, kernel, fixed_output_shape,
                                     strides=[1, stride, stride, stride, 1],
                                     padding=padding)
 

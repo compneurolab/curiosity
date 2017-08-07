@@ -13,8 +13,10 @@ from multiprocessing import Pool
 #SECOND_DATASET_LOCS = ['dataset0', 'dataset1', 'dataset2', 'dataset3']
 dataset = sys.argv[1]
 PREFIX = int(sys.argv[2])
+USE_DELTA_VELOCITY = True
 GRID_DIM = 32 #64
 OUTPUT_SPARSE_ONLY = False #True
+USE_FLOAT16 = False
 assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
@@ -22,7 +24,7 @@ SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', lo
 NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'objects', 'depths', 'vels', 'vels_curr', 
-        'actions', 'object_data', 'agent_data', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles'] 
+        'actions', 'object_data', 'agent_data', 'is_moving', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles', 'full_particles'] 
 for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape', 'grid']:
     ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM)) 
 HEIGHT = 128
@@ -30,13 +32,13 @@ WIDTH = 170
 
 MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 3), (MAX_PARTICLES, 15), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 15)]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 18), (MAX_PARTICLES, 3), (MAX_PARTICLES, 18), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 18)]
 
 if OUTPUT_SPARSE_ONLY:
     ATTRIBUTE_NAMES = []
     for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
         ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM))
-    datum_shapes = [(MAX_PARTICLES, 3), (MAX_PARTICLES, 15), (1,), (4,)]
+    datum_shapes = [(MAX_PARTICLES, 3), (MAX_PARTICLES, 18), (1,), (4,)]
 
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
@@ -225,6 +227,7 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
         '''
         #TODO: rotate to agent frame
         observed_objects = [make_id_dict(info['observed_objects']) for info in worldinfos]
+        original_id_order = np.array([[int(o[1]) for o in info['observed_objects'] if not o[4]] for info in worldinfos])
         ids_to_include = get_ids_to_include(observed_objects, obj_arrays, actions, subset_indicators)
         ret_list = []
         is_object_there = []
@@ -271,7 +274,7 @@ def get_object_data(worldinfos, obj_arrays, actions, subset_indicators, coordina
                 is_object_in_view.append(np.array(frame_obj_in_view_data).astype(np.int32))
                 frame_data = np.array(frame_data).astype(np.float32)
                 ret_list.append(frame_data)
-        return ret_list, is_object_there, is_object_in_view
+        return ret_list, is_object_there, is_object_in_view, original_id_order
 
 def get_agent_data(worldinfos):
         '''returns num_frames x dim_data
@@ -327,6 +330,8 @@ def get_subset_indicators(actions):
         is_not_dropping = []
         is_acting = []
         is_not_teleporting = []
+        if len(action_types) != BATCH_SIZE:
+            raise ValueError('Not enough data. Batch length: %d' % len(action_types))
         for act_type in action_types:
                 not_waiting_now = int('WAIT' not in act_type)
                 not_dropping_now = int('DROPPING' not in act_type)
@@ -336,7 +341,19 @@ def get_subset_indicators(actions):
                 is_not_dropping.append(np.array([not_dropping_now]).astype(np.float32))
                 is_not_teleporting.append(np.array([not_tele_now]).astype(np.float32))
                 is_acting.append(np.array([acting_now]).astype(np.float32))
-        return {'is_not_waiting' : is_not_waiting, 'is_not_dropping' : is_not_dropping, 'is_acting' : is_acting, 'is_not_teleporting' : is_not_teleporting}
+        # first 10 frames and last frame are not to be used as well as 
+        # one frame before and one frame after a teleport
+        is_moving = np.squeeze(np.array(is_not_teleporting).copy())
+        iszero = np.concatenate(([0], np.equal(is_moving, 0).view(np.int8), [0]))
+        absdiff = np.abs(np.diff(iszero))
+        ranges = np.where(absdiff == 1)[0].reshape(-1, 2)
+        for r in ranges:
+            is_moving[np.maximum(r[0] - 1, 0):np.minimum(r[1] + 1, BATCH_SIZE-1)] = 0
+        is_moving[0:10] = np.array([0]).astype(np.float32)
+        is_moving[-1] = np.array([0]).astype(np.float32)
+        is_moving = is_moving[:,np.newaxis]
+
+        return {'is_not_waiting' : is_not_waiting, 'is_not_dropping' : is_not_dropping, 'is_acting' : is_acting, 'is_not_teleporting' : is_not_teleporting, 'is_moving': is_moving}
 
 def safe_dict_append(my_dict, my_key, my_val):
         if my_key in my_dict:
@@ -349,8 +366,8 @@ def get_reference_ids((file_num, bn)):
             file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
-def create_occupancy_grid(particles, object_data, actions, grid_dim):
-    state_dim = 7 + 6 + 2 #pos, mass, vel, force, torque, 0/1 id, id
+def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
+    state_dim = 7 + 6 + 2 + 3 #pos, mass, vel, force, torque, 0/1 id, id, next_vel
     if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
         assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
     else:
@@ -359,6 +376,7 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     grid = np.zeros([BATCH_SIZE] + list(grid_dim) + [state_dim])
     # create particle state vectors
     particles = np.reshape(particles, [BATCH_SIZE, particles.shape[1] / 7, 7])
+    full_particles = np.zeros(list(particles.shape[0:2]) + [state_dim])
     object_data = np.array(object_data) #id: 0, num_particles: 13
     ids = object_data[:, :, 0]
     n_particles = object_data[:, :, 13].astype(np.int32) / 7
@@ -370,26 +388,44 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     #        str(np.sum(n_particles, axis=0)) + ' != ' + str(n_particles[0]*BATCH_SIZE)\
     #        + ' | ' + str(ids)
     particles = particles[:, :all_particles]
-    # Assemble the state by adding forces, torques and ids
+
+    # determine velocities and next velocities
+    if USE_DELTA_VELOCITY:
+        particles[0, :, 4:7] = 0 # first frame unknown velocity so set to zero
+        particles[1:, :, 4:7] = particles[1:, :, 0:3] - particles[:-1, :, 0:3]
+    next_velocity = np.zeros(list(particles.shape[0:2]) + [3])
+    next_velocity[:-1, :, 0:3] = particles[1:, :, 4:7]
+
+    # Assemble the state by adding forces, torques, ids and next velocities
     # map ids to 0 = first object and 1 = second object such that 
     # taking the mean over the ids makes sense, i.e. that 
     # the mean equals to the part of the voxel that belongs to the second object
     particle_ids = np.zeros((particles.shape[0], particles.shape[1], 2))
     particle_actions = np.zeros((particles.shape[0], particles.shape[1], 6))
-    for batch_index, batch_n_particles in enumerate(n_particles):
+    for batch_index, batch_id_order in enumerate(original_id_order):
         offset = 0
-        for n_index, n in enumerate(batch_n_particles):
-            assert len(n.shape) == 0,  'len(n.shape) = %d, n = %d' % (len(n.shape), n)
-            assert ids[batch_index, n_index] not in [-1, 0]
-            assert ids[batch_index, n_index] in [23, 24]
-            particle_ids[batch_index, offset:offset+n, 0] = \
-                    0 if ids[batch_index, n_index] == 23 else 1
-            particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, n_index]
-            if actions[batch_index, n_index, 8] not in [-1, 0]:
-                assert ids[batch_index, n_index] == actions[batch_index, n_index, 8]
-                particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, n_index, 0:6]
+        for i_index, i in enumerate(batch_id_order):
+            assert len(i.shape) == 0, 'len(i.shape) = %d, i = %d' % (len(i.shape), i)
+            idx = -1
+            # as the order of the items in object_data and actions doesn't agree with the particle order we need to correct the order here
+            for obj_id_idx, obj_id in enumerate(ids[batch_index]):
+                if obj_id == i:
+                    idx = obj_id_idx
+                    break
+            assert idx != -1
+            assert ids[batch_index, idx] not in [-1, 0]
+            assert ids[batch_index, idx] in [23, 24]
+            n = n_particles[batch_index, idx]
+            particle_ids[batch_index, offset:offset+n, 0] = idx
+            particle_ids[batch_index, offset:offset+n, 1] = ids[batch_index, idx]
+            if actions[batch_index, idx, 8] not in [-1, 0]:
+                assert ids[batch_index, idx] == actions[batch_index, idx, 8]
+                particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, idx, 0:6]
             offset += n
-    states = np.concatenate([particles, particle_actions, particle_ids], axis = -1)
+    states = np.concatenate([particles, particle_actions, particle_ids, next_velocity], \
+            axis = -1)
+    full_particles[:, :all_particles] = states
+    full_particles = full_particles.astype(np.float32)
 
     # create indices for occupancy grid
     indices = particles[:,:,0:3]
@@ -422,7 +458,8 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
         particle_states = np.array([np.sum(batch_states[particle_coordinate], \
                 axis=0) / counts[i] for i, particle_coordinate in enumerate(identical_coordinates_sets)])
         particle_states[:,3] *= counts # sum mass 
-        particle_states[:,-1] *= counts # sum real ids, but not binary ones
+        particle_states[:,13] += 1 # add 1 to distinguish from empty pixels -> range: [1,2]
+        particle_states[:,14] *= counts # sum real ids, but not binary ones
         # store data for sparse tensor
         sparse_coordinates.append(unique_coordinates)
         sparse_particles.append(particle_states)
@@ -438,21 +475,24 @@ def create_occupancy_grid(particles, object_data, actions, grid_dim):
     # pad with zeros
     tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 3))
     for batch, sc in enumerate(sparse_coordinates):
-        tmp[batch, 0:sc.shape[0]] = sc[:,0:3]
+        tmp[batch, 0:sc.shape[0]] = sc[:,1:4]
     sparse_coordinates = np.array(tmp).astype(np.uint8)
-    tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, 15))
+    tmp = np.zeros((BATCH_SIZE, MAX_PARTICLES, state_dim))
     for batch, sp in enumerate(sparse_particles):
         tmp[batch, 0:sp.shape[0]] = sp
     sparse_particles = np.array(tmp).astype(np.float32)
     # format
-    MAX_FLOAT16 = 65504
-    grid = np.minimum(np.array(grid), MAX_FLOAT16) #TODO USE HALF PRECISION AND NORMALIZE DATA!!!
-    grid = grid.astype(np.float16)
+    if USE_FLOAT16:
+        MAX_FLOAT16 = 65504
+        grid = np.minimum(np.array(grid), MAX_FLOAT16) #TODO USE HALF PRECISION AND NORMALIZE DATA!!!
+        grid = grid.astype(np.float16)
+    else:
+        grid = grid.astype(np.float32)
     sparse_length = np.array(sparse_length).astype(np.int32)
     sparse_shape = np.array(sparse_shape).astype(np.int32)
     max_coordinates = np.array(max_coordinates).astype(np.float32)
     min_coordinates = np.array(min_coordinates).astype(np.float32)
-    return grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates
+    return grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates, full_particles
 
 def get_batch_data((file_num, bn), with_non_object_images = True):
         f = my_files[file_num]
@@ -468,6 +508,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
                 particles = np.zeros((BATCH_SIZE, MAX_PARTICLES * 7))
                 for p_index, p in enumerate(unpadded_particles):
                     particles[p_index,:p.shape[0]] = p
+                particles = particles.astype(np.float32)
 
         actions_raw = f['actions'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]
         actions_raw = [json.loads(act) for act in actions_raw]
@@ -475,11 +516,11 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         worldinfos = [json.loads(info) for info in f['worldinfo'][bn * BATCH_SIZE : (bn + 1) * BATCH_SIZE]]
         coordinate_transformations = [get_transformation_params(info) for info in worldinfos]
         actions = get_actions(actions_raw, coordinate_transformations)
-        object_data, is_object_there, is_object_in_view = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
-        grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates = create_occupancy_grid(particles, object_data, actions, GRID_DIM)
+        object_data, is_object_there, is_object_in_view, original_id_order = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
+        grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates, full_particles = create_occupancy_grid(particles, object_data, original_id_order, actions, GRID_DIM)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
-        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates}
+        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates, 'full_particles': full_particles}
         # add grid data
         to_ret['grid' + '_' + str(GRID_DIM)] = grid
         to_ret['sparse_coordinates' + '_' + str(GRID_DIM)] = sparse_coordinates
@@ -491,7 +532,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
             to_ret.update({'images' : images})
         to_ret.update(indicators)
         for i in range(BATCH_SIZE):
-            for k in to_ret:
+            for k in ATTRIBUTE_SHAPES:
                 if ATTRIBUTE_SHAPES[k] is not None:
                     assert to_ret[k][i].shape == ATTRIBUTE_SHAPES[k], (k, to_ret[k][i].shape, ATTRIBUTE_SHAPES[k])
         return to_ret
