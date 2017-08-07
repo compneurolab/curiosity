@@ -17,14 +17,14 @@ DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
 NUM_BATCHES = 4 * 84
 BATCH_SIZE = 256.
 FILTER = 'is_moving'
-FORCE_MULTIPLIER = 30
+#FORCE_MULTIPLIER = 1
 ATTRIBUTES = ['actions', 'agent_data', 'depths', 'images', 'is_acting', 'is_moving', \
         'is_not_dropping', 'is_not_teleporting', 'is_not_waiting', 'is_object_in_view', \
         'is_object_there', 'max_coordinates', 'min_coordinates', 'object_data', \
         'objects', 'particles', 'full_particles', 'reference_ids', 'vels', 'vels_curr']
 
-STATS_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/stats/stats.pkl'
-STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/stats/stats_std.pkl'
+STATS_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats.pkl'
+STATS_FIXED_SAVE_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 
 
 def get_data_source():
@@ -89,8 +89,8 @@ def get_batch_stats(inputs, key):
         batch_data = tf.gather(batch_data, tf.squeeze(f))
         batch_data.set_shape([None] + list(inputs[key].get_shape().as_list()[1:]))
     if key in ['actions']:
-        batch_data = tf.concat([batch_data[:,:,0:3] * FORCE_MULTIPLIER,
-                batch_data[:,:,3:]], axis=-1)
+        #batch_data = tf.concat([batch_data[:,:,0:3] * FORCE_MULTIPLIER,
+        #        batch_data[:,:,3:]], axis=-1)
         batch_mean = tf.reduce_mean(batch_data, axis = [0,1])
         batch_mean = tf.tile(tf.expand_dims(batch_mean, axis=0), \
                 [tf.shape(batch_data)[1],1])
