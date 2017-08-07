@@ -581,7 +581,7 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
         #   ], axis=-1)
         grid = grid[:,:,:,:,0:10]
 
-        grid.set_shape([BATCH_SIZE, 32, 32, 32, 14])
+        grid.set_shape([BATCH_SIZE, 32, 32, 32, 10])
 
         # encode per time input
         main_input_per_time = [grid]

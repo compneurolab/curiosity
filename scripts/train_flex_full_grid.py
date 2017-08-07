@@ -31,7 +31,7 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 64 #64
+MODEL_BATCH_SIZE = 32 #64
 TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 1 #3
@@ -42,10 +42,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = [#'flex2dBott_2', 
-'flexBott_3',
-#'flex2d_2', 
-#'flex_2',
+EXP_ID = [#'flex2dBott_4', 
+#'flexBott_4',
+#'flex2d_4', 
+'flex_4',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
@@ -55,9 +55,9 @@ min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        #modelsource.particle_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
