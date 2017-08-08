@@ -33,6 +33,7 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 256 #64
+TEST_BATCH_SIZE = 1
 TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 1 #3
@@ -154,6 +155,7 @@ model_params = [{
     #'num_classes': 60.,
     'gpu_id' : 0,
     'my_test' : True,
+    'test_batch_size': TEST_BATCH_SIZE,
 }] * N_GPUS
 
 loss_params = [{

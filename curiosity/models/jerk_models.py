@@ -514,7 +514,8 @@ def reverse_projection(inputs, P):
         return tf.maximum(0, inputs)
 
 def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None,
-            stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, my_test = False, **kwargs):
+            stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, 
+            my_test = False, test_batch_size=1, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
         # rescale inputs to be divisible by 8
@@ -584,7 +585,7 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
         grid.set_shape(grid_shape)
 
         if my_test:
-            grid = tf.placeholder(tf.float32, grid_shape, 'grid_input')
+            grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
 
         # encode per time input
         main_input_per_time = [grid]
