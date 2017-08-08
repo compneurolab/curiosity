@@ -367,7 +367,7 @@ def get_reference_ids((file_num, bn)):
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
 def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
-    state_dim = 7 + 6 + 2 + 3 #pos, mass, vel, force, torque, 0/1 id, id, next_vel
+    state_dim = 7 + 6 + 2 + 3 + 1 #pos, mass, vel, force, torque, 0/1 id, id, next_vel, counts
     if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
         assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
     else:
