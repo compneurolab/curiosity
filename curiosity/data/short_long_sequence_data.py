@@ -79,7 +79,6 @@ class ShortLongSequenceDataProvider(TFRecordsParallelByFileProvider):
         # ids_path = os.path.join(self.data_path, 'ids')
         #if ids_path is not in self.source_paths:
         #    self.source_paths.append(ids_path)
-
         super(ShortLongSequenceDataProvider, self).__init__(
             self.source_paths,
             batch_size=batch_size,
@@ -220,6 +219,7 @@ either_view[:, self.short_len: self.short_len + 1])
 
     def check_lengths(self, data):
         for k in data:
+            print('DATA PROVIDER, requested shape for ' + k + ' = ' + str(data[k].get_shape().as_list()))
             if k in self.short_sources:
                 assert data[k].get_shape().as_list()[1] == self.short_len, k
             elif k in self.long_sources or k == 'master_filter' or k in self.filters:

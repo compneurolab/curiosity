@@ -514,7 +514,8 @@ def reverse_projection(inputs, P):
         return tf.maximum(0, inputs)
 
 def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None,
-        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, **kwargs):
+            stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, 
+            my_test = False, test_batch_size=1, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
         # rescale inputs to be divisible by 8
@@ -564,14 +565,13 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
 
         try:
             grids = inputs['sparse_grids_per_time']
-            grid = tf.sparse_tensor_to_dense(grids[0])
-            #next_grid = tf.sparse_tensor_to_dense(grids[1])
-            next_velocity = tf.sparse_tensor_to_dense(grids[0])[:,:,:,:,15:18]
+            for grid in grids:
+                grid = tf.sparse_tensor_to_dense(grid)
+            grids = tf.concat(grids, axis=1)
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
-            grid = grids[:,0]
-            #next_grid = grids[:,1]
-            next_velocity = grids[:,0,:,:,:,15:18]
+        grid = grids[:,0]
+        next_velocity = grids[:,0,:,:,:,15:18]
 
         #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
         #grid = tf.concat([
@@ -581,7 +581,11 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
         #   ], axis=-1)
         grid = grid[:,:,:,:,0:10]
 
-        grid.set_shape([BATCH_SIZE, 32, 32, 32, 10])
+        grid_shape = [BATCH_SIZE, 32, 32, 32, 10]
+        grid.set_shape(grid_shape)
+
+        if my_test:
+            grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
 
         # encode per time input
         main_input_per_time = [grid]
@@ -665,6 +669,11 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
         retval = {
                 'prediction': encoded_input_main[0],
                 'next_velocity': next_velocity,
+                'full_grids': grids,
+                'grid_placeholder': grid,
+                'actions': inputs['actions'],
+                'is_moving': inputs['is_moving'],
+                'in_view': inputs['in_view'],
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
                 'bypasses': bypass_nodes,
