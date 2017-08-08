@@ -671,6 +671,8 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
                 'full_grids': grids,
                 'grid_placeholder': grid,
                 'actions': inputs['actions'],
+                'is_moving': inputs['is_moving'],
+                'in_view': inputs['in_view'],
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
                 'bypasses': bypass_nodes,

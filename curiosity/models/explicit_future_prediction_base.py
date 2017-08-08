@@ -366,7 +366,8 @@ class ShortLongFuturePredictionBase:
         if 'actions' in inputs:
 		self.inputs['actions_no_pos'] = normed_inputs['actions'][:, :, :, :6]
 
-        self.inputs['master_filter'] = inputs_not_normed['master_filter']
+        if 'master_filter' in inputs_not_normed:
+            self.inputs['master_filter'] = inputs_not_normed['master_filter']
 
         # create segmented action maps
 	if get_actions_map or get_segmentation or get_hacky_segmentation_map:
@@ -405,6 +406,12 @@ class ShortLongFuturePredictionBase:
             self.inputs['segmentation_map'] = tf.concat(segmentation_list, -1)
 
         if use_particles:
+            try:
+                self.inputs['is_moving'] = inputs_not_normed['is_moving']
+                self.inputs['in_view'] = inputs_not_normed['is_object_in_view']
+            except KeyError:
+                print('is_moving and is_object_in_view not loaded')
+            self.inputs['actions'] = inputs_not_normed['actions']
             particles_loaded = False
             try:
                 grid = inputs_not_normed['grid_' + str(grid_dim)]

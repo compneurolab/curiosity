@@ -32,11 +32,11 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 32 #64
-TIME_SEEN = 20 #2
+MODEL_BATCH_SIZE = 256 #64
+TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 20 #3
-MIN_LEN = 20 #3
+LONG_LEN = 1 #3
+MIN_LEN = 1 #3
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
@@ -44,9 +44,9 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_4', 
-#'flexBott_4',
+'flexBott_4',
 #'flex2d_4', 
-'flex_4',
+#'flex_4',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
@@ -56,9 +56,9 @@ min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
@@ -112,6 +112,8 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
             'full_grids': outputs['full_grids'],
             'grid_placeholder': outputs['grid_placeholder'],
             'actions': outputs['actions'],
+            'in_view': outputs['in_view'],
+            'is_moving': outputs['is_moving'],
             }
     return retval
 
@@ -189,21 +191,21 @@ validation_params = [{
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
                     'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                    'grid_32'],
+                    'grid_32', 'is_moving', 'is_object_in_view'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
-            'filters' : ['is_moving', 'is_object_in_view'],
+            'filters' : None, #['is_moving', 'is_object_in_view'],
             'shuffle' : True,
             'shuffle_seed' : SEED,
-            'n_threads' : 2,
+            'n_threads' : 1,
             'batch_size' : DATA_BATCH_SIZE,
             'file_grab_func' : table_norot_grab_func,
            # 'is_there_subsetting_rule' : 'just_first',
-            'is_in_view_subsetting_rule' : 'first_there',
+            #'is_in_view_subsetting_rule' : 'first_there',
             },
         'queue_params' : {
-            'queue_type' : 'random',
+            'queue_type' : 'fifo',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : SEED,
             'capacity' : MODEL_BATCH_SIZE * 11,
@@ -235,14 +237,14 @@ train_params =  {
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
-        'filters' : ['is_moving', 'is_object_in_view'],
+        'filters' : None, #['is_moving', 'is_object_in_view'],
         'shuffle' : True,
         'shuffle_seed' : SEED,
-        'n_threads' : 4,
+        'n_threads' : 1,
         'batch_size' : DATA_BATCH_SIZE,
         'file_grab_func' : table_norot_grab_func,
         #'is_there_subsetting_rule' : 'just_first',
-        'is_in_view_subsetting_rule' : 'first_there',
+        #'is_in_view_subsetting_rule' : 'first_there',
     },
         
     'queue_params' : {
@@ -279,15 +281,16 @@ for i, _ in enumerate(model_params):
     learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
-    'save_params' : save_params,
-    'load_params' : load_params,
-    'model_params' : model_params,
-    'train_params' : train_params,
-    'loss_params' : loss_params,
-    'learning_rate_params' : learning_rate_params,
-    'optimizer_params': optimizer_params,
-    'validation_params' : validation_params,
+    'save_params' : save_params[0],
+    'load_params' : load_params[0],
+    'model_params' : model_params[0],
+    #'train_params' : train_params,
+    #'loss_params' : loss_params,
+    #'learning_rate_params' : learning_rate_params,
+    #'optimizer_params': optimizer_params,
+    'validation_params' : validation_params[0],
     'inter_op_parallelism_threads': 500,
+    'dont_run': True,
 }
 
 if __name__ == '__main__':
@@ -303,6 +306,8 @@ if __name__ == '__main__':
     # data ops
     get_grids = valid_targets_dict['valid0']['targets']['full_grids']
     get_actions = valid_targets_dict['valid0']['targets']['actions']
+    get_is_moving = valid_targets_dict['valid0']['targets']['is_moving']
+    get_in_view = valid_targets_dict['valid0']['targets']['in_view']
     get_true_velocity = valid_targets_dict['valid0']['targets']['next_velocity']
     # run model ops
     predict_velocity = valid_targets_dict['valid0']['targets']['prediction']
@@ -310,4 +315,8 @@ if __name__ == '__main__':
     grid_placeholder = valid_targets_dict['valid0']['targets']['grid_placeholder']
     # unroll across time
     print('Starting prediction')
-    grids, actions = sess.run([get_grids, get_actions])
+    grids, actions, is_moving, in_view = sess.run([get_grids, get_actions, get_is_moving, get_in_view])
+    grids = np.squeeze(grids)
+    actions = np.squeeze(actions)
+    is_moving = np.squeeze(is_moving)
+    in_view = np.squeeze(in_view)
