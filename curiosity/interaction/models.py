@@ -244,7 +244,7 @@ def action_softmax_loss(prediction, tv, num_classes = 21, min_value = -1., max_v
 	tv = float(num_classes) * (tv - min_value) / (max_value - min_value)
 	tv = tf.cast(tv, tf.int32)
 	loss_per_example = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-				labels = tv, logits = pred))
+				labels = tv, logits = pred), axis = 1)
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
 	
@@ -1081,6 +1081,24 @@ def get_mixed_loss(world_model, weighting):
 	print(weighting.keys())
 	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
 
+def get_obj_there(world_model):
+	return world_model.obj_there
+
+
+class ObjectThereWorldModel:
+	'''
+	A dummy oracle world model that just says the true value of whether an object is in the field of view.
+	'''
+	def __init__(self, cfg):
+		states_shape = list(cfg['state_shape'])
+		states_shape[0] += 1
+		self.states = tf.placeholder(tf.float32, [None] + states_shape)
+		self.s_i = s_i = self.states[:, :-1]
+		self.s_f = s_f = self.states[:, 1:]
+		self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+		self.obj_there = tf.placeholder(tf.int32, [None])
+
+
 
 
 class UncertaintyModel:
@@ -1133,6 +1151,11 @@ class UncertaintyModel:
 
 def l2_loss(tv, pred, cfg):
 	return tf.nn.l2_loss(tv - pred) * cfg.get('loss_factor', 1.)
+
+
+def categorical_loss(tv, pred, cfg):
+	return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                                labels = tv, logits = pred)) * cfg.get('loss_factor', 1.)
 
 sample_cfg = {
 	'uncertainty_model' : {

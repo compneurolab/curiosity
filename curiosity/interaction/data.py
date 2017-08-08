@@ -80,7 +80,8 @@ def check_none_are_none(history, idx, keys_outside_obs):
 
 
 def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2},
-		there_not_there_ratio = 1. / .17):
+		there_not_there_ratio = 1. / .17,
+		get_object_there_binary = False):
 	#gathers which frames have object there and which don't. Can optimize considerably, if this becomes a bottleneck. Dumb implementation.
 	print('Emphasized remembrance of things past!')
 	assert len(history['msg']) == history_len
@@ -127,6 +128,9 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
                                 collected_dat.append(nones_replaced)
                         batch[k] = np.array(collected_dat)
                         batch['recent'][k] = np.array(history[k][-recent_history_length : ])
+        if get_object_there_binary:
+                collected_dat = [1 if history['msg'][-idx - 1]['msg']['action_type'] == 'OBJ_ACT' else 0 for idx in chosen]
+                batch['obj_there'] = np.array(collected_dat, dtype = np.int32)
         for desc in ['msg', 'other']:
                 batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
         return batch
@@ -135,7 +139,7 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
 	
 
 
-def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}):
+def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False):
 	chosen = []
 	print('Remembrance of things past!')
 	#counts from the end
@@ -168,6 +172,9 @@ def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, rec
 				collected_dat.append(nones_replaced)
 			batch[k] = np.array(collected_dat)
 			batch['recent'][k] = np.array(replace_the_nones(history[k][-recent_history_length : ]))
+	if get_object_there_binary:
+		collected_dat = [1 if history['msg'][-idx - 1]['msg']['action_type'] == 'OBJ_ACT' else 0 for idx in chosen]
+		batch['obj_there'] = np.array(collected_dat, dtype = np.int32)
 	for desc in ['msg', 'other']:
 		batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
 	return batch
