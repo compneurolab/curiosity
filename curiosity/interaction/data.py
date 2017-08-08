@@ -156,7 +156,7 @@ def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, rec
 					nones_replaced = replace_the_nones(dat_raw)
 					collected_dat.append(nones_replaced)
 				batch[k_obs] = np.array(collected_dat)
-				batch['recent'][k_obs] = np.array(history[k][k_obs][-recent_history_length : ])
+				batch['recent'][k_obs] = np.array(replace_the_nones(history[k][k_obs][-recent_history_length : ]))
 		else:
 			collected_dat = []
 			for idx in chosen:
@@ -167,7 +167,7 @@ def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, rec
 				nones_replaced = replace_the_nones(dat_raw)
 				collected_dat.append(nones_replaced)
 			batch[k] = np.array(collected_dat)
-			batch['recent'][k] = np.array(history[k][-recent_history_length : ])
+			batch['recent'][k] = np.array(replace_the_nones(history[k][-recent_history_length : ]))
 	for desc in ['msg', 'other']:
 		batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
 	return batch
