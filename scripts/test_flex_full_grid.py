@@ -14,25 +14,28 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 from tqdm import trange
+import cPickle
 
+USE_GROUND_TRUTH_FOR_VALIDATION = True
 CACHE_NUM = 2
 LOCAL = False
 if LOCAL:
-    DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfdata'
-    VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfvaldata'
+    DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
+    VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfvaldata'
     CACHE_DIR = '/data2/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/data2/mrowca/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 else:
-    DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
-    VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
+    DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfdata'
+    VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfvaldata'
     CACHE_DIR = '/mnt/fs0/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
 BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
+SAVE_DIR = '/mnt/fs0/mrowca/results/flex/'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 256 #64
+MODEL_BATCH_SIZE = 64 #256
 TEST_BATCH_SIZE = 1
 TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
@@ -296,6 +299,9 @@ params = {
 }
 
 if __name__ == '__main__':
+    # load stats file
+    f = open(STATS_FILE)
+    stats = cPickle.load(f)
     # get session and data
     print('Creating Graph')
     base.get_params()
@@ -322,3 +328,158 @@ if __name__ == '__main__':
     actions = np.squeeze(actions)
     is_moving = np.squeeze(is_moving)
     in_view = np.squeeze(in_view)
+    # determine range of test sequences
+    use_frame = is_moving * np.min(in_view, axis=-1)
+    isone = np.concatenate(([0], np.equal(use_frame, 1).view(np.int8), [0]))
+    absdiff = np.abs(np.diff(isone))
+    ranges = np.where(absdiff == 1)[0].reshape(-1, 2)
+    # run model and reuse output as input
+    predicted_sequences = []
+    for i, r in enumerate(ranges):
+        print('Processing sequence %d' % i)
+        init = True
+        predicted_grids = []
+        max_coordinates = []
+        min_coordinates = []
+        for frame in range(r[0], r[1]): #trange
+            if init:
+                grid = grids[frame]
+                action = actions[frame]
+                init = False
+
+                if USE_GROUND_TRUTH_FOR_VALIDATION:
+                    predicted_velocity = grids[frame,:,:,:,15:18]
+                else:
+                    # predict next velocity
+                    predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
+                    predicted_velocity = np.squeeze(predicted_velocity)
+
+                # Undo normalization before storing
+                unnormalized_grid = copy.deepcopy(grid)
+                unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * (stats['full_particles']['max'][0,0:7] - \
+                        stats['full_particles']['min'][0,0:7]) + stats['full_particles']['min'][0,0:7]
+                unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * (stats['full_particles']['max'][0,15:18] - \
+                        stats['full_particles']['min'][0,15:18]) + stats['full_particles']['min'][0,15:18]
+                unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * (stats['actions']['max'][0,0:6] - \
+                        stats['actions']['min'][0,0:6]) + stats['actions']['min'][0,0:6]
+                predicted_grids.append(unnormalized_grid)
+                x,y,z = unnormalized_grid[:,:,:,14].nonzero()
+                max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0))
+                min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0))
+            else:
+                # TODO Match particles and predictions up or not?
+                grid[:,:,:,0:3] += predicted_velocity # pos # mass remains unchanged
+                grid[:,:,:,4:7] = predicted_velocity # velocity
+
+                # Assign current actions by id
+                action = actions[frame]
+                # reset actions
+                grid[:,:,:,7:13] = 0
+                for force_torque, action_id in zip(action[:,0:6], action[:,8]):
+                    if action_id not in [-1, 0]:
+                        x,y,z = np.where(np.equal(grid[:,:,:,14], action_id))
+                        grid[x,y,z,7:13] = force_torque # actions
+                # Treat special cases of particles that where melted together
+                max_id = 24
+                assert np.max(action[:,8]) <= max_id, '%d > max_id = %d. Check your data!' % (np.max(action[:,8]), max_id)
+                for action_id in action[:,8]:
+                    assert action_id in [-1, 0, 23, 24]
+                x,y,z = np.where(np.greater(grid[:,:,:,14], max_id))
+                if len(x) > 0:
+                    mixed_ids = grid[x,y,z,14]
+                    partial_ids = grid[x,y,z,13] - 1
+                    counts = grid[x,y,z,18]
+                    # determine which id the partial_id ratio refers to
+                    major23 = np.abs(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24 - mixed_ids)
+                    major24 = np.abs(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23 - mixed_ids)
+                    major = np.argmin(np.stack([major23, major24], axis=-1), axis=-1)
+                    major += 23 # add one if major24 otherwise major23 and add zero
+                    # major is a matrix where each entry indicates which key goes first 23 or 24
+                    n = np.zeros(major.shape)
+                    n[major == 23] = partial_ids[major == 23]
+                    n = {23: n}
+                    n[23][major != 23] = (1 - partial_ids[major != 23])
+                    n[24] = 1 - n[23]
+                    n[23] *= counts
+                    n[24] *= counts
+                    partial_actions = np.zeros(list(major.shape) + [6])
+                    for force_torque, action_id in zip(action[:,0:6], action[:,8]):
+                        if action_id in [23, 24]:
+                            partial_actions += n[action_id][:,np.newaxis] * force_torque
+                    grid[x,y,z,7:13] = partial_actions / counts[:,np.newaxis]
+
+                # Move particles to new coordinates and fuse if necessary, remember max and min coordinates or derive later
+                x,y,z = grid[:,:,:,14].nonzero()
+                indices = grid[x,y,z,0:3]
+                # unmean grid
+                states = grid[x,y,z]
+                states[:,13] -= 1
+                max_coord = np.amax(indices, axis=0)
+                min_coord = np.amin(indices, axis=0)
+                indices = (indices - min_coord[np.newaxis,:]) / (max_coord[np.newaxis,:] - min_coord[np.newaxis,:])
+                grid_dim = np.array(grid.shape[0:3])
+                coordinates = np.round(indices * (grid_dim - 1)).astype(np.int32)
+                coordinates = [tuple(coordinate) for coordinate in coordinates]
+                sorted_coordinates_indices = sorted(range(len(coordinates)), key=coordinates.__getitem__)
+                sorted_coordinates = [coordinates[i] for i in sorted_coordinates_indices]
+                unique_coordinates, idx_start, counts = np.unique(sorted_coordinates, return_index=True, return_counts=True, axis=0)
+                identical_coordinates_sets = np.split(sorted_coordinates_indices, idx_start[1:])
+                # weighted sum of particles depending on the number of particles in each voxel
+                counts = np.array([np.sum(states[coordinate, 18]) for coordinate in identical_coordinates_sets])[:,np.newaxis]
+                pos = np.array([np.sum(states[coordinate, 0:3] * states[coordinate, 18:19], axis=0) / counts[i] \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                mass = np.array([np.sum(states[coordinate, 3:4], axis=0) \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                vel = np.array([np.sum(states[coordinate, 4:7] * states[coordinate, 18:19], axis=0) / counts[i] \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                force_torque = np.array([np.sum(states[coordinate, 7:13] * states[coordinate, 18:19], axis=0) / counts[i] \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                partial_ids = np.array([np.sum(states[coordinate, 13:14] * states[coordinate, 18:19], axis=0) / counts[i] \
+                        for i, coordinate in enumerate(identical_coordinates_sets)]) + 1
+                ids = np.array([np.sum(states[coordinate, 14:15], axis=0) \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                next_vel = np.array([np.sum(states[coordinate, 15:18] * states[coordinate, 18:19], axis=0) / counts[i] \
+                        for i, coordinate in enumerate(identical_coordinates_sets)])
+                states = np.concatenate([pos, mass, vel, force_torque, partial_ids, ids, next_vel, counts], axis=-1)
+
+                print('Number of particles: %d' % len(states))
+                grid = np.zeros(grid.shape).astype(np.float32)
+                grid[unique_coordinates[:,0], \
+                     unique_coordinates[:,1], \
+                     unique_coordinates[:,2]] = states
+
+                if USE_GROUND_TRUTH_FOR_VALIDATION:
+                    predicted_velocity = grids[frame,:,:,:,15:18]
+                else:
+                    # Predict next velocity
+                    predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
+                    predicted_velocity = np.squeeze(predicted_velocity)
+
+                # Undo normalization before storing
+                unnormalized_grid = copy.deepcopy(grid)
+                unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * (stats['full_particles']['max'][0,0:7] - \
+                        stats['full_particles']['min'][0,0:7]) + stats['full_particles']['min'][0,0:7]
+                unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * (stats['full_particles']['max'][0,15:18] - \
+                        stats['full_particles']['min'][0,15:18]) + stats['full_particles']['min'][0,15:18]
+                unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * (stats['actions']['max'][0,0:6] - \
+                        stats['actions']['min'][0,0:6]) + stats['actions']['min'][0,0:6]
+                predicted_grids.append(unnormalized_grid.astype(np.float32))
+                x,y,z = unnormalized_grid[:,:,:,14].nonzero()
+                max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0).astype(np.float32))
+                min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0).astype(np.float32))
+        predicted_sequences.append({
+            'predicted_grids': np.stack(predicted_grids, axis=0), 
+            'max_coordinates': np.stack(max_coordinates, axis=0), 
+            'min_coordinates': np.stack(min_coordinates, axis=0)})
+
+    # Store results and ground truth in .pkl file
+    print('Storing results')
+    if USE_GROUND_TRUTH_FOR_VALIDATION:
+        results_file = os.path.join(SAVE_DIR, 'true_results_' + EXP_ID[0] + '.pkl')
+        with open(results_file, 'w') as f:
+            cPickle.dump(predicted_sequences, f)
+    else:
+        results_file = os.path.join(SAVE_DIR, 'results_' + EXP_ID[0] + '.pkl')
+        with open(results_file, 'w') as f:
+            cPickle.dump(predicted_sequences, f)
+    print('Results stored in ' + results_file)

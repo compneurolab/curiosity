@@ -458,7 +458,11 @@ class ShortLongFuturePredictionBase:
                                 / (std + eps)
                     else:
                         raise KeyError('Unknown normalization method for particle actions')
-                    grid = tf.concat([normalized_states, normalized_actions, grid[:,:,:,:,:,13:15], normalized_next_velocity], axis=-1) 
+                    grid = tf.concat([normalized_states,
+                        normalized_actions,
+                        grid[:,:,:,:,:,13:15],
+                        normalized_next_velocity,
+                        grid[:,:,:,:,:,18:19]], axis=-1) 
 
                 self.inputs['grid'] = grid
                 particles_loaded = True
