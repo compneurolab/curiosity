@@ -21,8 +21,8 @@ assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
-NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
-NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
+NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_tfdata'
+NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'objects', 'depths', 'vels', 'vels_curr', 
         'actions', 'object_data', 'agent_data', 'is_moving', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles', 'full_particles'] 
 for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape', 'grid']:
@@ -32,13 +32,13 @@ WIDTH = 170
 
 MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 18), (MAX_PARTICLES, 3), (MAX_PARTICLES, 18), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 18)]
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 19), (MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 19)]
 
 if OUTPUT_SPARSE_ONLY:
     ATTRIBUTE_NAMES = []
     for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
         ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM))
-    datum_shapes = [(MAX_PARTICLES, 3), (MAX_PARTICLES, 18), (1,), (4,)]
+    datum_shapes = [(MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,)]
 
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
@@ -367,7 +367,7 @@ def get_reference_ids((file_num, bn)):
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
 def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
-    state_dim = 7 + 6 + 2 + 3 #pos, mass, vel, force, torque, 0/1 id, id, next_vel
+    state_dim = 7 + 6 + 2 + 3 + 1 #pos, mass, vel, force, torque, 0/1 id, id, next_vel, counts
     if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
         assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
     else:
@@ -402,6 +402,7 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
     # the mean equals to the part of the voxel that belongs to the second object
     particle_ids = np.zeros((particles.shape[0], particles.shape[1], 2))
     particle_actions = np.zeros((particles.shape[0], particles.shape[1], 6))
+    particle_counts = np.zeros((particles.shape[0], particles.shape[1], 1)) 
     for batch_index, batch_id_order in enumerate(original_id_order):
         offset = 0
         for i_index, i in enumerate(batch_id_order):
@@ -422,7 +423,7 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
                 assert ids[batch_index, idx] == actions[batch_index, idx, 8]
                 particle_actions[batch_index, offset:offset+n, :] = actions[batch_index, idx, 0:6]
             offset += n
-    states = np.concatenate([particles, particle_actions, particle_ids, next_velocity], \
+    states = np.concatenate([particles, particle_actions, particle_ids, next_velocity, particle_counts], \
             axis = -1)
     full_particles[:, :all_particles] = states
     full_particles = full_particles.astype(np.float32)
@@ -460,6 +461,7 @@ def create_occupancy_grid(particles, object_data, original_id_order, actions, gr
         particle_states[:,3] *= counts # sum mass 
         particle_states[:,13] += 1 # add 1 to distinguish from empty pixels -> range: [1,2]
         particle_states[:,14] *= counts # sum real ids, but not binary ones
+        particle_states[:,18] = counts
         # store data for sparse tensor
         sparse_coordinates.append(unique_coordinates)
         sparse_particles.append(particle_states)
