@@ -10,7 +10,8 @@ from tfutils.base import get_optimizer, get_learning_rate
 import numpy as np
 import cv2
 from curiosity.interaction import models
-
+import h5py
+import json
 
 
 class RawDepthDiscreteActionUpdater:
@@ -209,6 +210,39 @@ class MixedLatentUncertaintyUpdater:
 			self.wm.action_post : batch['action_post']
 		}
 		#TODO finish
+
+
+class DataWriteUpdater:
+	def __init__(self, data_provider, updater_params):
+		self.data_provider = data_provider
+		fn = updater_params['hdf5_filename']
+		N = updater_params['N_save']
+		height, width = updater_params['image_shape']
+		act_dim = updater_params['act_dim']
+		print('setting up save loc')
+		self.hdf5 = hdf5 = h5py.File(fn, mode = 'a')
+		dt = h5py.special_dtype(vlen = str)
+		self.handles = {'msg' : hdf5.require_dataset('msg', shape = (N,), dtype = dt),
+				'depths1' : hdf5.require_dataset('depths1', shape = (N, height, width, 3), dtype = np.uint8),
+				'action' : hdf5.require_dataset('action', shape = (N, act_dim), dtype = np.float32),
+				'action_post' : hdf5.require_dataset('action_post', shape = (N, act_dim), dtype = np.float32)}
+		print('save loc set up')
+		self.start = 0	
+
+	def update(self):
+		batch = self.data_provider.dequeue_batch()
+		bs = len(batch['recent']['msg'])
+		end = self.start + bs
+		for k in ['depths1', 'action', 'action_post']:
+			tosave = batch['recent'][k]
+			if k in ['action', 'action_post']:
+				tosave = tosave.astype(np.float32)
+			self.handles[k][self.start : end] = batch['recent'][k]
+		self.handles['msg'][self.start : end] = [json.dumps(msg) for msg in batch['recent']['msg']]
+		self.start = end
+
+	def close(self):
+		self.hdf5.close()			
 
 
 

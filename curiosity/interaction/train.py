@@ -8,7 +8,7 @@ import curiosity.interaction.environment as environment
 import curiosity.interaction.data as data
 from curiosity.interaction.data import SimpleSamplingInteractiveDataProvider, SillyLittleListerator
 from curiosity.interaction.models import UncertaintyModel, DepthFuturePredictionWorldModel, UniformActionSampler, DamianModel, LatentSpaceWorldModel
-from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater, ExperienceReplayPostprocessor
+from curiosity.interaction.update_step import UncertaintyUpdater, UncertaintyPostprocessor, DamianWMUncertaintyUpdater, LatentUncertaintyUpdater, ExperienceReplayPostprocessor, DataWriteUpdater
 import tensorflow as tf
 import os
 import cPickle
@@ -147,6 +147,55 @@ def test_from_params(
         data_provider.start_runner(sess)
 
 	test(sess, validater, dbinterface)
+
+
+def save_data_without_training(
+		model_params,
+		train_params,
+		data_params,
+		allow_growth = True,
+		inter_op_parallelism_threads = 40,
+		log_device_placement = False,
+		per_process_gpu_memory_fraction = None
+
+):
+	model_cfg = model_params['cfg']
+	models_constructor = model_params['func']
+	models = models_constructor(model_cfg)
+	action_model = models[model_params['action_model_desc']]
+	assert action_model.just_random == True
+	
+	data_provider = data_params['func'](data_params, model_params, action_model)
+	updater = DataWriteUpdater(data_provider, train_params['updater_kwargs'])
+
+	N_save = train_params['updater_kwargs']['N_save']
+	batch_size = data_params['provider_params']['gather_per_batch']
+	n_batches = N_save / batch_size
+
+        config = tf.ConfigProto(allow_soft_placement = True,
+                log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
+        if allow_growth:
+                #including this weird conditional because I'm running into a weird bug
+                config.gpu_options.allow_growth = allow_growth
+        if per_process_gpu_memory_fraction is not None:
+                print('limiting mem fraction')
+                config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
+        sess = tf.Session(config = config)
+
+	init_op = tf.global_variables_initializer()
+	sess.run(init_op)
+
+	data_provider.start_runner(sess)
+
+	print('About to save ' + str(n_batches) + ' batches')
+
+	
+	for i in range(n_batches):
+		print(i)
+		updater.update()
+
+	updater.close()
+
 
 
 
