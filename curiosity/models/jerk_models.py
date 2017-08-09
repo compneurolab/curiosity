@@ -559,7 +559,9 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
                 get_actions_map = False,
                 norm_depths=False,
                 use_particles=True,
-                normalize_particles={'states': 'minmax', 'actions': 'minmax'},
+                normalize_particles={'states': 'minmax', 
+                    'actions': 'minmax',
+                    'next_velocity': 'minmax',},
                 grid_dim=input_grid_dim)
         inputs = base_net.inputs
 
@@ -1982,8 +1984,10 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
 def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     gt_next_vel = outputs['next_velocity']
     pred_next_vel = outputs['prediction']
+    mask = tf.not_equal(outputs['full_grids'][:,0,:,:,:,14], 0)
     #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
-    loss = tf.reduce_sum((pred_next_vel - gt_next_vel) ** 2, axis=-1) / 2
+    loss = (tf.boolean_mask(pred_next_vel - gt_next_vel, mask) ** 2) / 2
+    #loss = tf.reduce_sum(loss, axis=-1)
     return [tf.reduce_mean(loss)]
 
 def particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
