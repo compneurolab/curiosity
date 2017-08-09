@@ -98,7 +98,7 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
                                         'depths1' : history_len + state_time_length + 1
                                 },
                         'action_memory_len' : history_len + state_time_length,
-                        'message_memory_len' : 32,
+                        'message_memory_len' : history_len + state_time_length,
 			'other_data_memory_length' : 32,
                         'rescale_dict' : {
                                         'depths1' : image_scale
@@ -245,7 +245,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
         'save_metrics_freq' : 1000,
         'save_initial_filters' : False,
         'cache_dir' : CACHE_DIR,
-        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg', 'recent', 'loss_per_example']
+        'save_to_gfs' : ['act_pred', 'fut_pred', 'batch', 'msg', 'recent', 'loss_per_example', 'estimated_world_loss']
         }}
 
         params['load_params'] = {
@@ -253,7 +253,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
                 'load_param_dict' : None
         }
         params['what_to_save_params'] = {
-                'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example'],
+                'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example', 'estimated_world_loss'],
                 'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss'],
                 'big_save_len' : 2,
                 'big_save_freq' : 1000,

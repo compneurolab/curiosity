@@ -39,25 +39,16 @@ parser.add_argument('--objsize', default = .4, type = float)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'umtries'
+EXP_ID_PREFIX = 'objthere'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 
 args = vars(parser.parse_args())
 
-wm_arch_params = {
-'encode_deets' : {'sizes' : [3, 3, 3, 3], 'strides' : [2, 2, 2, 2], 'nf' : [32, 32, 32, 32]},
-'action_deets' : {'nf' : [256]},
-'future_deets' : {'nf' : [512]}
-}
-
-wm_cfg= cfg_generation.generate_latent_marioish_world_model_cfg(image_shape = IMAGE_SCALE, act_loss_type = 'one_l2', include_previous_action = False, action_dim = ACTION_DIM, **wm_arch_params)
-
-
 wm_cfg = {
 	'action_shape' : [2, ACTION_DIM],
-	'state_shape' : [2] + list(IMAGE_SCALE)
+	'state_shape' : [2] + list(IMAGE_SCALE) + [3]
 }
 
 
@@ -66,7 +57,7 @@ um_encoding_choices = [
 	{
 		'sizes' : [3, 3, 3, 3],
 		'strides' : [2, 2, 2, 2],
-		'num_filters' : [32, 32, 32, 32],
+		'num_filters' : [32, 32, 16, 8],
 		'bypass' : [None, None, None, None]
 	},
 	{
@@ -80,6 +71,12 @@ um_encoding_choices = [
 		'strides' : [2, 2, 2, 2],
 		'num_filters' : [32, 32, 32, 32],
 		'bypass' : [0, 0, 0, 0]
+	},
+	{
+		'sizes' : [7, 3, 3, 3],
+		'strides' : [3, 2, 2, 2],
+		'num_filters' : [32, 32, 32, 32],
+		'bypass' : [0, 0, 0, 0]
 	}
 
 ]
@@ -91,7 +88,6 @@ um_encoding_choices = [
 
 
 um_mlp_choices = [
-	{}, #default
 	{
 		'num_features' : [100, 2],
 		'nonlinearities' : ['relu', 'identity']
@@ -124,19 +120,17 @@ um_mlp_args = um_mlp_choices[args['fcarchitecture']]
 
 
 um_cfg = {
-	'use_world_encoding' : args['tiedencoding'],
+	'use_world_encoding' : False,
 	'encode' : cfg_generation.generate_conv_architecture_cfg(desc = 'encode', **um_encoding_args), 
 	'mlp' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_args),
-	'heat' : args['heat'],
+	'heat' : 1.,
 	'wm_loss' : {
-		'func' : models.get_mixed_loss,
-		'kwargs' : {
-			'weighting' : {'action' : 1.0, 'future' : 0.0}
-		}
+		'func' : models.get_obj_there,
+		'kwargs' : {}
 	},
-	'loss_func' : um_loss_choices[args['loss']],
-	'loss_factor' : 1. / float(args['batchsize']),
-	'only_model_ego' : args['egoonly'],
+	'loss_func' : models.categorical_loss,
+	'loss_factor' : 1.,
+	'only_model_ego' : False,
 	'n_action_samples' : N_ACTION_SAMPLES
 }
 
@@ -188,19 +182,20 @@ elif args['optimizer'] == 'momentum':
 
 
 get_objthere_updater = lambda models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params : \
-				return update_step.ObjectThereUpdater(**models, data_provider = data_provider, optimizer_params = optimizer_params
-						learning_rate_params = learning_rate_params, postprocessor = postprocessor, updater_params = updater_params)
+				update_step.ObjectThereUpdater(data_provider = data_provider, optimizer_params = optimizer_params,
+						learning_rate_params = learning_rate_params, postprocessor = postprocessor, 
+						updater_params = updater_params, **models)
 							
 
 def get_objthere_models(cfg):
-	world_model = ObjectThereWorldModel(cfg)
-	um = UncertaintyModel(cfg, world_model)
+	world_model = models.ObjectThereWorldModel(cfg['world_model'])
+	um = models.UncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : um}
 
 
 
 train_params = {
-	'updater_func' : get_objthere_models,
+	'updater_func' : get_objthere_updater,
 	'updater_kwargs' : {
 		'state_desc' : 'depths1'
 
@@ -212,7 +207,7 @@ train_params = {
 
 
 model_params = {
-                'func' : get_objthere_updater,
+                'func' : get_objthere_models,
                 'cfg' : model_cfg,
                 'action_model_desc' : 'uncertainty_model'
         }

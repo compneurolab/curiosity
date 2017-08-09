@@ -122,7 +122,13 @@ class ExperienceReplayPostprocessor:
 			save_keys = self.big_save_keys
 			#est_losses = [other[1] for other in batch['other']]
 			#action_sample = [other[2] for other in batch['other']]
-			res['batch' ] = {'obs' : batch[self.state_descriptor][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1]}
+			res['batch'] = {}
+			for desc, val in batch.iteritems():
+				print(desc)
+				if desc == 'obj_there':
+					res['batch'][desc] = val
+				elif desc != 'recent':
+					res['batch'][desc] = val[:, -1]
 			res['recent'] = batch['recent']
 		else:
 			save_keys = self.little_save_keys
@@ -246,8 +252,8 @@ class DataWriteUpdater:
 
 
 
-class ObjectThereUpdater
-	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params)
+class ObjectThereUpdater:
+	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
 		self.data_provider = data_provider
 		self.wm = world_model
 		self.um = uncertainty_model
@@ -255,9 +261,10 @@ class ObjectThereUpdater
 		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
 		self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
 		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
-		self.global_step = self.global_step / 3
-		self.targets.update({'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 
-						'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss})
+		self.targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 
+						'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss,
+						'estimated_world_loss' : self.um.estimated_world_loss
+								}
 		self.state_desc = updater_params['state_desc']
 
 
@@ -293,7 +300,8 @@ class LatentUncertaintyUpdater:
 						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
 						'act_optimizer' : act_opt, 'fut_optimizer' : fut_opt, 
 						'act_lr' : act_lr, 'fut_lr' : fut_lr,
-						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss
+						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss,
+						'estimated_world_loss' : self.um.estimated_world_loss
 						}
 		self.targets.update({'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 
 						'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss})
