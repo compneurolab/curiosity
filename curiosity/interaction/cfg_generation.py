@@ -208,7 +208,7 @@ def generate_batching_data_provider(force_scaling = 80.,
 
 
 
-def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1'):
+def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False):
         if location == 'freud':
                 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
         elif location == 'cluster':
@@ -228,11 +228,20 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
 		if proposed not in expids_used:
 			expids_used.append(proposed)
 			exp_id = proposed
+	if load_and_save_elsewhere:
+		exp_id_load = raw_input('Please enter expid to load: ')
+		if prefix is not None:
+			exp_id_load = prefix + '_' + exp_id_load
+	else:
+		exp_id_load = exp_id
 	with open(exps_there_fn, 'w') as stream:
 		cPickle.dump(expids_used, stream)
         CACHE_DIR = os.path.join(CACHE_ID_PREFIX, exp_id)
+	CACHE_DIR_LOAD = os.path.join(CACHE_ID_PREFIX, exp_id_load)
         if not os.path.exists(CACHE_DIR):
                 os.mkdir(CACHE_DIR)
+	if not os.path.exists(CACHE_DIR_LOAD):
+		os.mkdir(CACHE_DIR_LOAD)
 	params = {'save_params' : {     
                 'host' : 'localhost',
                 'port' : 15841,
@@ -249,8 +258,9 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
         }}
 
         params['load_params'] = {
-                'exp_id' : exp_id,
-                'load_param_dict' : None
+                'exp_id' : exp_id_load,
+                'load_param_dict' : None,
+		'cache_dir' : CACHE_DIR_LOAD
         }
         params['what_to_save_params'] = {
                 'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example', 'estimated_world_loss'],

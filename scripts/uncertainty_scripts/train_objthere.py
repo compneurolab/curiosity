@@ -103,9 +103,9 @@ um_mlp_choices = [
 	},
 
 	{
-		'num_features': [1],
-		'nonlinearities' : ['identity']
-
+		'num_features': [2],
+		'nonlinearities' : ['identity'],
+		'dropout' : [None]
 
 	}
 
