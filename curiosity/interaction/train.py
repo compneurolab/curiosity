@@ -16,6 +16,8 @@ import tfutils.base as base
 import time
 import cv2
 import numpy as np
+import tqdm
+
 
 RENDER_2_ADDY = '10.102.2.162'
 RENDER_1_ADDY = '10.102.2.161'
@@ -132,6 +134,8 @@ def test_from_params(
 	data_provider = data_params['func'](data_params, model_params, action_model)
 	
 	validater = validate_params['func'](models, data_provider, ** validate_params['kwargs'])
+	num_steps = validate_params['num_steps']
+
 	params = {'save_params' : save_params,
 		'load_params' : load_params,
 		'model_params' : model_params,
@@ -141,12 +145,20 @@ def test_from_params(
 		}
 
 	sess = get_session(gpu_params)
-	dbinterface = base.DBInterface(sess = sess, global_step = validater.global_step, params = params, save_params = save_params, load_params = load_params)
+	dbinterface = base.DBInterface(sess = sess, params = params, save_params = save_params, load_params = load_params)
 
         dbinterface.initialize()
         data_provider.start_runner(sess)
 
-	test(sess, validater, dbinterface)
+	test(sess, validater, dbinterface, num_steps)
+
+def test(sess, validater, dbinterface, num_steps):
+	for _step in tqdm.trange(num_steps):
+		dbinterface.start_time_step = time.time()
+		res = validater.run(sess)
+		dbinterface.save(valid_res = res, validation_only = True)
+	dbinterface.sync_with_host()
+
 
 
 def save_data_without_training(
