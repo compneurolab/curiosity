@@ -48,6 +48,8 @@ IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 FORCE_SCALING = 80.
 RENDER1_HOST_ADDRESS = '10.102.2.161'
+scene_len = 250
+
 
 args = vars(parser.parse_args())
 
@@ -177,7 +179,7 @@ validate_params = {
 
 
 
-one_obj_scene_info = [
+scene_info = [
         {
         'type' : 'SHAPENET',
         'scale' : args['objsize'],
@@ -194,6 +196,8 @@ num_gathered_per_batch = args['numperbatch']
 my_rng = np.random.RandomState(2)
 batch_size = args['batchsize']
 ratio = args['ratio']
+which_batching = args['batching']
+act_dim = ACTION_DIM
 
 if which_batching == 'uniform':
 	dp_config = {
@@ -236,7 +240,7 @@ elif which_batching == 'obj_there':
         act_dim = 8 if do_torque else 5
         if num_gathered_per_batch is None:
                 num_gathered_per_batch = batch_size / 4
-        return {
+        dp_config = {
                 'func' : train.get_batching_data_provider,
                 'action_limits' : np.array([1., 1.] + [FORCE_SCALING for _ in range(act_dim - 2)]),
                 'environment_params' : {
@@ -291,8 +295,6 @@ params = {
 params.update(load_and_save_params)
 
 
-params['allow_growth'] = True
-
 
 
 
@@ -301,7 +303,7 @@ params['allow_growth'] = True
 
 if __name__ == '__main__':
 	os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
-	train.train_from_params(**params)
+	train.test_from_params(**params)
 
 
 

@@ -208,7 +208,7 @@ def generate_batching_data_provider(force_scaling = 80.,
 
 
 
-def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsehere = False):
+def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False):
         if location == 'freud':
                 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
         elif location == 'cluster':
@@ -229,9 +229,11 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
 			expids_used.append(proposed)
 			exp_id = proposed
 	if load_and_save_elsewhere:
-		exp_ids_load = raw_input('Please enter expid to load: ')
+		exp_id_load = raw_input('Please enter expid to load: ')
+		if prefix is not None:
+			exp_id_load = prefix + '_' + exp_id_load
 	else:
-		exp_ids_load = exp_id
+		exp_id_load = exp_id
 	with open(exps_there_fn, 'w') as stream:
 		cPickle.dump(expids_used, stream)
         CACHE_DIR = os.path.join(CACHE_ID_PREFIX, exp_id)

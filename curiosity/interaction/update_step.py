@@ -212,14 +212,15 @@ class DataWriteUpdater:
 class ObjectThereValidater:
 	def __init__(self, models, data_provider):
 		self.um = models['uncertainty_model']
-		self.targets = {'um_loss' : self.um_uncertainty_loss, 'loss_per_example' : self.um.true_loss,
+		self.wm = models['world_model']
+		self.targets = {'um_loss' : self.um.uncertainty_loss, 'loss_per_example' : self.um.true_loss,
 				'estimated_world_loss' : self.um.estimated_world_loss}
 		self.dp = data_provider
 
-	def run_batch(self, sess):
-		batch = self.data_provider.dequeue_batch
+	def run(self, sess):
+		batch = self.dp.dequeue_batch()
                 feed_dict = {
-                        self.wm.states : batch[state_desc],
+                        self.wm.states : batch['depths1'],
                         self.wm.action : batch['action'],
                         self.wm.obj_there : batch['obj_there']
                 }

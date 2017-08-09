@@ -156,6 +156,7 @@ def test(sess, validater, dbinterface, num_steps):
 	for _step in tqdm.trange(num_steps):
 		dbinterface.start_time_step = time.time()
 		res = validater.run(sess)
+		res = {'valid' : res}
 		dbinterface.save(valid_res = res, validation_only = True)
 	dbinterface.sync_with_host()
 
