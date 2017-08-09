@@ -366,12 +366,15 @@ def assign_actions(grid, action):
         assert action_id in [-1, 0, 23, 24]
     x,y,z = np.where(np.greater(grid[:,:,:,14], max_id))
     if len(x) > 0:
+        #xt,yt,zt = grid[:,:,:,14].nonzero()
+        #print('Fused particles / All particles', len(x) * 100.0 / len(xt))
         mixed_ids = grid[x,y,z,14]
         partial_ids = grid[x,y,z,13] - 1
         counts = grid[x,y,z,18]
         # determine which id the partial_id ratio refers to
-        major23 = np.abs(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24 - mixed_ids)
-        major24 = np.abs(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23 - mixed_ids)
+        major23 = np.abs(np.round(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24) - mixed_ids)
+        major24 = np.abs(np.round(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23) - mixed_ids)
+        assert np.sum(major23) == 0 or np.sum(major24) == 0
         major = np.argmin(np.stack([major23, major24], axis=-1), axis=-1)
         major += 23 # add one if major24 otherwise major23 and add zero
         # major is a matrix where each entry indicates which key goes first 23 or 24
@@ -392,7 +395,6 @@ def assign_actions(grid, action):
 def update_particle_position(grid):
     x,y,z = grid[:,:,:,14].nonzero()
     indices = grid[x,y,z,0:3]
-    # unmean grid
     states = grid[x,y,z]
     states[:,13] -= 1
     max_coord = np.amax(indices, axis=0)
@@ -405,21 +407,22 @@ def update_particle_position(grid):
     sorted_coordinates = [coordinates[i] for i in sorted_coordinates_indices]
     unique_coordinates, idx_start, counts = np.unique(sorted_coordinates, return_index=True, return_counts=True, axis=0)
     identical_coordinates_sets = np.split(sorted_coordinates_indices, idx_start[1:])
-    # weighted sum of particles depending on the number of particles in each voxel
+    # Weighted sum of particles depending on the number of particles in each voxel (by mass or count)
+    #TODO Inelastic collision or count??? which one works better / is correct?
     counts = np.array([np.sum(states[coordinate, 18]) for coordinate in identical_coordinates_sets])[:,np.newaxis]
-    pos = np.array([np.sum(states[coordinate, 0:3] * states[coordinate, 18:19], axis=0) / counts[i] \
-            for i, coordinate in enumerate(identical_coordinates_sets)])
     mass = np.array([np.sum(states[coordinate, 3:4], axis=0) \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    vel = np.array([np.sum(states[coordinate, 4:7] * states[coordinate, 18:19], axis=0) / counts[i] \
+    pos = np.array([np.sum(states[coordinate, 0:3] * states[coordinate, 3:4], axis=0) / mass[i] \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    force_torque = np.array([np.sum(states[coordinate, 7:13] * states[coordinate, 18:19], axis=0) / counts[i] \
+    vel = np.array([np.sum(states[coordinate, 4:7] * states[coordinate, 3:4], axis=0) / mass[i] \
+            for i, coordinate in enumerate(identical_coordinates_sets)])
+    force_torque = np.array([np.sum(states[coordinate, 7:13] * states[coordinate, 3:4], axis=0) / mass[i] \
             for i, coordinate in enumerate(identical_coordinates_sets)])
     partial_ids = np.array([np.sum(states[coordinate, 13:14] * states[coordinate, 18:19], axis=0) / counts[i] \
             for i, coordinate in enumerate(identical_coordinates_sets)]) + 1
     ids = np.array([np.sum(states[coordinate, 14:15], axis=0) \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    next_vel = np.array([np.sum(states[coordinate, 15:18] * states[coordinate, 18:19], axis=0) / counts[i] \
+    next_vel = np.array([np.sum(states[coordinate, 15:18] * states[coordinate, 3:4], axis=0) / mass[i] \
             for i, coordinate in enumerate(identical_coordinates_sets)])
     states = np.concatenate([pos, mass, vel, force_torque, partial_ids, ids, next_vel, counts], axis=-1)
 
@@ -498,8 +501,10 @@ if __name__ == '__main__':
                 predicted_velocity = unnormalize_prediction(predicted_velocity, stats)
 
                 # TODO Match particles and predictions up or not?
-                grid[:,:,:,0:3] += predicted_velocity # pos # mass remains unchanged
-                grid[:,:,:,4:7] = predicted_velocity # velocity
+                x,y,z = grid[:,:,:,14].nonzero()
+                #xp,yp,zp = np.sum(np.abs(predicted_velocity), axis=-1).nonzero()
+                grid[x,y,z,0:3] += predicted_velocity[x,y,z] # pos # mass remains unchanged
+                grid[x,y,z,4:7] = predicted_velocity[x,y,z] # velocity
 
                 # Assign current actions by id
                 grid = assign_actions(grid, actions[frame])
