@@ -48,7 +48,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_4', 
-'flexBott_4',
+'flexBott_5',
 #'flex2d_4', 
 #'flex_4',
 ]
@@ -298,6 +298,54 @@ params = {
     'dont_run': True,
 }
 
+def normalize_grid(unnormalized_grid, stats):
+    grid = copy.deepcopy(unnormalized_grid)
+    grid[:,:,:,0:7] = (grid[:,:,:,0:7] - \
+            stats['full_particles']['min'][0,0:7]) / \
+            (stats['full_particles']['max'][0,0:7] - \
+            stats['full_particles']['min'][0,0:7])
+    grid[:,:,:,15:18] = (grid[:,:,:,15:18] - \
+            stats['full_particles']['min'][0,15:18]) / \
+            (stats['full_particles']['max'][0,15:18] - \
+            stats['full_particles']['min'][0,15:18])
+    grid[:,:,:,7:13] = (grid[:,:,:,7:13] - \
+            stats['actions']['min'][0,0:6]) / \
+            (stats['actions']['max'][0,0:6] - \
+            stats['actions']['min'][0,0:6])
+    return grid
+
+def unnormalize_grid(grid, stats):
+    unnormalized_grid = copy.deepcopy(grid)
+    unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * \
+            (stats['full_particles']['max'][0,0:7] - \
+            stats['full_particles']['min'][0,0:7]) + \
+            stats['full_particles']['min'][0,0:7]
+    unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * \
+            (stats['full_particles']['max'][0,15:18] - \
+            stats['full_particles']['min'][0,15:18]) + \
+            stats['full_particles']['min'][0,15:18]
+    unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * \
+            (stats['actions']['max'][0,0:6] - \
+            stats['actions']['min'][0,0:6]) + \
+            stats['actions']['min'][0,0:6]
+    return unnormalized_grid
+
+def normalize_prediction(unnormalized_pred, stats):
+    pred = copy.deepcopy(unnormalized_pred)
+    pred = (pred - \
+            stats['full_particles']['min'][0,15:18]) / \
+            (stats['full_particles']['max'][0,15:18] - \
+            stats['full_particles']['min'][0,15:18])
+    return pred
+
+def unnormalize_prediction(pred, stats):
+    unnormalized_pred = copy.deepcopy(pred)
+    unnormalized_pred = unnormalized_pred * \
+            (stats['full_particles']['max'][0,15:18] - \
+            stats['full_particles']['min'][0,15:18]) + \
+            stats['full_particles']['min'][0,15:18]
+    return unnormalized_pred
+
 if __name__ == '__main__':
     # load stats file
     f = open(STATS_FILE)
@@ -353,20 +401,19 @@ if __name__ == '__main__':
                     # predict next velocity
                     predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
                     predicted_velocity = np.squeeze(predicted_velocity)
+                    #raise NotImplementedError
 
                 # Undo normalization before storing
-                unnormalized_grid = copy.deepcopy(grid)
-                unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * (stats['full_particles']['max'][0,0:7] - \
-                        stats['full_particles']['min'][0,0:7]) + stats['full_particles']['min'][0,0:7]
-                unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * (stats['full_particles']['max'][0,15:18] - \
-                        stats['full_particles']['min'][0,15:18]) + stats['full_particles']['min'][0,15:18]
-                unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * (stats['actions']['max'][0,0:6] - \
-                        stats['actions']['min'][0,0:6]) + stats['actions']['min'][0,0:6]
+                unnormalized_grid = unnormalize_grid(grid, stats)
                 predicted_grids.append(unnormalized_grid)
                 x,y,z = unnormalized_grid[:,:,:,14].nonzero()
                 max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0))
                 min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0))
             else:
+                # Undo normalization
+                grid = unnormalize_grid(grid, stats)
+                predicted_velocity = unnormalize_prediction(predicted_velocity, stats)
+
                 # TODO Match particles and predictions up or not?
                 grid[:,:,:,0:3] += predicted_velocity # pos # mass remains unchanged
                 grid[:,:,:,4:7] = predicted_velocity # velocity
@@ -448,25 +495,23 @@ if __name__ == '__main__':
                      unique_coordinates[:,1], \
                      unique_coordinates[:,2]] = states
 
+                # Store unnormalized grid
+                predicted_grids.append(grid.astype(np.float32))
+                x,y,z = grid[:,:,:,14].nonzero()
+                max_coordinates.append(np.amax(
+                    grid[x,y,z,0:3], axis=0).astype(np.float32))
+                min_coordinates.append(np.amin(
+                    grid[x,y,z,0:3], axis=0).astype(np.float32))
+
+                # redo normalization
+                grid = normalize_grid(grid, stats)
+
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
                     predicted_velocity = grids[frame,:,:,:,15:18]
                 else:
                     # Predict next velocity
                     predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
                     predicted_velocity = np.squeeze(predicted_velocity)
-
-                # Undo normalization before storing
-                unnormalized_grid = copy.deepcopy(grid)
-                unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * (stats['full_particles']['max'][0,0:7] - \
-                        stats['full_particles']['min'][0,0:7]) + stats['full_particles']['min'][0,0:7]
-                unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * (stats['full_particles']['max'][0,15:18] - \
-                        stats['full_particles']['min'][0,15:18]) + stats['full_particles']['min'][0,15:18]
-                unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * (stats['actions']['max'][0,0:6] - \
-                        stats['actions']['min'][0,0:6]) + stats['actions']['min'][0,0:6]
-                predicted_grids.append(unnormalized_grid.astype(np.float32))
-                x,y,z = unnormalized_grid[:,:,:,14].nonzero()
-                max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0).astype(np.float32))
-                min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0).astype(np.float32))
         predicted_sequences.append({
             'predicted_grids': np.stack(predicted_grids, axis=0), 
             'max_coordinates': np.stack(max_coordinates, axis=0), 
