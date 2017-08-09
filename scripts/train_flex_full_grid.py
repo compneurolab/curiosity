@@ -17,13 +17,13 @@ import copy
 CACHE_NUM = 2
 LOCAL = False
 if LOCAL:
-    DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfdata'
-    VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/tfvaldata'
+    DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
+    VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfvaldata'
     CACHE_DIR = '/data2/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/data2/mrowca/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 else:
-    DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfdata'
-    VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/tfvaldata'
+    DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfdata'
+    VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfvaldata'
     CACHE_DIR = '/mnt/fs0/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
@@ -31,7 +31,7 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 32 #64
+MODEL_BATCH_SIZE = 64 #64
 TIME_SEEN = 1 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 1 #3
@@ -42,10 +42,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = [#'flex2dBott_4', 
-#'flexBott_4',
-#'flex2d_4', 
-'flex_4',
+EXP_ID = [#'flex2dBott_5', 
+'flexBott_5',
+#'flex2d_5', 
+#'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
@@ -55,9 +55,9 @@ min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 4
