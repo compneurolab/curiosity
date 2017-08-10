@@ -1122,6 +1122,10 @@ class UncertaintyModel:
                 #encode
                 self.encoded = x = feedforward_conv_loop(x, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             x = flatten(x)
+            #this could be done fully conv, but we would need building blocks modifications, this is just as easy
+            #applies an mlp to encoding before adding in actions
+            if 'mlp_before_action' in cfg:
+                x = hidden_loop_with_bypasses(x, m, cfg['mlp_before_action'], reuse_weights = False, train = True)
             x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
             # x = tf.tile(x, [cfg['n_action_samples'], 1])
             x = tf_concat([x, ac], 1)
