@@ -1136,8 +1136,6 @@ class UncertaintyModel:
             log_prob = tf.nn.log_softmax(x_tr)
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
-            print('the fucking shape')
-            print(self.sample.get_shape().as_list())
             self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
             self.just_random = False
             if 'just_random' in cfg:

@@ -39,7 +39,7 @@ parser.add_argument('--numperbatch', default = 500, type = int)
 parser.add_argument('--historylen', default = 500, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
 parser.add_argument('--objsize', default = .4, type = float)
-
+parser.add_argument('--numsteps', default = 20, type = int)
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'objthere'
@@ -173,7 +173,7 @@ model_params = {
 validate_params = {
 	'func' : update_step.ObjectThereValidater,
 	'kwargs' : {},
-	'num_steps' : 5
+	'num_steps' : args['numsteps']
 }
 
 
