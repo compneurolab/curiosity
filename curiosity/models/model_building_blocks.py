@@ -92,6 +92,7 @@ class ConvNetwithBypasses(ConvNet):
 		for k in kind:
 			print('activation: ' + k)
 			if k == 'relu':
+				print('relu')
 				for_out.append(tf.nn.relu(in_layer, name='relu'))
                         elif k == 'crelu':
                                 for_out.append(tf.nn.crelu(in_layer, name='crelu'))
@@ -100,12 +101,25 @@ class ConvNetwithBypasses(ConvNet):
 			elif k == 'concat_square':
 				for_out.append(tf_concat([in_layer, in_layer * in_layer], last_axis))
 			elif k == 'square':
+				print('square nonlinearity!')
 				for_out.append(in_layer * in_layer)
 			elif k == 'safe_square':
 				my_tanh = tf.tanh(in_layer)
 				for_out.append(my_tanh * my_tanh)
 			elif k == 'neg_relu':
+				print('neg relu')
 				for_out.append(tf.nn.relu(-in_layer, name = 'neg_relu'))
+			elif k == 'square_relu':
+				print('square relu')
+				rel_inlayer = tf.nn.relu(rel_inlayer)
+				for_out.append(rel_inlayer)
+			elif k == 'square_relu_neg':
+				print('square relu neg')
+				rel_in = tf.nn.relu(-inlayer)
+				for_out.append(rel_in * rel_in)
+			elif k == 'square_crelu':
+				crel = tf.nn.crelu(in_layer, name = 'crelu')
+				for_out.append(crel * crel)
 			elif k == 'identity':
 				print('no nonlinearity!')
 				for_out.append(in_layer)

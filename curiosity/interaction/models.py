@@ -1125,7 +1125,9 @@ class UncertaintyModel:
             #this could be done fully conv, but we would need building blocks modifications, this is just as easy
             #applies an mlp to encoding before adding in actions
             if 'mlp_before_action' in cfg:
-                x = hidden_loop_with_bypasses(x, m, cfg['mlp_before_action'], reuse_weights = False, train = True)
+                with tf.variable_scope('before_action'):
+                    print('got to before action!')
+                    x = hidden_loop_with_bypasses(x, m, cfg['mlp_before_action'], reuse_weights = False, train = True)
             x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
             # x = tf.tile(x, [cfg['n_action_samples'], 1])
             x = tf_concat([x, ac], 1)
@@ -1146,6 +1148,7 @@ class UncertaintyModel:
                 self.just_random = True
             	self.rng = np.random.RandomState(cfg['just_random'])
         self.var_list = [var for var in tf.global_variables() if um_scope in var.name]
+        print([var.name for var in self.var_list])
 
     def act(self, sess, action_sample, state):
         depths_batch = np.array([state])
