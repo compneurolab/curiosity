@@ -222,7 +222,7 @@ class LatentUncertaintyValidator:
 
 	def run(self, sess):
 		batch = self.dp.dequeue_batch()
-				feed_dict = {
+		feed_dict = {
 						self.wm.states : batch['depths1'],
 						self.wm.action : batch['action'],
 						self.wm.action_post : batch['action_post'],
@@ -279,6 +279,34 @@ class ObjectThereUpdater:
 			self.wm.states : batch[state_desc],
 			self.wm.action : batch['action'],
 			self.wm.obj_there : batch['obj_there']
+		}
+		res = sess.run(self.targets, feed_dict = feed_dict)
+		res = self.postprocessor.postprocess(res, batch)
+		return res
+
+
+class SquareForceMagUpdater:
+	def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+		self.dp = data_provider
+		self.wm = models['world_model']
+		self.um = models['uncertainty_model']
+		self.postprocessor = postprocessor
+                self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+                self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+                um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
+		self.targets = {'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt,
+                                                'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss,
+                                                'estimated_world_loss' : self.um.estimated_world_loss
+                                                                }
+		self.state_desc = updater_params['state_desc']
+	
+	def update(self, sess, visualize = False):
+		batch = self.dp.dequeue_batch()
+		state_desc = self.state_desc
+		feed_dict = {
+			self.wm.states : batch[state_desc],
+			self.wm.action : batch['action'],
+			self.wm.action_post : batch['action_post']
 		}
 		res = sess.run(self.targets, feed_dict = feed_dict)
 		res = self.postprocessor.postprocess(res, batch)

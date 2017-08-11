@@ -1084,6 +1084,9 @@ def get_mixed_loss(world_model, weighting):
 def get_obj_there(world_model):
 	return world_model.obj_there
 
+def get_force_square(world_model):
+	return world_model.square_force_magnitude
+
 
 class ObjectThereWorldModel:
 	'''
@@ -1099,7 +1102,20 @@ class ObjectThereWorldModel:
 		self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 		self.obj_there = tf.placeholder(tf.int32, [None])
 
-
+class ForceMagSquareWorldModel:
+	'''
+	Similar to the above, but just gives the square of the force.
+	'''
+	def __init__(self, cfg):
+                states_shape = list(cfg['state_shape'])
+                states_shape[0] += 1
+                self.states = tf.placeholder(tf.float32, [None] + states_shape)
+                self.s_i = s_i = self.states[:, :-1]
+                self.s_f = s_f = self.states[:, 1:]
+                self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+		self.action_post = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
+		force = self.action_post[:, -1, 2:]
+		self.square_force_magnitude = tf.reduce_sum(force * force, axis = 1) / 2.
 
 
 class UncertaintyModel:
