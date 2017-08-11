@@ -96,10 +96,10 @@ class OfflineDataProvider(threading.Thread):
 			batcher_constructor, 
 			data_lengths, 
 			capacity, 
-			batcher_args = None):
+			batcher_kwargs = None):
 		self.batcher = batcher
 		self.hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
-		self.batcher = batcher_constructor(self.hdf5s, batch_size, data_lengths, ** batcher_args)
+		self.batcher = batcher_constructor(self.hdf5s, batch_size, data_lengths, ** batcher_kwargs)
 		self.batch_size = batch_size
 		self.data_lengths = data_lengths
 		self.queue = queue.Queue(capacity)

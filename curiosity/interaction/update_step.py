@@ -208,6 +208,35 @@ class DataWriteUpdater:
 		self.hdf5.close()			
 
 
+class LatentUncertaintyValidator:
+	def __init__(self, models, data_provider):
+		self.um = models['uncertainty_model']
+		self.wm = models['world_model']
+		self.targets = {
+						'act_pred' : self.wm.act_pred, 
+						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss, 'um_loss' : self.um.uncertainty_loss,
+						'estimated_world_loss' : self.um.estimated_world_loss, 'loss_per_example' : self.um.true_loss,
+						'act_loss_per_example' : self.wm.act_loss_per_example
+						}
+		self.dp = data_provider
+
+	def run(self, sess):
+		batch = self.dp.dequeue_batch()
+				feed_dict = {
+						self.wm.states : batch['depths1'],
+						self.wm.action : batch['action'],
+						self.wm.action_post : batch['action_post'],
+						self.wm.obj_there : batch['obj_there']
+				}
+		res = sess.run(self.targets, feed_dict = feed_dict)
+		res['batch'] = {}
+		for desc, val in batch.iteritems():
+			print(desc)
+			if desc == 'obj_there':
+				res['batch'][desc] = val
+			elif desc != 'recent':
+				res['batch'][desc] = val[:, -1]
+		res['recent'] = batch['recent']
 
 class ObjectThereValidater:
 	def __init__(self, models, data_provider):
@@ -255,6 +284,24 @@ class ObjectThereUpdater:
 		res = self.postprocessor.postprocess(res, batch)
 		return res
 
+
+class JustUncertaintyUpdater:
+	def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+		self.dp = data_provider
+		self.wm = models['world_model']
+		self.um = models['uncertainty_model']
+		self.postprocessor = postprocessor
+		self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+		self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+		um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
+		self.targets = {
+						'fut_pred' : self.wm.fut_pred, 'act_pred' : self.wm.act_pred, 
+						'fut_loss' : self.wm.fut_loss, 'act_loss' : self.wm.act_loss,
+						'estimated_world_loss' : self.um.estimated_world_loss
+						}
+		self.targets.update({'um_loss' : self.um.uncertainty_loss, 'um_lr' : um_lr, 'um_optimizer' : um_opt, 
+						'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss})
+		self.state_desc = updater_params['state_desc']
 
 
 class LatentUncertaintyUpdater:
