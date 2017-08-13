@@ -247,7 +247,11 @@ def action_softmax_loss(prediction, tv, num_classes = 21, min_value = -1., max_v
 				labels = tv, logits = pred), axis = 1)
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
-	
+
+
+
+
+
 
 def softmax_cross_entropy_loss_vel_one(outputs, tv, gpu_id = 0, eps = 0.0,
         min_value = -1.0, max_value = 1.0, num_classes=256,
@@ -1146,6 +1150,12 @@ class UncertaintyModel:
                     x = hidden_loop_with_bypasses(x, m, cfg['mlp_before_action'], reuse_weights = False, train = True)
             x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
             # x = tf.tile(x, [cfg['n_action_samples'], 1])
+            self.insert_obj_there = cfg.get('insert_obj_there', False)
+            if self.insert_obj_there:
+                print('inserting obj_there')
+                self.obj_there = x = tf.placeholder(tf.int32, [None])
+                x = tf.cast(x, tf.float32)
+                x = tf.expand_dims(x, 1)
             x = tf_concat([x, ac], 1)
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
@@ -1167,6 +1177,11 @@ class UncertaintyModel:
         print([var.name for var in self.var_list])
 
     def act(self, sess, action_sample, state):
+        if self.just_random and self.insert_obj_there:
+            #a bit hackish, hopefully breaks nothing
+            chosen_idx = self.rng.randint(len(action_sample))
+            print('random act!')
+            return action_sample[chosen_idx], -1., None
         depths_batch = np.array([state])
         chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.estimated_world_loss], 
 							feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
@@ -1183,6 +1198,50 @@ def l2_loss(tv, pred, cfg):
 def categorical_loss(tv, pred, cfg):
 	return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                                 labels = tv, logits = pred)) * cfg.get('loss_factor', 1.)
+
+
+def correlation(x, y):
+        x = tf.reshape(x, (-1,))
+        y = tf.reshape(y, (-1,))
+        n = tf.cast(tf.shape(x)[0], tf.float32)
+        x_sum = tf.reduce_sum(x)
+        y_sum = tf.reduce_sum(y)
+        xy_sum = tf.reduce_sum(tf.multiply(x, y))
+        x2_sum = tf.reduce_sum(tf.pow(x, 2))
+        y2_sum = tf.reduce_sum(tf.pow(y, 2))
+        numerator = tf.scalar_mul(n, xy_sum) - tf.scalar_mul(x_sum, y_sum) + .0001
+        denominator = tf.sqrt(tf.scalar_mul(tf.scalar_mul(n, x2_sum) - tf.pow(x_sum, 2),
+                                        tf.scalar_mul(n, y2_sum) - tf.pow(y_sum, 2))) + .0001
+        corr = tf.truediv(numerator, denominator)
+        return corr
+
+
+
+def combination_loss(tv, pred, cfg):
+	l2_coef = cfg.get('l2_factor', 1.)
+	corr_coef = cfg.get('corr_factor', 1.)
+	return l2_coef * tf.nn.l2_loss(pred - tv) - corr_coef * (correlation(pred, tv) - 1)
+		
+	
+def equal_spacing_softmax_loss(tv, prediction, cfg):
+	num_classes = cfg.get('num_classes', 2)
+	min_value = cfg.get('min_value', -1.)
+	max_value = cfg.get('max_value', 1.)
+	tv_shape = tv.get_shape().as_list()
+	#pred = tf.reshape(prediction, [-1] + tv_shape[1:] + [num_classes])
+	pred = prediction
+	tv = float(num_classes - 1) * (tv - min_value) / (max_value - min_value)
+	tv = tf.cast(tv, tf.int32)
+	print(pred)
+	print(tv)
+	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(
+				labels = tv, logits = pred)
+	loss = tf.reduce_mean(loss_per_example)
+	return loss
+
+
+
+
 
 sample_cfg = {
 	'uncertainty_model' : {

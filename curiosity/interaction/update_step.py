@@ -299,6 +299,7 @@ class SquareForceMagUpdater:
                                                 'estimated_world_loss' : self.um.estimated_world_loss
                                                                 }
 		self.state_desc = updater_params['state_desc']
+		
 	
 	def update(self, sess, visualize = False):
 		batch = self.dp.dequeue_batch()
@@ -308,6 +309,9 @@ class SquareForceMagUpdater:
 			self.wm.action : batch['action'],
 			self.wm.action_post : batch['action_post']
 		}
+		if self.um.insert_obj_there:
+			print('adding obj_there to feed dict')
+			feed_dict[self.um.obj_there] = batch['obj_there']
 		res = sess.run(self.targets, feed_dict = feed_dict)
 		res = self.postprocessor.postprocess(res, batch)
 		return res
