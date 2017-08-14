@@ -1156,7 +1156,11 @@ class UncertaintyModel:
                 self.obj_there = x = tf.placeholder(tf.int32, [None])
                 x = tf.cast(x, tf.float32)
                 x = tf.expand_dims(x, 1)
-            x = tf_concat([x, ac], 1)
+            if self.insert_obj_there and cfg.get('exactly_whats_needed', False):
+                print('exactly_whats_needed nonlinearity')
+                x = x * ac * ac
+            else:
+                x = tf_concat([x, ac], 1)
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             heat = cfg.get('heat', 1.)
@@ -1236,7 +1240,7 @@ def equal_spacing_softmax_loss(tv, prediction, cfg):
 	print(tv)
 	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(
 				labels = tv, logits = pred)
-	loss = tf.reduce_mean(loss_per_example)
+	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
 	return loss
 
 
