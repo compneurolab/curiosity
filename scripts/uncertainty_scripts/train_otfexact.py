@@ -38,6 +38,9 @@ parser.add_argument('--historylen', default = 1000, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
 parser.add_argument('--objsize', default = .4, type = float)
 parser.add_argument('--umloss', default = 0, type = int)
+parser.add_argument('--momvalue', default = .9, type = float)
+
+
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'otfex'
@@ -174,7 +177,7 @@ elif args['optimizer'] == 'momentum':
                         'func': optimizer.ClipOptimizer,
                         'optimizer_class': optimizer_class,
                         'clip': True,
-                        'momentum' : .9
+                        'momentum' : args['momvalue']
                 }
 
         }
@@ -243,6 +246,9 @@ postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
 
 }
+
+load_and_save_params['what_to_save_params']['big_save_keys'].append('oh_my_god')
+load_and_save_params['save_params']['save_to_gfs'].append('oh_my_god')
 
 
 

@@ -664,6 +664,7 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         hidden_depth = cfg['hidden_depth']
         m.output = input_node
         for i in range(1, hidden_depth + 1):
+		print(m.output.get_shape().as_list())
                 with tf.variable_scope('hidden' + str(i)) as scope:
                         if reuse_weights:
                                 scope.reuse_variables()
@@ -681,7 +682,8 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
                                 my_dropout = None
                         m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = my_dropout)
                         nodes_for_bypass.append(m.output)
-        return m.output
+        	print(m.output.get_shape().as_list())
+	return m.output
 
 
 def flatten_append_unflatten(start_state, action, cfg, m):
@@ -1156,11 +1158,14 @@ class UncertaintyModel:
                 self.obj_there = x = tf.placeholder(tf.int32, [None])
                 x = tf.cast(x, tf.float32)
                 x = tf.expand_dims(x, 1)
-            if self.insert_obj_there and cfg.get('exactly_whats_needed', False):
+            self.exactly_whats_needed = cfg.get('exactly_whats_needed', False)
+            if self.insert_obj_there and self.exactly_whats_needed:
                 print('exactly_whats_needed nonlinearity')
-                x = x * ac * ac
+                self.oh_my_god = x = x * ac * ac
+                print(x.get_shape().as_list())
             else:
                 x = tf_concat([x, ac], 1)
+            print('going into last hidden loop')
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             heat = cfg.get('heat', 1.)

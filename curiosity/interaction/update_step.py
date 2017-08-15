@@ -298,6 +298,8 @@ class SquareForceMagUpdater:
                                                 'global_step' : self.global_step, 'loss_per_example' : self.um.true_loss,
                                                 'estimated_world_loss' : self.um.estimated_world_loss
                                                                 }
+		if self.um.exactly_whats_needed:
+			self.targets['oh_my_god'] = self.um.oh_my_god
 		self.state_desc = updater_params['state_desc']
 		
 	
