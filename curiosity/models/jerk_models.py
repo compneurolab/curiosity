@@ -667,6 +667,8 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 encoded_input_main[t] = enc[-1]
                 reuse_weights = True
 
+        #TODO FIX ALL ZERO DIVS!!! ESPECIALLY NORMALIZATIONS BY MINMAX
+
         # unnormalize grid 
         pred_velocity = encoded_input_main[0]
         next_grid = tf.concat([grids[:,0:1,:,:,:,0:15], tf.expand_dims(pred_velocity, axis=1), grids[:,0:1,:,:,:,18:19]], axis=-1)
@@ -694,12 +696,13 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         counts = next_grid[:,:,:,:,18] * indices
         major23 = tf.abs(tf.round(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24) - mixed_ids)
         major24 = tf.abs(tf.round(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23) - mixed_ids)
-        with tf.control_dependencies([tf.logical_or( \
+        with tf.control_dependencies([tf.Assert(tf.logical_or( \
                 tf.equal(tf.reduce_sum(major23), 0), \
-                tf.equal(tf.reduce_sum(major24), 0))]):
-            major = np.argmin(tf.stack([major23, major24], axis=-1), axis=-1)
+                tf.equal(tf.reduce_sum(major24), 0)), [major23, major24])]):
+            major = tf.stack([major23, major24], axis=-1)
+            major = tf.argmin(major, axis=-1)
             n23 = partial_ids * tf.cast(tf.equal(major, 0), tf.float32)
-            n23 += (1 - partial_ids) * tf.cast(tf.equal(major, 0), tf.float32)
+            n23 += (1 - partial_ids) * tf.cast(tf.not_equal(major, 0), tf.float32)
             n24 = 1 - n23
             n23 *= counts
             n24 *= counts
@@ -719,7 +722,8 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                         tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1), 
                             [1, np.prod(grid_shape[1:4]), 1]), 
                             list(grid_shape[:-1]) + [6])
-            next_act += partial_act / tf.expand_dims(counts * indices, axis=-1)
+            counts = tf.maximum(next_grid[:,:,:,:,18:19], 1)
+            next_act += (partial_act / counts) * tf.expand_dims(indices, axis=-1)
         # assemble next grid
         next_grid = tf.concat([next_grid[:,:,:,:,0:7], next_act, next_grid[:,:,:,:,13:19]], axis=-1)
 
@@ -771,27 +775,31 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         idx3 = i // cum[3]
         coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], axis=-1), tf.int64)
         # Weighted sum of particles depending on the number of particles in each voxel (by mass or count)
+        # eps_mass to avoid division by zero
+        eps_mass = 1e-6
         counts = tf.unsorted_segment_sum(states[:, 18:19], 
                 unique_coordinates_indices, num_segments)
         mass = tf.unsorted_segment_sum(states[:, 3:4], 
                 unique_coordinates_indices, num_segments)
         pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / mass
+                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
         vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / mass
+                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
         force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / mass
+                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
         partial_ids = tf.unsorted_segment_sum(states[:, 13:14] * states[:, 18:19], 
-                unique_coordinates_indices, num_segments) / counts
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1)
         ids = tf.unsorted_segment_sum(states[:, 14:15], 
                 unique_coordinates_indices, num_segments)
         next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / mass
-        states = tf.concat([pos, mass, vel, force_torque, partial_ids, ids, next_vel, counts], axis=-1)
+                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
+        states = tf.concat([pos, mass, vel, force_torque, 
+            partial_ids, ids, next_vel, counts], axis=-1)
 
         next_grid = tf.scatter_nd(coordinates, states, list(grid_shape[:-1]) + [19])
         # normalize grid
-        next_grid = base_net.normalize_particle_data(tf.expand_dims(next_grid, axis=1))[:,0] 
+        next_grid = base_net.normalize_particle_data(
+                tf.expand_dims(next_grid, axis=1))[:,0] 
 
         # predict grid (draw particles at correct locations)
         main_input_per_time = [next_grid[:,:,:,:,0:10]]
@@ -2356,7 +2364,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
-def flex_2loss(outputs, gpu_id, min_particle_distance, **kwargs):
+def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
     gt_next_state = outputs['full_grids'][:,1,:,:,:,0:10]
     pred_next_state = outputs['pred_grid']
     next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
@@ -2367,7 +2375,8 @@ def flex_2loss(outputs, gpu_id, min_particle_distance, **kwargs):
     mask = tf.not_equal(outputs['full_grids'][:,0,:,:,:,14], 0)
     next_vel_loss = (tf.boolean_mask(pred_next_vel - gt_next_vel, mask) ** 2) / 2
 
-    total_loss = tf.reduce_mean(next_vel_loss) + tf.reduce_mean(next_state_loss)
+    total_loss = alpha * tf.reduce_mean(next_vel_loss) + \
+            (1 - alpha) * tf.reduce_mean(next_state_loss)
     return[total_loss]
 
 def flex_next_state_loss(outputs, gpu_id, min_particle_distance, **kwargs):
@@ -2547,8 +2556,6 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         labels = outputs['vels'][:,2]
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
-        if debug:
-            loss = tf.Print(loss, [loss], message='next moments')
         losses.append(loss)
         assert len(losses) == 1, ('loss length: %d' % len(losses))
 
@@ -2558,8 +2565,6 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
         labels = outputs['vels_curr'][:,1]
         loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=labels, logits=logits) * mask)
-        if debug:
-            loss = tf.Print(loss, [loss], message='moments')
         losses.append(loss)
         assert len(losses) == 2, ('loss length: %d' % len(losses))
 
@@ -2570,8 +2575,6 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
             labels = tf.cast(outputs['depths_raw'][:,2], tf.int32)
             loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=labels, logits=logits) * mask)
-            if debug:
-                loss = tf.Print(loss, [loss], message='next image')
             losses.append(loss)
             assert len(losses) == 3, ('loss length: %d' % len(losses))
 
@@ -2643,9 +2646,6 @@ def softmax_cross_entropy_loss_vel_all(outputs, gpu_id = 0, eps = 0.0,
                 distances.append(distance)
             preserve_distance_loss = tf.reduce_mean((distances[1] - distances[0]) ** 2 \
                     * relation_same) / 2
-            if debug:
-                preserve_distance_loss = tf.Print(preserve_distance_loss, \
-                      [preserve_distance_loss], message='distance')
             losses.append(preserve_distance_loss)
             if use_next_depth:
                 assert len(losses) == 4, ('loss length: %d' % len(losses))
