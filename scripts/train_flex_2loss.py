@@ -43,7 +43,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexBott2Loss',
+'flexBott2LossFull19',
 #'flex2d_5', 
 #'flex_5',
 ]
@@ -99,7 +99,17 @@ def just_keep_everything(val_res):
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
 
-SAVE_TO_GFS = []#['pred_vel_flat', 'reference_ids']
+SAVE_TO_GFS = [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
+                'mass_loss', 'vel_loss', 'force_torque_loss',
+                'pid_loss', 'id_loss', 'next_next_vel_loss', 'count_loss', 
+                'reference_ids']
+
+def return_outputs(inputs, outputs, targets, **kwargs):
+    retval = {}
+    gpu_id = 0
+    for target in targets:
+        retval[target] = outputs[gpu_id][target]
+    return retval
 
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
@@ -108,7 +118,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     retval['loss'] = modelsource.flex_2loss( 
             outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
-        if k != 'reference_ids':
+        if k == 'num_to_save':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
                     'pred_delta_vel_1']:
                 pred = outputs[k]
@@ -281,7 +291,11 @@ train_params =  {
         'capacity' : MODEL_BATCH_SIZE * 60
     },
     'num_steps' : float('inf'),
-    'thres_loss' : float('inf')
+    'thres_loss' : float('inf'),
+    'targets' : {
+        'func' : return_outputs,
+        'targets': SAVE_TO_GFS,
+    }
 }
 
 for i, _ in enumerate(save_params):

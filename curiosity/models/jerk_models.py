@@ -781,18 +781,18 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 unique_coordinates_indices, num_segments)
         mass = tf.unsorted_segment_sum(states[:, 3:4], 
                 unique_coordinates_indices, num_segments)
-        pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
-        vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
-        force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
+        pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 18:19], #mass 
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+        vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+        force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
         partial_ids = tf.unsorted_segment_sum(states[:, 13:14] * states[:, 18:19], 
                 unique_coordinates_indices, num_segments) / tf.maximum(counts, 1)
         ids = tf.unsorted_segment_sum(states[:, 14:15], 
                 unique_coordinates_indices, num_segments)
-        next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
+        next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
         states = tf.concat([pos, mass, vel, force_torque, 
             partial_ids, ids, next_vel, counts], axis=-1)
 
@@ -802,7 +802,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 tf.expand_dims(next_grid, axis=1))[:,0] 
 
         # predict grid (draw particles at correct locations)
-        main_input_per_time = [next_grid[:,:,:,:,0:10]]
+        main_input_per_time = [next_grid[:,:,:,:,0:19]]
         encoded_input_main = []
         if not reuse_weights_for_reconstruction:
             reuse_weights = False
@@ -875,6 +875,20 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
 
+        next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
+        mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
+
+        next_vel_loss = (tf.boolean_mask(pred_velocity - next_velocity, mask) ** 2) / 2
+        next_state_loss = (tf.boolean_mask(pred_grid[:,:,:,:,0:19] - grids[:,1,:,:,:,0:19], next_state_mask) ** 2) / 2 
+        pos_loss = (tf.boolean_mask(pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3], next_state_mask) ** 2) / 2
+        mass_loss = (tf.boolean_mask(pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4], next_state_mask) ** 2) / 2
+        vel_loss = (tf.boolean_mask(pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7], next_state_mask) ** 2) / 2
+        force_torque_loss = (tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], next_state_mask) ** 2) / 2
+        pid_loss = (tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], next_state_mask) ** 2) / 2
+        id_loss = (tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], next_state_mask) ** 2) / 2
+        next_next_vel_loss = (tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], next_state_mask) ** 2) / 2
+        count_loss = (tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], next_state_mask) ** 2) / 2
+
         retval = {
                 'pred_grid': pred_grid,
                 'pred_velocity': pred_velocity,
@@ -884,9 +898,19 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'actions': inputs['actions'],
                 'is_moving': inputs['is_moving'],
                 'in_view': inputs['in_view'],
+                'bypasses': bypass_nodes,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
-                'bypasses': bypass_nodes,
+                'next_vel_loss': next_vel_loss,
+                'next_state_loss': next_state_loss,
+                'pos_loss': pos_loss,
+                'mass_loss': mass_loss,
+                'vel_loss': vel_loss,
+                'force_torque_loss': force_torque_loss,
+                'pid_loss': pid_loss,
+                'id_loss': id_loss,
+                'next_next_vel_loss': next_next_vel_loss,
+                'count_loss': count_loss,
                 }
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
@@ -2365,7 +2389,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
 def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
-    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:10]
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:19]
     pred_next_state = outputs['pred_grid']
     next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
     next_state_loss = (tf.boolean_mask(pred_next_state - gt_next_state, next_state_mask) ** 2) / 2
@@ -3381,7 +3405,7 @@ def particle_bottleneck_comp_cfg(nonlin='relu'):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
                 #'bypass': 4
                 },
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 10},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 19},
                 #'bypass': 2
                 },
         },

@@ -412,17 +412,17 @@ def update_particle_position(grid):
     counts = np.array([np.sum(states[coordinate, 18]) for coordinate in identical_coordinates_sets])[:,np.newaxis]
     mass = np.array([np.sum(states[coordinate, 3:4], axis=0) \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    pos = np.array([np.sum(states[coordinate, 0:3] * states[coordinate, 3:4], axis=0) / mass[i] \
+    pos = np.array([np.sum(states[coordinate, 0:3] * states[coordinate, 18:19], axis=0) / counts[i] #mass \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    vel = np.array([np.sum(states[coordinate, 4:7] * states[coordinate, 3:4], axis=0) / mass[i] \
+    vel = np.array([np.sum(states[coordinate, 4:7] * states[coordinate, 18:19], axis=0) / counts[i] #mass \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    force_torque = np.array([np.sum(states[coordinate, 7:13] * states[coordinate, 3:4], axis=0) / mass[i] \
+    force_torque = np.array([np.sum(states[coordinate, 7:13] * states[coordinate, 18:19], axis=0) / counts[i] #mass \
             for i, coordinate in enumerate(identical_coordinates_sets)])
     partial_ids = np.array([np.sum(states[coordinate, 13:14] * states[coordinate, 18:19], axis=0) / counts[i] \
             for i, coordinate in enumerate(identical_coordinates_sets)]) + 1
     ids = np.array([np.sum(states[coordinate, 14:15], axis=0) \
             for i, coordinate in enumerate(identical_coordinates_sets)])
-    next_vel = np.array([np.sum(states[coordinate, 15:18] * states[coordinate, 3:4], axis=0) / mass[i] \
+    next_vel = np.array([np.sum(states[coordinate, 15:18] * states[coordinate, 18:19], axis=0) / counts[i] #mass \
             for i, coordinate in enumerate(identical_coordinates_sets)])
     states = np.concatenate([pos, mass, vel, force_torque, partial_ids, ids, next_vel, counts], axis=-1)
 
