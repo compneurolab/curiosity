@@ -244,7 +244,7 @@ def action_softmax_loss(prediction, tv, num_classes = 21, min_value = -1., max_v
 	tv = float(num_classes) * (tv - min_value) / (max_value - min_value)
 	tv = tf.cast(tv, tf.int32)
 	loss_per_example = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-				labels = tv, logits = pred), axis = 1)
+				labels = tv, logits = pred), axis = 1, keep_dims = True)
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
 
@@ -664,6 +664,7 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
         hidden_depth = cfg['hidden_depth']
         m.output = input_node
         for i in range(1, hidden_depth + 1):
+		print(m.output.get_shape().as_list())
                 with tf.variable_scope('hidden' + str(i)) as scope:
                         if reuse_weights:
                                 scope.reuse_variables()
@@ -681,7 +682,8 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
                                 my_dropout = None
                         m.fc(nf, init = 'xavier', activation = my_activation, bias = .01, stddev = stddev, dropout = my_dropout)
                         nodes_for_bypass.append(m.output)
-        return m.output
+        	print(m.output.get_shape().as_list())
+	return m.output
 
 
 def flatten_append_unflatten(start_state, action, cfg, m):
@@ -915,12 +917,12 @@ class LatentSpaceWorldModel(object):
             if loss_type == 'both_l2':
                 act_post_flat = flatten(self.action_post)
 		diff = self.act_pred - act_post_flat
-		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
+		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1, keep_dims = True) / 2. * act_loss_factor
                 self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             elif loss_type == 'one_l2':
                 act_post_flat = self.action_post[:, -1]
 		diff = self.act_pred - act_post_flat
-		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * act_loss_factor
+		self.act_loss_per_example = tf.reduce_sum(diff * diff, axis = 1, keep_dims = True) / 2. * act_loss_factor
                 self.act_loss = tf.reduce_mean(self.act_loss_per_example)
             elif loss_type == 'one_cat':
 		print('cat')
@@ -1119,7 +1121,32 @@ class ForceMagSquareWorldModel:
                 self.action = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 		self.action_post = tf.placeholder(tf.float32, [None] + cfg['action_shape'])
 		force = self.action_post[:, -1, 2:]
-		self.square_force_magnitude = tf.reduce_sum(force * force, axis = 1) / 2.
+		self.square_force_magnitude = tf.reduce_sum(force * force, axis = 1, keep_dims = True) / 2.
+
+class SimpleForceUncertaintyModel:
+	def __init__(self, cfg, world_model):
+		with tf.variable_scope('uncertainty_model'):
+			m = ConvNetwithBypasses()
+			self.action_sample = ac = world_model.action[:, -1]
+			self.true_loss = world_model.square_force_magnitude
+			self.obj_there = x = tf.placeholder(tf.int32, [None])
+			x = tf.cast(x, tf.float32)
+			x = tf.expand_dims(x, 1)
+			self.oh_my_god = x = x * ac * ac
+			self.ans = tf.reduce_sum(x[:, 2:], axis = 1)
+			if cfg.get('use_ans', False):
+				x = self.ans
+				x = tf.expand_dims(x, 1)
+			self.estimated_world_loss = tf.squeeze(hidden_loop_with_bypasses(x, m, cfg, reuse_weights = False, train = True))
+			self.uncertainty_loss = l2_loss(self.true_loss, self.estimated_world_loss, {'loss_factor' : 1 / 32.})
+			self.rng = np.random.RandomState(0)
+			self.var_list = [var for var in tf.global_variables() if 'uncertainty_model' in var.name]
+
+	def act(self, sess, action_sample, state):
+		chosen_idx = self.rng.randint(len(action_sample))
+		print('random act!')
+		return action_sample[chosen_idx], -1., None
+
 
 
 class UncertaintyModel:
@@ -1132,6 +1159,7 @@ class UncertaintyModel:
             if cfg.get('only_model_ego', False):
                 ac = ac[:, :2]
             self.true_loss = tr_loss = cfg['wm_loss']['func'](world_model, **cfg['wm_loss']['kwargs'])
+            assert len(self.true_loss.get_shape().as_list()) == 2
             if cfg.get('use_world_encoding', False):
                 self.encoded = x = world_model.encoding_i
             else:
@@ -1156,11 +1184,14 @@ class UncertaintyModel:
                 self.obj_there = x = tf.placeholder(tf.int32, [None])
                 x = tf.cast(x, tf.float32)
                 x = tf.expand_dims(x, 1)
-            if self.insert_obj_there and cfg.get('exactly_whats_needed', False):
+            self.exactly_whats_needed = cfg.get('exactly_whats_needed', False)
+            if self.insert_obj_there and self.exactly_whats_needed:
                 print('exactly_whats_needed nonlinearity')
-                x = x * ac * ac
+                self.oh_my_god = x = x * ac * ac
+                print(x.get_shape().as_list())
             else:
                 x = tf_concat([x, ac], 1)
+            print('going into last hidden loop')
             self.estimated_world_loss = x = hidden_loop_with_bypasses(x, m, cfg['mlp'], reuse_weights = False, train = True)
             x_tr = tf.transpose(x)
             heat = cfg.get('heat', 1.)

@@ -39,11 +39,11 @@ parser.add_argument('--ratio', default = 2 / .17, type = float)
 parser.add_argument('--objsize', default = .4, type = float)
 parser.add_argument('--umloss', default = 0, type = int)
 parser.add_argument('--momvalue', default = .9, type = float)
-
+parser.add_argument('--useans', default = False, type = bool)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'otfex'
+EXP_ID_PREFIX = 'dbgex'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -56,87 +56,15 @@ wm_cfg = {
 }
 
 
-um_encoding_choices = [
-	{
-		'sizes' : [7, 3, 3, 3],
-		'strides' : [3, 2, 2, 2],
-		'num_filters' : [32, 32, 32, 32],
-		'bypass' : [0, 0, 0, 0]
-	}
-
-]
-
-
-
-um_mlp_choices = [
-        {
-                'num_features' : [50, 1],
-                'nonlinearities' : ['relu', 'identity'],
-                'dropout' : [None, None]
-        },
-	{
-		'num_features' : [1],
-		'nonlinearities' : ['identity'],
-		'dropout' : [None]
-	}
-]
-
-
-mlp_before_action_choices = [
-        {
-                'num_features' : [500, 1],
-                'nonlinearities' : ['relu', 'relu']
-        },
-        {
-                'num_features' : [500, 1],
-                'nonlinearities' : ['relu', 'tanh']
-        }
-]
-
-
-
-
-
-um_encoding_args = um_encoding_choices[args['encarchitecture']]
-um_mlp_args = um_mlp_choices[args['fcarchitecture']]
-um_mlp_before_act_args = mlp_before_action_choices[args['mbaarchitecture']]
-
 
 um_cfg = {
-	'use_world_encoding' : False,
-	'encode' : cfg_generation.generate_conv_architecture_cfg(desc = 'encode', **um_encoding_args), 
-        'mlp_before_action' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_before_act_args),
-	'mlp' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_args),
-	'insert_obj_there' : True,
-	'heat' : 1.,
-	'wm_loss' : {
-		'func' : models.get_force_square,
-		'kwargs' : {}
-	},
-	'exactly_whats_needed' : True,
-	'just_random' : 0,
-	'loss_func' : models.l2_loss,
-	'loss_factor' : 1. / float(args['batchsize']),
-	'only_model_ego' : False,
-	'n_action_samples' : N_ACTION_SAMPLES
-}
-
-
-um_loss = args['umloss']
-
-if um_loss == 0:
-	um_cfg['loss_func'] = models.l2_loss
-	um_cfg['loss_factor'] = 1. / float(args['batchsize'])
-elif um_loss == 1:
-	um_cfg['loss_func'] = models.combination_loss
-	um_cfg['l2_factor'] = 0.
-	um_cfg['corr_factor'] = 1.
-elif um_loss == 2:
-        um_cfg['loss_func'] = models.combination_loss
-        um_cfg['l2_factor'] = 1. / float(args['batchsize'])
-        um_cfg['corr_factor'] = 1.
-
-
+                        'hidden_depth': 1,
+                        'hidden' : {
+                                1 : {'num_features' : 1, 'activation' : 'identity', 'dropout' : None}
+                        },
+			'n_action_samples' : 1000,
+			'use_ans' : False
+                }
 
 
 model_cfg = {
@@ -183,25 +111,24 @@ elif args['optimizer'] == 'momentum':
         }
 
 
-get_force_updater = lambda models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params : \
-                                update_step.SquareForceMagUpdater(models = models, data_provider = data_provider, optimizer_params = optimizer_params,
-                                                learning_rate_params = learning_rate_params, postprocessor = postprocessor,
-                                                updater_params = updater_params)
 
+
+#TODO this is really silly, must have kwarg issue in train
+get_debugging_updater = lambda models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params: update_step.DebuggingForceMagUpdater(
+							models = models, data_provider = data_provider, optimizer_params = optimizer_params,
+									learning_rate_params = learning_rate_params, postprocessor = postprocessor, updater_params = updater_params)
 
 
 def get_force_models(cfg):
 	world_model = models.ForceMagSquareWorldModel(cfg['world_model'])
-	um = models.UncertaintyModel(cfg['uncertainty_model'], world_model)
+	um = models.SimpleForceUncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : um}
 
 
 
 train_params = {
-	'updater_func' : get_force_updater,
+	'updater_func' : get_debugging_updater,
 	'updater_kwargs' : {
-		'state_desc' : 'depths1'
-
 	}
 }
 
@@ -247,8 +174,10 @@ postprocessor_params = {
 
 }
 
-load_and_save_params['what_to_save_params']['big_save_keys'].append('oh_my_god')
-load_and_save_params['save_params']['save_to_gfs'].append('oh_my_god')
+
+for desc in ['oh_my_god', 'ans', 'model_parameters']:
+	load_and_save_params['what_to_save_params']['big_save_keys'].append(desc)
+	load_and_save_params['save_params']['save_to_gfs'].append(desc)
 
 
 

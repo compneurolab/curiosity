@@ -38,12 +38,9 @@ parser.add_argument('--historylen', default = 1000, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
 parser.add_argument('--objsize', default = .4, type = float)
 parser.add_argument('--umloss', default = 0, type = int)
-parser.add_argument('--momvalue', default = .9, type = float)
-
-
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'otfex'
+EXP_ID_PREFIX = 'bfix'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -70,15 +67,34 @@ um_encoding_choices = [
 
 um_mlp_choices = [
         {
-                'num_features' : [50, 1],
-                'nonlinearities' : ['relu', 'identity'],
-                'dropout' : [None, None]
+                'num_features' : [50, 50, 1],
+                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
+                'dropout' : [None, None, None]
+        },
+        {
+                'num_features' : [10, 10, 1],
+                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
+                'dropout' : [None, None, None]
+        },
+        {},
+        {
+                'num_features' : [10, 10, 10, 1],
+                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
+                'dropout' : [None, None, None, None]
         },
 	{
-		'num_features' : [1],
-		'nonlinearities' : ['identity'],
-		'dropout' : [None]
+		'num_features' : [4, 4, 1],
+		'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
+		'dropout' : [None, None, None]
+	},
+	{
+		'num_features' : [2, 2, 1],
+		'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
+		'dropout' : [None, None, None]
 	}
+
+
+
 ]
 
 
@@ -113,10 +129,7 @@ um_cfg = {
 		'func' : models.get_force_square,
 		'kwargs' : {}
 	},
-	'exactly_whats_needed' : True,
 	'just_random' : 0,
-	'loss_func' : models.l2_loss,
-	'loss_factor' : 1. / float(args['batchsize']),
 	'only_model_ego' : False,
 	'n_action_samples' : N_ACTION_SAMPLES
 }
@@ -126,14 +139,14 @@ um_loss = args['umloss']
 
 if um_loss == 0:
 	um_cfg['loss_func'] = models.l2_loss
-	um_cfg['loss_factor'] = 1. / float(args['batchsize'])
+	um_cfg['loss_factor'] = (1./.2)**2 / float(args['batchsize'])
 elif um_loss == 1:
 	um_cfg['loss_func'] = models.combination_loss
 	um_cfg['l2_factor'] = 0.
 	um_cfg['corr_factor'] = 1.
 elif um_loss == 2:
         um_cfg['loss_func'] = models.combination_loss
-        um_cfg['l2_factor'] = 1. / float(args['batchsize'])
+        um_cfg['l2_factor'] = (1./.2)**2 / float(args['batchsize'])
         um_cfg['corr_factor'] = 1.
 
 
@@ -177,7 +190,7 @@ elif args['optimizer'] == 'momentum':
                         'func': optimizer.ClipOptimizer,
                         'optimizer_class': optimizer_class,
                         'clip': True,
-                        'momentum' : args['momvalue']
+                        'momentum' : .9
                 }
 
         }
@@ -246,9 +259,6 @@ postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
 
 }
-
-load_and_save_params['what_to_save_params']['big_save_keys'].append('oh_my_god')
-load_and_save_params['save_params']['save_to_gfs'].append('oh_my_god')
 
 
 
