@@ -802,7 +802,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 tf.expand_dims(next_grid, axis=1))[:,0] 
 
         # predict grid (draw particles at correct locations)
-        main_input_per_time = [next_grid[:,:,:,:,0:19]]
+        main_input_per_time = [next_grid[:,:,:,:,0:7]]
         encoded_input_main = []
         if not reuse_weights_for_reconstruction:
             reuse_weights = False
@@ -875,6 +875,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
 
+        '''
         next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
         mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
 
@@ -888,6 +889,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         id_loss = (tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], next_state_mask) ** 2) / 2
         next_next_vel_loss = (tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], next_state_mask) ** 2) / 2
         count_loss = (tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], next_state_mask) ** 2) / 2
+        '''
 
         retval = {
                 'pred_grid': pred_grid,
@@ -901,6 +903,8 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'bypasses': bypass_nodes,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
+                }
+        '''
                 'next_vel_loss': next_vel_loss,
                 'next_state_loss': next_state_loss,
                 'pos_loss': pos_loss,
@@ -912,6 +916,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'next_next_vel_loss': next_next_vel_loss,
                 'count_loss': count_loss,
                 }
+        '''
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
         print('------BYPASSES-------')
@@ -2389,7 +2394,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
 def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
-    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:19]
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:7]
     pred_next_state = outputs['pred_grid']
     next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
     next_state_loss = (tf.boolean_mask(pred_next_state - gt_next_state, next_state_mask) ** 2) / 2
@@ -3405,7 +3410,7 @@ def particle_bottleneck_comp_cfg(nonlin='relu'):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
                 #'bypass': 4
                 },
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 19},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 7},
                 #'bypass': 2
                 },
         },

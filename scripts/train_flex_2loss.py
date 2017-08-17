@@ -43,7 +43,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexBott2LossFull19',
+'flexBott2LossState7',
 #'flex2d_5', 
 #'flex_5',
 ]
@@ -99,10 +99,11 @@ def just_keep_everything(val_res):
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
 
-SAVE_TO_GFS = [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
-                'mass_loss', 'vel_loss', 'force_torque_loss',
-                'pid_loss', 'id_loss', 'next_next_vel_loss', 'count_loss', 
-                'reference_ids']
+SAVE_TO_GFS = []
+           # [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
+           #     'mass_loss', 'vel_loss', 'force_torque_loss',
+           #     'pid_loss', 'id_loss', 'next_next_vel_loss', 'count_loss', 
+           #     'reference_ids']
 
 def return_outputs(inputs, outputs, targets, **kwargs):
     retval = {}
