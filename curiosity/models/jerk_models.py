@@ -514,7 +514,7 @@ def reverse_projection(inputs, P):
         return tf.maximum(0, inputs)
 
 def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method = None,
-        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0,
+        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, n_states = 10,
         my_test = False, test_batch_size=1, reuse_weights_for_reconstruction=False, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -572,6 +572,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
             grids = tf.concat(grids, axis=1)
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
+        input_grids = grids
         grid = grids[:,0]
         next_velocity = grids[:,0,:,:,:,15:18]
 
@@ -586,8 +587,13 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         grid_shape = [BATCH_SIZE, 32, 32, 32, 10]
         grid.set_shape(grid_shape)
 
+        input_actions = inputs['actions']
+
         if my_test:
+            grid_shape = [test_batch_size, 32, 32, 32, 10]
             grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
+            grids = tf.placeholder(tf.float32, [test_batch_size, 2] + list(grid_shape[1:-1]) + [19], 'grids_input')
+            input_actions = tf.placeholder(tf.float32, [test_batch_size, 2] + input_actions.get_shape().as_list()[2:], 'action_input')
 
         # encode per time input
         main_input_per_time = [grid]
@@ -676,8 +682,8 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
 
         # assign next actions
         next_act = tf.zeros(tf.shape(next_grid[:,:,:,:,7:13]))
-        next_action_ids = tf.unstack(inputs['actions'][:,1,:,8], axis=1)
-        next_forces = tf.unstack(inputs['actions'][:,1,:,0:6], axis=1)
+        next_action_ids = tf.unstack(input_actions[:,1,:,8], axis=1)
+        next_forces = tf.unstack(input_actions[:,1,:,0:6], axis=1)
         for (next_force, next_action_id) in zip(next_forces, next_action_ids):
             indices = tf.cast(tf.equal(next_grid[:,:,:,:,14], \
                     tf.reshape(tf.tile(tf.expand_dims(next_action_id, axis=-1), 
@@ -802,7 +808,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 tf.expand_dims(next_grid, axis=1))[:,0] 
 
         # predict grid (draw particles at correct locations)
-        main_input_per_time = [next_grid[:,:,:,:,0:7]]
+        main_input_per_time = [next_grid[:,:,:,:,0:n_states]]
         encoded_input_main = []
         if not reuse_weights_for_reconstruction:
             reuse_weights = False
@@ -895,12 +901,15 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'pred_grid': pred_grid,
                 'pred_velocity': pred_velocity,
                 'next_velocity': next_velocity,
-                'full_grids': grids,
+                'full_grids': input_grids,
                 'grid_placeholder': grid,
+                'grids_placeholder': grids,
+                'action_placeholder': input_actions,
                 'actions': inputs['actions'],
                 'is_moving': inputs['is_moving'],
                 'in_view': inputs['in_view'],
                 'bypasses': bypass_nodes,
+                'n_states': n_states,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
                 }
@@ -2394,7 +2403,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
 def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
-    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:7]
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:outputs['n_states']]
     pred_next_state = outputs['pred_grid']
     next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
     next_state_loss = (tf.boolean_mask(pred_next_state - gt_next_state, next_state_mask) ** 2) / 2
@@ -3338,7 +3347,64 @@ def cfg_mom_complete_flat(n_classes, use_segmentation=True,
         }
 }
 
-def particle_bottleneck_comp_cfg(nonlin='relu'):
+def particle_shallow_comp_cfg(nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 6,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_depth': 3,
+        '3d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                #'bypass': 4
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
+                #'bypass': 4
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 3},
+                #'bypass': 2
+                },
+        },
+        # Encoding the inputs
+        '3d_encode_comp_depth': 4,
+        '3d_encode_comp' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 7},
+                 'nonlinearity': nonlin
+                },
+        },
+}
+
+def particle_bottleneck_comp_cfg(n_states=7, nonlin='relu'):
     return {
         # Encoding the inputs
         '3d_encode_depth': 6,
@@ -3410,7 +3476,7 @@ def particle_bottleneck_comp_cfg(nonlin='relu'):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
                 #'bypass': 4
                 },
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 7},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_states},
                 #'bypass': 2
                 },
         },
