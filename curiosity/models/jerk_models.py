@@ -515,7 +515,7 @@ def reverse_projection(inputs, P):
 
 def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method = None,
         stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, 
-        n_states = 7, use_true_next_velocity = False,
+        n_states = 7, use_true_next_velocity = False, use_rotations = False,
         my_test = False, test_batch_size=1, reuse_weights_for_reconstruction=False, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -560,6 +560,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 get_actions_map = False,
                 norm_depths=False,
                 use_particles=True,
+                use_rotations=use_rotations,
                 normalize_particles={'states': 'minmax', 
                     'actions': 'minmax',
                     'next_velocity': 'minmax',},
@@ -568,9 +569,10 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
 
         try:
             grids = inputs['sparse_grids_per_time']
-            for grid in grids:
-                grid = tf.sparse_tensor_to_dense(grid)
-            grids = tf.concat(grids, axis=1)
+            # grids come out here with the following shape
+            # [batch_size, time_steps, num_rotations, height, width, depth, features]
+            # TODO This is only first rotation
+            grids = grids[:,:,0]
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
         input_grids = grids
@@ -993,9 +995,6 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
 
         try:
             grids = inputs['sparse_grids_per_time']
-            for grid in grids:
-                grid = tf.sparse_tensor_to_dense(grid)
-            grids = tf.concat(grids, axis=1)
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
         grid = grids[:,0]

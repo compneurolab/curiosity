@@ -200,6 +200,7 @@ class ShortLongFuturePredictionBase:
                 get_hacky_segmentation_map = False,
                 norm_depths = True,
                 use_particles = False,
+                use_rotations = False,
                 normalize_particles = None,
                 grid_dim = 32,
                 *args,  **kwargs):
@@ -427,56 +428,101 @@ class ShortLongFuturePredictionBase:
             # sparse version
             try:
                 sparse_particles_all_times = tf.unstack(inputs_not_normed['sparse_particles_' + str(grid_dim)], axis=1)
-                sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
+                #sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
                 sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
                 
                 sparse_grids = []
-                for time_step, (sparse_particles, sparse_coordinates, sparse_shape) in \
-                        enumerate(zip(sparse_particles_all_times, sparse_coordinates_all_times, sparse_shape_all_times)):
-                    batch_size, num_particles, feature_size = sparse_particles.get_shape().as_list()
+                time_steps = len(sparse_shape_all_times)
+                for time_step, (sparse_particles_t, sparse_shape_t) in \
+                        enumerate(zip(sparse_particles_all_times, sparse_shape_all_times)):
+                    batch_size, num_particles, feature_size = sparse_particles_t.get_shape().as_list()
                     # normalize particles if requested
                     if self.normalize_particles is not None:
-                        sparse_particles = self.normalize_sparse_particle_data(sparse_particles)
-                    # flatten particles across batch
-                    sparse_particles = tf.reshape(sparse_particles, [-1])
-                    # add batch and feature dimensions and flatten coordinates across batch
-                    sparse_coordinates = tf.cast(tf.reshape(tf.tile(sparse_coordinates, [1, 1, feature_size]), 
-                            [-1, sparse_coordinates.get_shape().as_list()[-1]]), tf.int32)
-                    batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(tf.range(batch_size), axis=-1), 
-                        [1, num_particles * feature_size]), [-1, 1])
-                    feature_coordinates = tf.expand_dims(tf.tile(tf.range(feature_size), [batch_size * num_particles]), axis=-1)
-                    sparse_coordinates = tf.concat([batch_coordinates, sparse_coordinates, feature_coordinates], axis=-1)
-                    # reorder in lexographical order
+                        sparse_particles_t = self.normalize_sparse_particle_data(sparse_particles_t)
+                    # control for correct data
                     with tf.control_dependencies([tf.assert_equal(
-                                    tf.reduce_prod(sparse_shape, axis=-1), 
-                                    tf.reduce_prod(sparse_shape[0]))]):
-                        sparse_shape = tf.cast(tf.concat([[batch_size], sparse_shape[0]], axis=0), tf.int64)
-                    sparse_coordinates = tf.cast(sparse_coordinates, tf.int64)
-                    sparse_grid = tf.SparseTensor(indices=sparse_coordinates, values=sparse_particles, dense_shape=sparse_shape)
-                    sparse_grid = tf.sparse_reorder(sparse_grid)
-                    sparse_coordinates = tf.cast(sparse_grid.indices, tf.int32)
-                    sparse_shape = tf.cast(sparse_shape, tf.int32)
-                    sparse_particles = sparse_grid.values
-                    # remove duplicate (especially padded all zero) indices:
-                    cum = tf.cumprod(sparse_shape, axis=-1, reverse=True, exclusive=True)
-                    linearized_coordinates = tf.matmul(sparse_coordinates, tf.expand_dims(cum, axis=-1))
-                    unique_coordinates, unique_coordinates_indices = tf.unique(tf.squeeze(linearized_coordinates))
-                    i = tf.expand_dims(unique_coordinates, 1)
-                    idx0 = i // cum[0]
-                    i = i - idx0 * cum[0]
-                    idx1 = i // cum[1]
-                    i = i - idx1 * cum[1]
-                    idx2 = i // cum[2]
-                    i = i - idx2 * cum[2]
-                    idx3 = i // cum[3]
-                    i = i - idx3 * cum[3]
-                    idx4 = i // cum[4]
-                    sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3, idx4], axis=-1), tf.int64)
-                    sparse_particles = tf.segment_sum(sparse_particles, unique_coordinates_indices)
-                    sparse_shape = tf.cast(sparse_shape, tf.int64)
-
-                    sparse_grid = tf.SparseTensor(indices=sparse_coordinates, values=sparse_particles, dense_shape=sparse_shape)
-                    sparse_grids.append(sparse_grid)
+                                    tf.reduce_prod(sparse_shape_t, axis=-1), 
+                                    tf.reduce_prod(sparse_shape_t[0]))]):
+                        sparse_shape_t = tf.cast(tf.concat([[batch_size], 
+                            sparse_shape_t[0]], axis=0), tf.int32)
+                    not_particle_mask = tf.equal(sparse_particles_t[:, :, 14:15], 0)
+                    rot_grids = []
+                    if use_rotations:
+                        rotations = [
+                                tf.constant([
+                                    [1, 0, 0],
+                                    [0, 1, 0],
+                                    [0, 0, 1]], tf.float32),
+                                tf.constant([
+                                    [ 0.4, -0.2,  0.8],
+                                    [-0.1,  0.5, -0.5],
+                                    [ 0.5,  0.6, -0.7]], tf.float32),
+                                tf.constant([
+                                    [ 0.9,  0.1, -0.2],
+                                    [-0.2,  0.4,  0.5],
+                                    [-0.2,  0.6, -0.3]], tf.float32),
+                                ]
+                    else:
+                        rotations = [tf.constant([[1,0,0],[0,1,0],[0,0,1]], tf.float32)]
+                    num_rotations = len(rotations)
+                    for rotation in rotations:
+                        sparse_particles = sparse_particles_t
+                        sparse_shape = sparse_shape_t
+                        # rotate particles and discritize into grid
+                        rot_pos = tf.matmul(tf.reshape(sparse_particles, 
+                            [-1, feature_size])[:, 0:3], rotation)
+                        rot_pos = tf.reshape(rot_pos, [batch_size, num_particles, 3])
+                        inf = 1000000
+                        max_coord = tf.reduce_max(rot_pos - inf * 
+                                tf.cast(not_particle_mask, tf.float32), 
+                                axis=1, keep_dims=True)
+                        min_coord = tf.reduce_min(rot_pos + inf * 
+                                tf.cast(not_particle_mask, tf.float32),
+                                axis=1, keep_dims=True)
+                        indices = (rot_pos - min_coord) / (max_coord - min_coord)
+                        grid_dimensions = tf.cast(sparse_shape[1:4], tf.float32)
+                        sparse_coordinates = tf.cast(tf.round(indices * 
+                            (tf.reshape(grid_dimensions, [1,1,3]) - 1)), tf.int32)
+                        # add batch dimensions and flatten coordinates across batch
+                        batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(
+                            tf.range(batch_size), axis=-1), 
+                            [1, num_particles]), [batch_size, num_particles, 1])
+                        sparse_coordinates = tf.concat([batch_coordinates, 
+                            sparse_coordinates], axis=-1)
+                        sparse_coordinates = tf.cast(sparse_coordinates, tf.int32)
+                        # gather all real particles
+                        sparse_coordinates = tf.gather_nd(sparse_coordinates, 
+                                tf.where(tf.logical_not(tf.squeeze(not_particle_mask))))
+                        sparse_particles = tf.gather_nd(sparse_particles,
+                                tf.where(tf.logical_not(not_particle_mask)))
+                        # remove duplicate (especially padded all zero) indices:
+                        cum = tf.cumprod(sparse_shape[:-1], axis=-1, 
+                                reverse=True, exclusive=True)
+                        linearized_coordinates = tf.matmul(sparse_coordinates, 
+                                tf.expand_dims(cum, axis=-1))
+                        unique_coordinates, unique_coordinates_indices = tf.unique(
+                                tf.squeeze(linearized_coordinates))
+                        num_segments = tf.shape(unique_coordinates)[0]
+                        i = tf.expand_dims(unique_coordinates, 1)
+                        idx0 = i // cum[0]
+                        i = i - idx0 * cum[0]
+                        idx1 = i // cum[1]
+                        i = i - idx1 * cum[1]
+                        idx2 = i // cum[2]
+                        i = i - idx2 * cum[2]
+                        idx3 = i // cum[3]
+                        sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], 
+                            axis=-1), tf.int32)
+                        sparse_particles = tf.unsorted_segment_sum(sparse_particles, 
+                                unique_coordinates_indices, num_segments)
+                        sparse_shape = tf.cast(sparse_shape, tf.int32)
+                        sparse_grid = tf.scatter_nd(sparse_coordinates, 
+                                sparse_particles, sparse_shape)
+                        rot_grids.append(sparse_grid)
+                    sparse_grids.append(tf.stack(rot_grids, axis=1))
+                sparse_grids = tf.stack(sparse_grids, axis=1)
+                sparse_grids.set_shape(list([batch_size, time_steps, num_rotations]) + \
+                        list([grid_dim]) * 3 + list([feature_size]))
                 self.inputs['sparse_grids_per_time'] = sparse_grids
             except KeyError:
                 print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + str(grid_dim) + ' not loaded!')
@@ -652,7 +698,7 @@ class ShortLongFuturePredictionBase:
 
     def normalize_sparse_particle_data(self, sparse_particles):
         assert self.stats is not None, 'Statistics have to be provided to normalize particles'
-        if normalize_particles['states'] == 'minmax':
+        if self.normalize_particles['states'] == 'minmax':
             # pos, mass, vel
             minimum = self.stats['full_particles']['min'][:,0:7]
             maximum = self.stats['full_particles']['max'][:,0:7]
@@ -663,7 +709,7 @@ class ShortLongFuturePredictionBase:
             maximum = self.stats['full_particles']['max'][:,15:18]
             normalized_next_velocity = (sparse_particles[:,:,15:18] - \
                     minimum) / (maximum - minimum)
-        elif normalize_particles['states'] == 'standard':
+        elif self.normalize_particles['states'] == 'standard':
             # pos, mass, vel
             mean = self.stats['full_particles']['mean'][:,0:7]
             std = self.stats['full_particles']['std'][:,0:7]
@@ -679,12 +725,12 @@ class ShortLongFuturePredictionBase:
         else:
             raise KeyError('Unknown normalization method for particle states')
 
-        if normalize_particles['actions'] == 'minmax':
+        if self.normalize_particles['actions'] == 'minmax':
             minimum = self.stats['actions']['min'][0,0:6]
             maximum = self.stats['actions']['max'][0,0:6]
             normalized_actions = (sparse_particles[:,:,7:13] - minimum) \
                     / (maximum - minimum)
-        elif normalize_particles['actions'] == 'standard':
+        elif self.normalize_particles['actions'] == 'standard':
             mean = self.stats['actions']['mean'][0,0:6]
             std = self.stats['actions']['std'][0,0:6]
             eps = 1e-4
@@ -692,5 +738,5 @@ class ShortLongFuturePredictionBase:
                     / (std + eps)
         else:
             raise KeyError('Unknown normalization method for particle actions')
-        sparse_particles = tf.concat([normalized_states, normalized_actions, sparse_particles[:,:,13:15], normalized_next_velocity], axis=-1)    
+        sparse_particles = tf.concat([normalized_states, normalized_actions, sparse_particles[:,:,13:15], normalized_next_velocity, sparse_particles[:,:,18:19]], axis=-1)
         return sparse_particles
