@@ -955,7 +955,7 @@ class LatentSpaceWorldModel(object):
             #different formula for l2 loss now because we need per-example details
             pred_flat = flatten(self.fut_pred)
             diff = pred_flat - tv_flat
-            self.fut_loss_per_example = tf.reduce_sum(diff * diff, axis = 1) / 2. * fut_loss_factor
+            self.fut_loss_per_example = tf.reduce_sum(diff * diff, axis = 1, keep_dims = True) / 2. * fut_loss_factor
             self.fut_loss = tf.reduce_mean(self.fut_loss_per_example)
         self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
         self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
@@ -1085,6 +1085,9 @@ class MixedUncertaintyModel:
 
 def get_mixed_loss(world_model, weighting):
 	print(weighting.keys())
+	print('in the loss maker!')
+	print(world_model.act_loss_per_example)
+	print(world_model.fut_loss_per_example)
 	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
 
 def get_obj_there(world_model):
@@ -1159,6 +1162,9 @@ class UncertaintyModel:
             if cfg.get('only_model_ego', False):
                 ac = ac[:, :2]
             self.true_loss = tr_loss = cfg['wm_loss']['func'](world_model, **cfg['wm_loss']['kwargs'])
+            print('true loss here')
+            print(self.true_loss)
+            print(cfg['wm_loss']['func'])
             assert len(self.true_loss.get_shape().as_list()) == 2
             if cfg.get('use_world_encoding', False):
                 self.encoded = x = world_model.encoding_i
@@ -1203,6 +1209,8 @@ class UncertaintyModel:
             log_prob = tf.nn.log_softmax(x_tr)
             self.entropy = - tf.reduce_sum(prob * log_prob)
             self.sample = categorical_sample(x_tr, cfg['n_action_samples'], one_hot = False)
+            print('true loss!')
+            print(self.true_loss)
             self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
             self.just_random = False
             if 'just_random' in cfg:
@@ -1257,6 +1265,25 @@ def combination_loss(tv, pred, cfg):
 	corr_coef = cfg.get('corr_factor', 1.)
 	return l2_coef * tf.nn.l2_loss(pred - tv) - corr_coef * (correlation(pred, tv) - 1)
 		
+
+
+def bin_values(values, thresholds):
+	for i, th in enumerate(thresholds):
+		if i == 0:
+			lab = tf.cast(tf.greater(values, th), tf.int32)
+		else:
+			lab += tf.cast(tf.greater(values, th), tf.int32)
+	return lab
+
+
+def binned_softmax_loss(tv, prediction, cfg):
+	thresholds = cfg['thresholds']
+	tv = bin_values(tv, thresholds)
+	tv = tf.squeeze(tv)
+	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv, logits = prediction)
+	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
+	return loss
+
 	
 def equal_spacing_softmax_loss(tv, prediction, cfg):
 	num_classes = cfg.get('num_classes', 2)
@@ -1266,9 +1293,11 @@ def equal_spacing_softmax_loss(tv, prediction, cfg):
 	#pred = tf.reshape(prediction, [-1] + tv_shape[1:] + [num_classes])
 	pred = prediction
 	tv = float(num_classes - 1) * (tv - min_value) / (max_value - min_value)
-	tv = tf.cast(tv, tf.int32)
-	print(pred)
+	print('squeezing')
 	print(tv)
+	tv = tf.squeeze(tf.cast(tv, tf.int32))
+	print(tv)
+	print(pred)
 	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(
 				labels = tv, logits = pred)
 	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
