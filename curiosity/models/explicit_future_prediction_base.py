@@ -531,10 +531,10 @@ class ShortLongFuturePredictionBase:
                         sparse_grid = tf.scatter_nd(sparse_coordinates, 
                                 sparse_particles, sparse_shape)
                         rot_grids.append(sparse_grid)
-                    sparse_grids.append(tf.stack(rot_grids, axis=1))
+                    sparse_grids.append(tf.concat(rot_grids, axis=-1))
                 sparse_grids = tf.stack(sparse_grids, axis=1)
-                sparse_grids.set_shape(list([batch_size, time_steps, num_rotations]) + \
-                        list([grid_dim]) * 3 + list([feature_size]))
+                sparse_grids.set_shape(list([batch_size, time_steps]) + \
+                        list([grid_dim]) * 3 + list([feature_size * num_rotations]))
                 self.inputs['sparse_grids_per_time'] = sparse_grids
             except KeyError:
                 print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + str(grid_dim) + ' not loaded!')

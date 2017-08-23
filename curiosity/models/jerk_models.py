@@ -567,19 +567,23 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 grid_dim=input_grid_dim)
         inputs = base_net.inputs
 
+        if use_rotations:
+            num_rotations = 3
+        else:
+            num_rotations = 1
+
         try:
             grids = inputs['sparse_grids_per_time']
             # grids come out here with the following shape
             # [batch_size, time_steps, num_rotations, height, width, depth, features]
             # TODO This is only first rotation
-            grids = tf.unstack(grids, axis=2)[0]
         except KeyError:
-            if use_rotations:
-                raise NotImplementedError
+            raise NotImplementedError
             grids = tf.cast(inputs['grid'], tf.float32)
         input_grids = grids
-        grid = grids[:,0:time_steps]
-        next_velocity = grids[:,0:time_steps,:,:,:,15:18]
+        rot_grids = tf.split(grids, num_rotations, axis=len(grids.get_shape().as_list())-1)[0]
+        grid = rot_grids[:,0:time_steps]
+        next_velocity = rot_grids[:,0:time_steps,:,:,:,15:18]
 
         #BATCH_SIZE, height, width, depth, feature_dim = grid.get_shape().as_list()
         #grid = tf.concat([
@@ -597,8 +601,10 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         if my_test:
             grid_shape = [test_batch_size, time_steps, 32, 32, 32, 10]
             grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
-            grids = tf.placeholder(tf.float32, [test_batch_size, time_steps+1] + list(grid_shape[2:-1]) + [19], 'grids_input')
-            input_actions = tf.placeholder(tf.float32, [test_batch_size, time_steps+1] + input_actions.get_shape().as_list()[2:], 'action_input')
+            grids = tf.placeholder(tf.float32, [test_batch_size, time_steps+1] + list(grid_shape[2:-1]) + [19 * num_rotations], 
+                    'grids_input')
+            input_actions = tf.placeholder(tf.float32, [test_batch_size, time_steps+1] + input_actions.get_shape().as_list()[2:], 
+                    'action_input')
 
         # encode per time input
         main_input_per_time = tf.unstack(grid, axis=1)
@@ -610,6 +616,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         # init network
         m = ConvNetwithBypasses(**kwargs)
 
+        '''
         # main physics prediction
         encoded_input_main = []
         reuse_weights = False
@@ -677,168 +684,177 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                         do_print=(not reuse_weights), return_bypass = True, use_3d=True)
                 encoded_input_main[t] = enc[-1]
                 reuse_weights = True
-
+        '''
         #TODO FIX ALL ZERO DIVS!!! ESPECIALLY NORMALIZATIONS BY MINMAX
 
-        # unnormalize grid 
-        if use_true_next_velocity:
-            pred_velocity = grids[:,time_steps-1,:,:,:,15:18]
-        else:
-            pred_velocity = encoded_input_main[time_steps-1]
-        next_grid = tf.concat([grids[:,time_steps-1:time_steps,:,:,:,0:15], 
-            tf.expand_dims(pred_velocity, axis=1), 
-            grids[:,time_steps-1:time_steps,:,:,:,18:19]], axis=-1)
-        next_grid = base_net.unnormalize_particle_data(next_grid)[:,0]
+        rot_grids = tf.split(grids, num_rotations, axis=len(grids.get_shape().as_list())-1)
+        encoded_grids = []
+        reuse_weights_for_rotation = False
+        for rot_grid in rot_grids:
+            # unnormalize grid 
+            if use_true_next_velocity:
+                pred_velocity = rot_grid[:,time_steps-1,:,:,:,15:18]
+            else:
+                pred_velocity = encoded_input_main[time_steps-1]
+            next_grid = tf.concat([rot_grid[:,time_steps-1:time_steps,:,:,:,0:15], 
+                tf.expand_dims(pred_velocity, axis=1), 
+                rot_grid[:,time_steps-1:time_steps,:,:,:,18:19]], axis=-1)
+            next_grid = base_net.unnormalize_particle_data(next_grid)[:,0]
 
-        # assign next actions
-        next_act = tf.zeros(tf.shape(next_grid[:,:,:,:,7:13]))
-        next_action_ids = tf.unstack(input_actions[:,time_steps,:,8], axis=1)
-        next_forces = tf.unstack(input_actions[:,time_steps,:,0:6], axis=1)
-        for (next_force, next_action_id) in zip(next_forces, next_action_ids):
-            indices = tf.cast(tf.equal(next_grid[:,:,:,:,14], \
-                    tf.reshape(tf.tile(tf.expand_dims(next_action_id, axis=-1), 
-                        [1, np.prod(grid_shape[2:5])]), 
-                        [BATCH_SIZE] + list(grid_shape[2:-1]))), 
-                    tf.float32)
-            next_act += tf.expand_dims(indices, axis=-1) * \
-                    tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1),
-                        [1, np.prod(grid_shape[2:5]), 1]), 
-                        [BATCH_SIZE] + list(grid_shape[2:-1]) + [6])
-        # deal with merged particles
-        max_id = 24
-        indices = tf.cast(tf.greater(next_grid[:,:,:,:,14], max_id), tf.float32)
-        mixed_ids = next_grid[:,:,:,:,14] * indices
-        partial_ids = (next_grid[:,:,:,:,13] - 1) * indices
-        counts = next_grid[:,:,:,:,18] * indices
-        major23 = tf.abs(tf.round(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24) - mixed_ids)
-        major24 = tf.abs(tf.round(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23) - mixed_ids)
-        with tf.control_dependencies([tf.Assert(tf.logical_or( \
-                tf.equal(tf.reduce_sum(major23), 0), \
-                tf.equal(tf.reduce_sum(major24), 0)), [major23, major24])]):
-            major = tf.stack([major23, major24], axis=-1)
-            major = tf.argmin(major, axis=-1)
-            n23 = partial_ids * tf.cast(tf.equal(major, 0), tf.float32)
-            n23 += (1 - partial_ids) * tf.cast(tf.not_equal(major, 0), tf.float32)
-            n24 = 1 - n23
-            n23 *= counts
-            n24 *= counts
-            partial_act = tf.zeros(tf.shape(next_act))
-            for next_force, next_action_id in zip(next_forces, next_action_ids):
-                i23 = tf.reshape(tf.tile(tf.cast(tf.equal(
-                    tf.expand_dims(next_action_id, axis=-1), 23), tf.float32), 
-                    [1, np.prod(grid_shape[2:5])]), 
-                    [BATCH_SIZE] + list(grid_shape[2:-1]) + [1])
-                i24 = tf.reshape(tf.tile(tf.cast(tf.equal(
-                    tf.expand_dims(next_action_id, axis=-1), 24), tf.float32), 
-                    [1, np.prod(grid_shape[2:5])]), 
-                    [BATCH_SIZE] + list(grid_shape[2:-1]) + [1])
-                partial_act += tf.expand_dims(n23, axis=-1) * i23 * \
-                        tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1), 
+            # assign next actions
+            next_act = tf.zeros(tf.shape(next_grid[:,:,:,:,7:13]))
+            next_action_ids = tf.unstack(input_actions[:,time_steps,:,8], axis=1)
+            next_forces = tf.unstack(input_actions[:,time_steps,:,0:6], axis=1)
+            for (next_force, next_action_id) in zip(next_forces, next_action_ids):
+                indices = tf.cast(tf.equal(next_grid[:,:,:,:,14], \
+                        tf.reshape(tf.tile(tf.expand_dims(next_action_id, axis=-1), 
+                            [1, np.prod(grid_shape[2:5])]), 
+                            [BATCH_SIZE] + list(grid_shape[2:-1]))), 
+                        tf.float32)
+                next_act += tf.expand_dims(indices, axis=-1) * \
+                        tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1),
                             [1, np.prod(grid_shape[2:5]), 1]), 
                             [BATCH_SIZE] + list(grid_shape[2:-1]) + [6])
-                partial_act += tf.expand_dims(n24, axis=-1) * i24 * \
-                        tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1), 
-                            [1, np.prod(grid_shape[2:5]), 1]), 
-                            [BATCH_SIZE] + list(grid_shape[2:-1]) + [6])
-            counts = tf.maximum(next_grid[:,:,:,:,18:19], 1)
-            next_act += (partial_act / counts) * tf.expand_dims(indices, axis=-1)
-        # assemble next grid
-        next_grid = tf.concat([next_grid[:,:,:,:,0:7], next_act, next_grid[:,:,:,:,13:19]], axis=-1)
-
-        # move particles
-        nonzero_indices = tf.not_equal(next_grid[:,:,:,:,14], 0)
-        next_pos = (next_grid[:,:,:,:,0:3] + next_grid[:,:,:,:,15:18]) * \
-                tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
-        next_vel = next_grid[:,:,:,:,15:18] * \
-                tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
-        partial_ids = (next_grid[:,:,:,:,13:14] - 1) * \
-                tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
-        states = tf.concat([next_pos, next_grid[:,:,:,:,3:4], next_vel, 
-            next_grid[:,:,:,:,7:13], partial_ids, next_grid[:,:,:,:,14:19]], axis=-1)
-        states = tf.gather_nd(states, tf.where(nonzero_indices))
-
-        max_coord = tf.reduce_max(next_pos, axis=[1,2,3], keep_dims=True)
-        min_coord = tf.reduce_min(next_pos, axis=[1,2,3], keep_dims=True)
-        indices = (next_pos - min_coord) / (max_coord - min_coord)
-        grid_dim = np.array(grid_shape[2:5]).astype(np.float32)
-        coordinates = tf.cast(tf.round(indices * (tf.reshape(grid_dim, [1,1,1,1,3]) - 1)), tf.int32)
-        # add batch coordinate
-        coordinates = tf.concat(
-                [tf.reshape(tf.tile(tf.expand_dims(tf.range(grid_shape[0]), axis=-1), \
+            # deal with merged particles
+            max_id = 24
+            indices = tf.cast(tf.greater(next_grid[:,:,:,:,14], max_id), tf.float32)
+            mixed_ids = next_grid[:,:,:,:,14] * indices
+            partial_ids = (next_grid[:,:,:,:,13] - 1) * indices
+            counts = next_grid[:,:,:,:,18] * indices
+            major23 = tf.abs(tf.round(counts * partial_ids * 23 + counts * (1 - partial_ids) * 24) - mixed_ids)
+            major24 = tf.abs(tf.round(counts * partial_ids * 24 + counts * (1 - partial_ids) * 23) - mixed_ids)
+            with tf.control_dependencies([tf.Assert(tf.logical_or( \
+                    tf.equal(tf.reduce_sum(major23), 0), \
+                    tf.equal(tf.reduce_sum(major24), 0)), [major23, major24])]):
+                major = tf.stack([major23, major24], axis=-1)
+                major = tf.argmin(major, axis=-1)
+                n23 = partial_ids * tf.cast(tf.equal(major, 0), tf.float32)
+                n23 += (1 - partial_ids) * tf.cast(tf.not_equal(major, 0), tf.float32)
+                n24 = 1 - n23
+                n23 *= counts
+                n24 *= counts
+                partial_act = tf.zeros(tf.shape(next_act))
+                for next_force, next_action_id in zip(next_forces, next_action_ids):
+                    i23 = tf.reshape(tf.tile(tf.cast(tf.equal(
+                        tf.expand_dims(next_action_id, axis=-1), 23), tf.float32), 
                         [1, np.prod(grid_shape[2:5])]), 
-                        [BATCH_SIZE] + list(grid_shape[2:-1]) + [1]),
-                coordinates], axis=-1)
-        coordinates = tf.gather_nd(coordinates, tf.where(nonzero_indices))
-        '''
-        # TODO reorder in lexographical order???
-        sparse_grid = tf.SparseTensor(
-                indices=tf.cast(coordinates, tf.int64),
-                values=states,
-                dense_shape=list(grid_shape[:-1]) + [19])
-        sparse_grid = tf.sparse_reorder(sparse_grid)
-        coordinates = tf.cast(sparse_grid.indices, tf.int32)
-        states = sparse_grid.values
-        '''
-        # merge duplicate indices
-        cum = tf.cumprod([BATCH_SIZE] + list(grid_shape[2:-1]), 
-                reverse=True, exclusive=True)
-        linearized_coordinates = tf.matmul(coordinates, tf.expand_dims(cum, axis=-1))
-        unique_coordinates, unique_coordinates_indices = tf.unique(tf.squeeze(linearized_coordinates))
-        num_segments = tf.shape(unique_coordinates)[0]
-        i = tf.expand_dims(unique_coordinates, 1)
-        idx0 = i // cum[0]
-        i = i - idx0 * cum[0]
-        idx1 = i // cum[1]
-        i = i - idx1 * cum[1]
-        idx2 = i // cum[2]
-        i = i - idx2 * cum[2]
-        idx3 = i // cum[3]
-        coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], axis=-1), tf.int64)
-        # Weighted sum of particles depending on the number of particles in each voxel (by mass or count)
-        # eps_mass to avoid division by zero
-        eps_mass = 1e-6
-        counts = tf.unsorted_segment_sum(states[:, 18:19], 
-                unique_coordinates_indices, num_segments)
-        mass = tf.unsorted_segment_sum(states[:, 3:4], 
-                unique_coordinates_indices, num_segments)
-        pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 18:19], #mass 
-                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
-        vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 18:19], #mass
-                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
-        force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 18:19], #mass
-                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
-        partial_ids = tf.unsorted_segment_sum(states[:, 13:14] * states[:, 18:19], 
-                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1)
-        ids = tf.unsorted_segment_sum(states[:, 14:15], 
-                unique_coordinates_indices, num_segments)
-        next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 18:19], #mass
-                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
-        states = tf.concat([pos, mass, vel, force_torque, 
-            partial_ids, ids, next_vel, counts], axis=-1)
+                        [BATCH_SIZE] + list(grid_shape[2:-1]) + [1])
+                    i24 = tf.reshape(tf.tile(tf.cast(tf.equal(
+                        tf.expand_dims(next_action_id, axis=-1), 24), tf.float32), 
+                        [1, np.prod(grid_shape[2:5])]), 
+                        [BATCH_SIZE] + list(grid_shape[2:-1]) + [1])
+                    partial_act += tf.expand_dims(n23, axis=-1) * i23 * \
+                            tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1), 
+                                [1, np.prod(grid_shape[2:5]), 1]), 
+                                [BATCH_SIZE] + list(grid_shape[2:-1]) + [6])
+                    partial_act += tf.expand_dims(n24, axis=-1) * i24 * \
+                            tf.reshape(tf.tile(tf.expand_dims(next_force, axis=-1), 
+                                [1, np.prod(grid_shape[2:5]), 1]), 
+                                [BATCH_SIZE] + list(grid_shape[2:-1]) + [6])
+                counts = tf.maximum(next_grid[:,:,:,:,18:19], 1)
+                next_act += (partial_act / counts) * tf.expand_dims(indices, axis=-1)
+            # assemble next grid
+            next_grid = tf.concat([next_grid[:,:,:,:,0:7], next_act, next_grid[:,:,:,:,13:19]], axis=-1)
 
-        next_grid = tf.scatter_nd(coordinates, states, 
-                [BATCH_SIZE] + list(grid_shape[2:-1]) + [19])
-        # normalize grid
-        next_grid = base_net.normalize_particle_data(
-                tf.expand_dims(next_grid, axis=1))[:,0] 
+            # move particles
+            nonzero_indices = tf.not_equal(next_grid[:,:,:,:,14], 0)
+            next_pos = (next_grid[:,:,:,:,0:3] + next_grid[:,:,:,:,15:18]) * \
+                    tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
+            next_vel = next_grid[:,:,:,:,15:18] * \
+                    tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
+            partial_ids = (next_grid[:,:,:,:,13:14] - 1) * \
+                    tf.cast(tf.expand_dims(nonzero_indices, axis=-1), tf.float32)
+            states = tf.concat([next_pos, next_grid[:,:,:,:,3:4], next_vel, 
+                next_grid[:,:,:,:,7:13], partial_ids, next_grid[:,:,:,:,14:19]], axis=-1)
+            states = tf.gather_nd(states, tf.where(nonzero_indices))
 
-        # predict grid (draw particles at correct locations)
-        main_input_per_time = tf.unstack(grid[:,:,:,:,:,0:n_states], axis=1) + \
-                [next_grid[:,:,:,:,0:n_states]]
-        bypass_nodes.append([next_grid[:,:,:,:,0:n_states]])
-        encoded_input_main = []
-        if not reuse_weights_for_reconstruction:
-            reuse_weights = False
-        for t in range(time_seen): 
-            enc, bypass_nodes[t] = feedforward_conv_loop(
-                    main_input_per_time[t], m, cfg, desc = '3d_encode_comp',
-                    bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
-                    batch_normalize = False, no_nonlinearity_end = False,
-                    do_print=(not reuse_weights), return_bypass = True, use_3d=True)
-            encoded_input_main.append(enc[-1])
-            reuse_weights = True
+            max_coord = tf.reduce_max(next_pos, axis=[1,2,3], keep_dims=True)
+            min_coord = tf.reduce_min(next_pos, axis=[1,2,3], keep_dims=True)
+            indices = (next_pos - min_coord) / (max_coord - min_coord)
+            grid_dim = np.array(grid_shape[2:5]).astype(np.float32)
+            coordinates = tf.cast(tf.round(indices * (tf.reshape(grid_dim, [1,1,1,1,3]) - 1)), tf.int32)
+            # add batch coordinate
+            coordinates = tf.concat(
+                    [tf.reshape(tf.tile(tf.expand_dims(tf.range(grid_shape[0]), axis=-1), \
+                            [1, np.prod(grid_shape[2:5])]), 
+                            [BATCH_SIZE] + list(grid_shape[2:-1]) + [1]),
+                    coordinates], axis=-1)
+            coordinates = tf.gather_nd(coordinates, tf.where(nonzero_indices))
+            '''
+            # TODO reorder in lexographical order???
+            sparse_grid = tf.SparseTensor(
+                    indices=tf.cast(coordinates, tf.int64),
+                    values=states,
+                    dense_shape=list(grid_shape[:-1]) + [19])
+            sparse_grid = tf.sparse_reorder(sparse_grid)
+            coordinates = tf.cast(sparse_grid.indices, tf.int32)
+            states = sparse_grid.values
+            '''
+            # merge duplicate indices
+            cum = tf.cumprod([BATCH_SIZE] + list(grid_shape[2:-1]), 
+                    reverse=True, exclusive=True)
+            linearized_coordinates = tf.matmul(coordinates, tf.expand_dims(cum, axis=-1))
+            unique_coordinates, unique_coordinates_indices = tf.unique(tf.squeeze(linearized_coordinates))
+            num_segments = tf.shape(unique_coordinates)[0]
+            i = tf.expand_dims(unique_coordinates, 1)
+            idx0 = i // cum[0]
+            i = i - idx0 * cum[0]
+            idx1 = i // cum[1]
+            i = i - idx1 * cum[1]
+            idx2 = i // cum[2]
+            i = i - idx2 * cum[2]
+            idx3 = i // cum[3]
+            coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], axis=-1), tf.int64)
+            # Weighted sum of particles depending on the number of particles in each voxel (by mass or count)
+            # eps_mass to avoid division by zero
+            eps_mass = 1e-6
+            counts = tf.unsorted_segment_sum(states[:, 18:19], 
+                    unique_coordinates_indices, num_segments)
+            mass = tf.unsorted_segment_sum(states[:, 3:4], 
+                    unique_coordinates_indices, num_segments)
+            pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 18:19], #mass 
+                    unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+            vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 18:19], #mass
+                    unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+            force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 18:19], #mass
+                    unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+            partial_ids = tf.unsorted_segment_sum(states[:, 13:14] * states[:, 18:19], 
+                    unique_coordinates_indices, num_segments) / tf.maximum(counts, 1)
+            ids = tf.unsorted_segment_sum(states[:, 14:15], 
+                    unique_coordinates_indices, num_segments)
+            next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 18:19], #mass
+                    unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+            states = tf.concat([pos, mass, vel, force_torque, 
+                partial_ids, ids, next_vel, counts], axis=-1)
+
+            next_grid = tf.scatter_nd(coordinates, states, 
+                    [BATCH_SIZE] + list(grid_shape[2:-1]) + [19])
+            # normalize grid
+            next_grid = base_net.normalize_particle_data(
+                    tf.expand_dims(next_grid, axis=1))[:,0] 
+
+            # predict grid (draw particles at correct locations)
+            main_input_per_time = tf.unstack(grid[:,:,:,:,:,0:n_states], axis=1) + \
+                    [next_grid[:,:,:,:,0:n_states]]
+            bypass_nodes.append([next_grid[:,:,:,:,0:n_states]])
+            encoded_input_main = []
+            if not reuse_weights_for_rotation:
+                reuse_weights = False
+                reuse_weights_for_rotation = True
+            for t in range(time_seen): 
+                enc, bypass_nodes[t] = feedforward_conv_loop(
+                        main_input_per_time[t], m, cfg, desc = '3d_encode_comp',
+                        bypass_nodes = bypass_nodes[t], reuse_weights = reuse_weights,
+                        batch_normalize = False, no_nonlinearity_end = False,
+                        do_print=(not reuse_weights), return_bypass = True, use_3d=True)
+                encoded_input_main.append(enc[-1])
+                reuse_weights = True
+            # concat time steps and append current rotation    
+            encoded_grids.append(tf.concat(encoded_input_main, axis=-1))
+            encoded_input_main = encoded_grids
 
         if '3d_concat_comp' in cfg:
+            # concat rotations
             encoded_input_main = [tf.concat(encoded_input_main, axis=-1)]
             if not reuse_weights_for_reconstruction:
                 reuse_weights = False
@@ -910,7 +926,6 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 encoded_input_main[t] = enc[-1]
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
-
         '''
         next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
         mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
@@ -941,6 +956,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 'bypasses': bypass_nodes,
                 'n_states': n_states,
                 'time_steps': time_steps,
+                'num_rotations': num_rotations,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
                 }
