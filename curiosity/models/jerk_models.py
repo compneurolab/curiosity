@@ -2890,14 +2890,18 @@ def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
     return[total_loss]
 
 def flex_next_state_loss(outputs, gpu_id, min_particle_distance, **kwargs):
-    gt_next_state = outputs['full_grids']\
-            [:,outputs['time_steps'],:,:,:,0:outputs['n_states']]
-    pred_next_state = outputs['pred_grid']
-    mask = tf.not_equal(outputs['full_grids'][:,outputs['time_steps'],:,:,:,14], 0)
+    rot_states = tf.split(outputs['full_grids'], outputs['num_rotations'], axis=len(outputs['full_grids'].get_shape().as_list())-1)
+    gt_next_states = [gt[:,outputs['time_steps'],:,:,:,0:outputs['n_states']] for gt in rot_states]
+    pred_next_states = tf.split(outputs['pred_grid'], outputs['num_rotations'], axis=len(outputs['pred_grid'].get_shape().as_list())-1)
+    masks = [tf.not_equal(m[:,outputs['time_steps'],:,:,:,14], 0) for m in rot_states]
     #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
-    loss = (tf.boolean_mask(pred_next_state - gt_next_state, mask) ** 2) / 2
+    losses = []
+    for (pred_next_state, gt_next_state, mask) in zip(pred_next_states, gt_next_states, masks):
+        loss = (tf.boolean_mask(pred_next_state - gt_next_state, mask) ** 2) / 2
+        losses.append(tf.reduce_mean(loss))
+    losses = tf.stack(losses, axis=-1)
     #loss = tf.reduce_sum(loss, axis=-1)
-    return [tf.reduce_mean(loss)]
+    return [tf.reduce_mean(losses)]
 
 def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     gt_next_vel = outputs['next_velocity']

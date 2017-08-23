@@ -51,12 +51,17 @@ EXP_ID = [#'flex2dBott_5',
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 N_STATES = 7
+USE_ROTATIONS = False
+if USE_ROTATIONS:
+    NUM_ROTATIONS = 3
+else:
+    NUM_ROTATIONS = 1
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES, nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -196,7 +201,7 @@ model_params = [{
     'n_states': N_STATES,
     'time_steps': TIME_STEPS,
     'use_true_next_velocity': True,
-    'use_rotations': True,
+    'use_rotations': USE_ROTATIONS,
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
