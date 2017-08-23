@@ -427,7 +427,7 @@ class ShortLongFuturePredictionBase:
 
             # sparse version
             try:
-                sparse_particles_all_times = tf.unstack(inputs_not_normed['sparse_particles_' + str(grid_dim)], axis=1)
+                sparse_particles_all_times = tf.unstack(inputs_not_normed['full_particles'], axis=1)
                 #sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
                 sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
                 
@@ -494,7 +494,7 @@ class ShortLongFuturePredictionBase:
                         sparse_coordinates = tf.gather_nd(sparse_coordinates, 
                                 tf.where(tf.logical_not(tf.squeeze(not_particle_mask))))
                         sparse_particles = tf.gather_nd(sparse_particles,
-                                tf.where(tf.logical_not(not_particle_mask)))
+                                tf.where(tf.logical_not(tf.squeeze(not_particle_mask))))
                         # remove duplicate (especially padded all zero) indices:
                         cum = tf.cumprod(sparse_shape[:-1], axis=-1, 
                                 reverse=True, exclusive=True)
@@ -513,8 +513,20 @@ class ShortLongFuturePredictionBase:
                         idx3 = i // cum[3]
                         sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], 
                             axis=-1), tf.int32)
+                        counts = tf.ones(tf.shape(sparse_particles[:,18:19])) 
+                        counts = tf.maximum(tf.unsorted_segment_sum(counts,
+                                unique_coordinates_indices, num_segments), 1)
                         sparse_particles = tf.unsorted_segment_sum(sparse_particles, 
                                 unique_coordinates_indices, num_segments)
+                        sparse_particles = tf.concat([
+                            sparse_particles[:,0:3] / counts,
+                            sparse_particles[:,3:4],
+                            sparse_particles[:,4:13] / counts,
+                            sparse_particles[:,13:14] / counts + 1,
+                            sparse_particles[:,14:15],
+                            sparse_particles[:,15:18] / counts,
+                            counts,
+                            ], axis=-1)
                         sparse_shape = tf.cast(sparse_shape, tf.int32)
                         sparse_grid = tf.scatter_nd(sparse_coordinates, 
                                 sparse_particles, sparse_shape)

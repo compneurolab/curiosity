@@ -32,10 +32,11 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 64 #64
-TIME_SEEN = 2 #2
+TIME_SEEN = 3 #2
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 2 #3
-MIN_LEN = 2 #3
+LONG_LEN = 3 #3
+MIN_LEN = 3 #3
+TIME_STEPS = 2
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
@@ -182,7 +183,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_comp_model,
+    'func' : modelsource.flex_2nd_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -193,6 +194,7 @@ model_params = [{
     #'num_classes': 60.,
     'gpu_id' : 0,
     'n_states': N_STATES,
+    'time_steps': TIME_STEPS,
     'use_true_next_velocity': True,
     'use_rotations': True,
     'reuse_weights_for_reconstruction': False,
@@ -233,7 +235,7 @@ validation_params = [{
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
                     'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
-                    'sparse_particles_32', 'sparse_shape_32'],
+                    'full_particles', 'sparse_shape_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -275,7 +277,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
-                'sparse_particles_32', 'sparse_shape_32'],
+                'full_particles', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
