@@ -44,14 +44,14 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexBott2ndS7',
+'flexBott2ndR3T2',
 #'flex2d_5', 
 #'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 N_STATES = 7
-USE_ROTATIONS = False
+USE_ROTATIONS = True
 if USE_ROTATIONS:
     NUM_ROTATIONS = 3
 else:
