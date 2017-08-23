@@ -16,7 +16,8 @@ import copy
 from tqdm import trange
 import cPickle
 
-USE_GROUND_TRUTH_FOR_VALIDATION = True
+N_STATES = 10
+USE_GROUND_TRUTH_FOR_VALIDATION = False
 CACHE_NUM = 2
 LOCAL = False
 if LOCAL:
@@ -48,7 +49,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_4', 
-'flexBott_5',
+'flexBott2Loss',
 #'flex2d_4', 
 #'flex_4',
 ]
@@ -60,7 +61,8 @@ min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_bottleneck_comp_cfg(n_states=N_STATES, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
@@ -111,10 +113,13 @@ SAVE_TO_GFS = []#['pred_vel_flat', 'reference_ids']
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {
-            'prediction': outputs['prediction'],
+            'pred_velocity': outputs['pred_velocity'],
+            'pred_grid': outputs['pred_grid'],
             'next_velocity': outputs['next_velocity'],
             'full_grids': outputs['full_grids'],
             'grid_placeholder': outputs['grid_placeholder'],
+            'grids_placeholder': outputs['grids_placeholder'],
+            'action_placeholder': outputs['action_placeholder'],
             'actions': outputs['actions'],
             'in_view': outputs['in_view'],
             'is_moving': outputs['is_moving'],
@@ -147,7 +152,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_model,
+    'func' : modelsource.flex_comp_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -159,6 +164,7 @@ model_params = [{
     'gpu_id' : 0,
     'my_test' : True,
     'test_batch_size': TEST_BATCH_SIZE,
+    'n_states': N_STATES,
 }] * N_GPUS
 
 loss_params = [{
@@ -300,34 +306,50 @@ params = {
 
 def normalize_grid(unnormalized_grid, stats):
     grid = copy.deepcopy(unnormalized_grid)
+    dim = grid.shape[-1]
     grid[:,:,:,0:7] = (grid[:,:,:,0:7] - \
             stats['full_particles']['min'][0,0:7]) / \
             (stats['full_particles']['max'][0,0:7] - \
             stats['full_particles']['min'][0,0:7])
-    grid[:,:,:,15:18] = (grid[:,:,:,15:18] - \
-            stats['full_particles']['min'][0,15:18]) / \
-            (stats['full_particles']['max'][0,15:18] - \
-            stats['full_particles']['min'][0,15:18])
-    grid[:,:,:,7:13] = (grid[:,:,:,7:13] - \
-            stats['actions']['min'][0,0:6]) / \
-            (stats['actions']['max'][0,0:6] - \
-            stats['actions']['min'][0,0:6])
+    if dim > 7:
+        grid[:,:,:,7:10] = (grid[:,:,:,7:10] - \
+                stats['actions']['min'][0,0:3]) / \
+                (stats['actions']['max'][0,0:3] - \
+                stats['actions']['min'][0,0:3])
+    if dim > 10:
+        grid[:,:,:,10:13] = (grid[:,:,:,10:13] - \
+                stats['actions']['min'][0,3:6]) / \
+                (stats['actions']['max'][0,3:6] - \
+                stats['actions']['min'][0,3:6])
+    if dim > 15:
+        grid[:,:,:,15:18] = (grid[:,:,:,15:18] - \
+                stats['full_particles']['min'][0,15:18]) / \
+                (stats['full_particles']['max'][0,15:18] - \
+                stats['full_particles']['min'][0,15:18])
     return grid
 
 def unnormalize_grid(grid, stats):
     unnormalized_grid = copy.deepcopy(grid)
+    dim = unnormalized_grid.shape[-1]
     unnormalized_grid[:,:,:,0:7] = unnormalized_grid[:,:,:,0:7] * \
             (stats['full_particles']['max'][0,0:7] - \
             stats['full_particles']['min'][0,0:7]) + \
             stats['full_particles']['min'][0,0:7]
-    unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * \
-            (stats['full_particles']['max'][0,15:18] - \
-            stats['full_particles']['min'][0,15:18]) + \
-            stats['full_particles']['min'][0,15:18]
-    unnormalized_grid[:,:,:,7:13] = unnormalized_grid[:,:,:,7:13] * \
-            (stats['actions']['max'][0,0:6] - \
-            stats['actions']['min'][0,0:6]) + \
-            stats['actions']['min'][0,0:6]
+    if dim > 7:
+        unnormalized_grid[:,:,:,7:10] = unnormalized_grid[:,:,:,7:10] * \
+                (stats['actions']['max'][0,0:3] - \
+                stats['actions']['min'][0,0:3]) + \
+                stats['actions']['min'][0,0:3]
+    if dim > 10:
+        unnormalized_grid[:,:,:,10:13] = unnormalized_grid[:,:,:,10:13] * \
+                (stats['actions']['max'][0,3:6] - \
+                stats['actions']['min'][0,3:6]) + \
+                stats['actions']['min'][0,3:6]
+    if dim > 15:
+        unnormalized_grid[:,:,:,15:18] = unnormalized_grid[:,:,:,15:18] * \
+                (stats['full_particles']['max'][0,15:18] - \
+                stats['full_particles']['min'][0,15:18]) + \
+                stats['full_particles']['min'][0,15:18]
     return unnormalized_grid
 
 def normalize_prediction(unnormalized_pred, stats):
@@ -453,9 +475,12 @@ if __name__ == '__main__':
     get_in_view = valid_targets_dict['valid0']['targets']['in_view']
     get_true_velocity = valid_targets_dict['valid0']['targets']['next_velocity']
     # run model ops
-    predict_velocity = valid_targets_dict['valid0']['targets']['prediction']
+    predict_velocity = valid_targets_dict['valid0']['targets']['pred_velocity']
+    predict_grid = valid_targets_dict['valid0']['targets']['pred_grid']
     # placeholders
     grid_placeholder = valid_targets_dict['valid0']['targets']['grid_placeholder']
+    grids_placeholder = valid_targets_dict['valid0']['targets']['grids_placeholder']
+    action_placeholder = valid_targets_dict['valid0']['targets']['action_placeholder']
     # unroll across time
     print('Starting prediction')
     grids, actions, is_moving, in_view = sess.run([get_grids, get_actions, get_is_moving, get_in_view])
@@ -475,7 +500,7 @@ if __name__ == '__main__':
         predicted_grids = []
         max_coordinates = []
         min_coordinates = []
-        for frame in trange(r[0], r[1]): #trange
+        for frame in range(16, 24): #trange(r[0], r[1]): #trange
             if init:
                 grid = grids[frame]
                 action = actions[frame]
@@ -485,9 +510,15 @@ if __name__ == '__main__':
                     predicted_velocity = grids[frame,:,:,:,15:18]
                 else:
                     # predict next velocity
-                    predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
-                    predicted_velocity = np.squeeze(predicted_velocity)
-                    #raise NotImplementedError
+                    predicted_velocity, predicted_grid = sess.run([predict_velocity, predict_grid], 
+                            feed_dict={
+                                grid_placeholder: grid[np.newaxis,:,:,:,0:10],
+                                grids_placeholder: grids[np.newaxis,frame:frame+2],
+                                action_placeholder: actions[np.newaxis,frame:frame+2],
+                                })
+                    predicted_velocity = np.squeeze(predicted_velocity[0])
+                    predicted_grid = np.squeeze(predicted_grid[0])
+                    raise NotImplementedError
 
                 # Undo normalization before storing
                 unnormalized_grid = unnormalize_grid(grid, stats)
@@ -526,9 +557,15 @@ if __name__ == '__main__':
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
                     predicted_velocity = grids[frame,:,:,:,15:18]
                 else:
-                    # Predict next velocity
-                    predicted_velocity = sess.run([predict_velocity], feed_dict={grid_placeholder: grid[np.newaxis,:,:,:,0:10]})[0]
-                    predicted_velocity = np.squeeze(predicted_velocity)
+                    # predict next velocity
+                    predicted_velocity, predicted_grid = sess.run([predict_velocity, predict_grid], 
+                            feed_dict={
+                                grid_placeholder: grid[np.newaxis,:,:,:,0:10],
+                                grids_placeholder: grids[np.newaxis,frame:frame+2],
+                                action_placeholder: actions[np.newaxis,frame:frame+2],
+                                })
+                    predicted_velocity = np.squeeze(predicted_velocity[0])
+                    predicted_grid = np.squeeze(predicted_grid[0])
         predicted_sequences.append({
             'predicted_grids': np.stack(predicted_grids, axis=0), 
             'max_coordinates': np.stack(max_coordinates, axis=0), 

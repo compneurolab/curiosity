@@ -514,7 +514,8 @@ def reverse_projection(inputs, P):
         return tf.maximum(0, inputs)
 
 def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method = None,
-        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0,
+        stats_file = None, num_classes = None, keep_prob = None, gpu_id = 0, 
+        n_states = 7, use_true_next_velocity = False, use_rotations = False,
         my_test = False, test_batch_size=1, reuse_weights_for_reconstruction=False, **kwargs):
     print('------NETWORK START-----')
     with tf.device('/gpu:%d' % gpu_id):
@@ -559,6 +560,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 get_actions_map = False,
                 norm_depths=False,
                 use_particles=True,
+                use_rotations=use_rotations,
                 normalize_particles={'states': 'minmax', 
                     'actions': 'minmax',
                     'next_velocity': 'minmax',},
@@ -567,11 +569,13 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
 
         try:
             grids = inputs['sparse_grids_per_time']
-            for grid in grids:
-                grid = tf.sparse_tensor_to_dense(grid)
-            grids = tf.concat(grids, axis=1)
+            # grids come out here with the following shape
+            # [batch_size, time_steps, num_rotations, height, width, depth, features]
+            # TODO This is only first rotation
+            grids = grids[:,:,0]
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
+        input_grids = grids
         grid = grids[:,0]
         next_velocity = grids[:,0,:,:,:,15:18]
 
@@ -586,8 +590,13 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         grid_shape = [BATCH_SIZE, 32, 32, 32, 10]
         grid.set_shape(grid_shape)
 
+        input_actions = inputs['actions']
+
         if my_test:
+            grid_shape = [test_batch_size, 32, 32, 32, 10]
             grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
+            grids = tf.placeholder(tf.float32, [test_batch_size, 2] + list(grid_shape[1:-1]) + [19], 'grids_input')
+            input_actions = tf.placeholder(tf.float32, [test_batch_size, 2] + input_actions.get_shape().as_list()[2:], 'action_input')
 
         # encode per time input
         main_input_per_time = [grid]
@@ -670,14 +679,17 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         #TODO FIX ALL ZERO DIVS!!! ESPECIALLY NORMALIZATIONS BY MINMAX
 
         # unnormalize grid 
-        pred_velocity = encoded_input_main[0]
+        if use_true_next_velocity:
+            pred_velocity = grids[:,0,:,:,:,15:18]
+        else:
+            pred_velocity = encoded_input_main[0]
         next_grid = tf.concat([grids[:,0:1,:,:,:,0:15], tf.expand_dims(pred_velocity, axis=1), grids[:,0:1,:,:,:,18:19]], axis=-1)
         next_grid = base_net.unnormalize_particle_data(next_grid)[:,0]
 
         # assign next actions
         next_act = tf.zeros(tf.shape(next_grid[:,:,:,:,7:13]))
-        next_action_ids = tf.unstack(inputs['actions'][:,1,:,8], axis=1)
-        next_forces = tf.unstack(inputs['actions'][:,1,:,0:6], axis=1)
+        next_action_ids = tf.unstack(input_actions[:,1,:,8], axis=1)
+        next_forces = tf.unstack(input_actions[:,1,:,0:6], axis=1)
         for (next_force, next_action_id) in zip(next_forces, next_action_ids):
             indices = tf.cast(tf.equal(next_grid[:,:,:,:,14], \
                     tf.reshape(tf.tile(tf.expand_dims(next_action_id, axis=-1), 
@@ -781,18 +793,18 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 unique_coordinates_indices, num_segments)
         mass = tf.unsorted_segment_sum(states[:, 3:4], 
                 unique_coordinates_indices, num_segments)
-        pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
-        vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
-        force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
+        pos = tf.unsorted_segment_sum(states[:, 0:3] * states[:, 18:19], #mass 
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+        vel = tf.unsorted_segment_sum(states[:, 4:7] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
+        force_torque = tf.unsorted_segment_sum(states[:, 7:13] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
         partial_ids = tf.unsorted_segment_sum(states[:, 13:14] * states[:, 18:19], 
                 unique_coordinates_indices, num_segments) / tf.maximum(counts, 1)
         ids = tf.unsorted_segment_sum(states[:, 14:15], 
                 unique_coordinates_indices, num_segments)
-        next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 3:4], 
-                unique_coordinates_indices, num_segments) / tf.maximum(mass, eps_mass)
+        next_vel = tf.unsorted_segment_sum(states[:, 15:18] * states[:, 18:19], #mass
+                unique_coordinates_indices, num_segments) / tf.maximum(counts, 1) #tf.maximum(mass, eps_mass)
         states = tf.concat([pos, mass, vel, force_torque, 
             partial_ids, ids, next_vel, counts], axis=-1)
 
@@ -802,7 +814,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 tf.expand_dims(next_grid, axis=1))[:,0] 
 
         # predict grid (draw particles at correct locations)
-        main_input_per_time = [next_grid[:,:,:,:,0:10]]
+        main_input_per_time = [next_grid[:,:,:,:,0:n_states]]
         encoded_input_main = []
         if not reuse_weights_for_reconstruction:
             reuse_weights = False
@@ -875,19 +887,51 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
 
+        '''
+        next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
+        mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
+
+        next_vel_loss = tf.reduce_mean((tf.boolean_mask(pred_velocity - next_velocity, mask) ** 2) / 2)
+        next_state_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,0:19] - grids[:,1,:,:,:,0:19], next_state_mask) ** 2) / 2)
+        pos_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3], next_state_mask) ** 2) / 2)
+        mass_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4], next_state_mask) ** 2) / 2)
+        vel_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7], next_state_mask) ** 2) / 2)
+        force_torque_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], next_state_mask) ** 2) / 2)
+        pid_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], next_state_mask) ** 2) / 2)
+        id_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], next_state_mask) ** 2) / 2)
+        next_next_vel_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], next_state_mask) ** 2) / 2)
+        count_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], next_state_mask) ** 2) / 2)
+        '''
+
         retval = {
                 'pred_grid': pred_grid,
                 'pred_velocity': pred_velocity,
                 'next_velocity': next_velocity,
-                'full_grids': grids,
+                'full_grids': input_grids,
                 'grid_placeholder': grid,
+                'grids_placeholder': grids,
+                'action_placeholder': input_actions,
                 'actions': inputs['actions'],
                 'is_moving': inputs['is_moving'],
                 'in_view': inputs['in_view'],
+                'bypasses': bypass_nodes,
+                'n_states': n_states,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
-                'bypasses': bypass_nodes,
                 }
+        '''
+                'next_vel_loss': next_vel_loss,
+                'next_state_loss': next_state_loss,
+                'pos_loss': pos_loss,
+                'mass_loss': mass_loss,
+                'vel_loss': vel_loss,
+                'force_torque_loss': force_torque_loss,
+                'pid_loss': pid_loss,
+                'id_loss': id_loss,
+                'next_next_vel_loss': next_next_vel_loss,
+                'count_loss': count_loss,
+                }
+        '''
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
         print('------BYPASSES-------')
@@ -951,9 +995,6 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
 
         try:
             grids = inputs['sparse_grids_per_time']
-            for grid in grids:
-                grid = tf.sparse_tensor_to_dense(grid)
-            grids = tf.concat(grids, axis=1)
         except KeyError:
             grids = tf.cast(inputs['grid'], tf.float32)
         grid = grids[:,0]
@@ -1052,7 +1093,7 @@ def flex_model(inputs, cfg = None, time_seen = None, normalization_method = None
                 reuse_weights = True
 
         retval = {
-                'prediction': encoded_input_main[0],
+                'pred_velocity': encoded_input_main[0],
                 'next_velocity': next_velocity,
                 'full_grids': grids,
                 'grid_placeholder': grid,
@@ -2365,7 +2406,7 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
 def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
-    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:10]
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:outputs['n_states']]
     pred_next_state = outputs['pred_grid']
     next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
     next_state_loss = (tf.boolean_mask(pred_next_state - gt_next_state, next_state_mask) ** 2) / 2
@@ -2380,8 +2421,8 @@ def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
     return[total_loss]
 
 def flex_next_state_loss(outputs, gpu_id, min_particle_distance, **kwargs):
-    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:10]
-    pred_next_state = outputs['prediction']
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:outputs['n_states']]
+    pred_next_state = outputs['pred_grid']
     mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
     #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
     loss = (tf.boolean_mask(pred_next_state - gt_next_state, mask) ** 2) / 2
@@ -2390,7 +2431,7 @@ def flex_next_state_loss(outputs, gpu_id, min_particle_distance, **kwargs):
 
 def flex_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     gt_next_vel = outputs['next_velocity']
-    pred_next_vel = outputs['prediction']
+    pred_next_vel = outputs['pred_velocity']
     mask = tf.not_equal(outputs['full_grids'][:,0,:,:,:,14], 0)
     #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
     loss = (tf.boolean_mask(pred_next_vel - gt_next_vel, mask) ** 2) / 2
@@ -3309,7 +3350,110 @@ def cfg_mom_complete_flat(n_classes, use_segmentation=True,
         }
 }
 
-def particle_bottleneck_comp_cfg(nonlin='relu'):
+def particle_shallow_comp_cfg(nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 6,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_depth': 3,
+        '3d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                #'bypass': 4
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
+                #'bypass': 4
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 3},
+                #'bypass': 2
+                },
+        },
+        # Encoding the inputs
+        '3d_encode_comp_depth': 4,
+        '3d_encode_comp' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 64},
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 1, 'stride' : 1, 'num_filters' : 7},
+                 'nonlinearity': nonlin
+                },
+        },
+}
+
+def particle_bottleneck_2nd_only_cfg(n_states=7, nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 0,
+        '3d_encode' : {
+        },
+        # Encoding the inputs
+        '3d_encode_comp_depth': 6,
+        '3d_encode_comp' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_comp_depth': 3,
+        '3d_decode_comp' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                #'bypass': 4
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
+                #'bypass': 4
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_states},
+                #'bypass': 2
+                },
+        },
+
+}
+
+def particle_bottleneck_comp_cfg(n_states=7, nonlin='relu'):
     return {
         # Encoding the inputs
         '3d_encode_depth': 6,
@@ -3381,7 +3525,7 @@ def particle_bottleneck_comp_cfg(nonlin='relu'):
             2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
                 #'bypass': 4
                 },
-            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 10},
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : n_states},
                 #'bypass': 2
                 },
         },

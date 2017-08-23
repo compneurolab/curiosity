@@ -43,19 +43,19 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexShal2LossState7',
+'flexBott2ndS7',
 #'flex2d_5', 
 #'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
-n_classes = 10
+N_STATES = 7
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_shallow_comp_cfg(nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES, nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -117,7 +117,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred_velocity'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.flex_2loss( 
+    retval['loss'] = modelsource.flex_next_state_loss( 
             outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
         if k == 'num_to_save':
@@ -192,13 +192,15 @@ model_params = [{
     'image_width' : IMG_WIDTH,
     #'num_classes': 60.,
     'gpu_id' : 0,
+    'n_states': N_STATES,
+    'use_true_next_velocity': True,
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.flex_2loss,
+    'loss_per_case_func' : modelsource.flex_next_state_loss,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
     #{'l2_coef' : L2_COEF}
