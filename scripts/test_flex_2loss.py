@@ -518,6 +518,14 @@ if __name__ == '__main__':
                                 })
                     predicted_velocity = np.squeeze(predicted_velocity[0])
                     predicted_grid = np.squeeze(predicted_grid[0])
+                    res = {
+                            'predicted_velocity': predicted_velocity,
+                            'predicted_grid': predicted_grid,
+                            'grids': grids, 
+                            }
+                    res_file = os.path.join(SAVE_DIR, 'step1_' + EXP_ID[0] + '.pkl')
+                    with open(res_file, 'w') as f:
+                        cPickle.dump(res, f)
                     raise NotImplementedError
 
                 # Undo normalization before storing
