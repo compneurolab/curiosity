@@ -1050,8 +1050,6 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
             grids = inputs['sparse_grids_per_time']
             # grids come out here with the following shape
             # [batch_size, time_steps, num_rotations, height, width, depth, features]
-            # TODO This is only first rotation
-            grids = grids[:,:,0]
         except KeyError:
             raise NotImplementedError
             grids = tf.cast(inputs['grid'], tf.float32)
@@ -1430,15 +1428,15 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'pos_loss': pos_loss,
                 'mass_loss': mass_loss,
                 'vel_loss': vel_loss,
-            }
-            '''
+        }
+        '''
                 'force_torque_loss': force_torque_loss,
                 'pid_loss': pid_loss,
                 'id_loss': id_loss,
                 'next_next_vel_loss': next_next_vel_loss,
                 'count_loss': count_loss,
             }
-            '''
+        '''
 
         retval.update(base_net.inputs)
         print('------NETWORK END-----')

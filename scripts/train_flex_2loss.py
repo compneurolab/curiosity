@@ -101,7 +101,7 @@ def just_keep_everything(val_res):
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
 
-SAVE_TO_GFS = []
+SAVE_TO_GFS = \
            [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
                 'mass_loss', 'vel_loss', ]
            #     'force_torque_loss',
