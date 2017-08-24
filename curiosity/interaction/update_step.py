@@ -363,6 +363,38 @@ class JustUncertaintyUpdater:
 		self.state_desc = updater_params['state_desc']
 
 
+
+class ActionUncertaintyUpdater:
+	def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+                self.data_provider = data_provider
+                self.wm = world_model
+                self.um = uncertainty_model
+                self.postprocessor = postprocessor
+                self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+                self.act_lr_params, act_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['act_model'])
+                self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+                self.global_step = self.global_step / 2
+		self.targets = {'act_pred' : self.wm.act_pred, 'act_loss' : self.wm.act_loss,
+				'act_optimizer' : act_opt, 'um_optimizer' : um_opt,
+				'estimated_world_loss' : self.um.estimated_world_loss,
+				'um_loss' : self.um.uncertainty_loss, 'loss_per_example' : self.um.true_loss,
+				'global_step' : self.global_step}
+
+        def update(self, sess, visualize = False):
+                batch = self.data_provider.dequeue_batch()
+                state_desc = self.state_desc
+                #depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
+                feed_dict = {
+                        self.wm.states : batch[state_desc],
+                        self.wm.action : batch['action'],
+                        self.wm.action_post : batch['action_post']
+                }
+                res = sess.run(self.targets, feed_dict = feed_dict)
+                res = self.postprocessor.postprocess(res, batch)
+                return res
+
+
+
 class LatentUncertaintyUpdater:
 	def __init__(self, world_model, uncertainty_model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params = None):
 		self.data_provider = data_provider
