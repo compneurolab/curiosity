@@ -43,7 +43,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexShal2LossS7new',
+'flexBott2LossS7new',
 #'flex2d_5', 
 #'flex_5',
 ]
