@@ -16,7 +16,7 @@ import copy
 from tqdm import trange
 import cPickle
 
-N_STATES = 10
+N_STATES = 7
 USE_GROUND_TRUTH_FOR_VALIDATION = False
 CACHE_NUM = 2
 LOCAL = False
@@ -49,7 +49,7 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_4', 
-'flexBott2Loss',
+'flexBott2ndR1T1',
 #'flex2d_4', 
 #'flex_4',
 ]
@@ -62,7 +62,7 @@ DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_bottleneck_comp_cfg(n_states=N_STATES, nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(n_states=N_STATES, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
@@ -115,6 +115,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     retval = {
             'pred_velocity': outputs['pred_velocity'],
             'pred_grid': outputs['pred_grid'],
+            'next_grid': outputs['next_grid'],
             'next_velocity': outputs['next_velocity'],
             'full_grids': outputs['full_grids'],
             'grid_placeholder': outputs['grid_placeholder'],
@@ -152,7 +153,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_comp_model,
+    'func' : modelsource.flex_2nd_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -162,6 +163,9 @@ model_params = [{
     'image_width' : IMG_WIDTH,
     #'num_classes': 60.,
     'gpu_id' : 0,
+    'time_steps': 1,
+    'use_rotations': False,
+    'use_true_next_velocity': True, #TODO REMOVE
     'my_test' : True,
     'test_batch_size': TEST_BATCH_SIZE,
     'n_states': N_STATES,
@@ -201,8 +205,9 @@ validation_params = [{
             'data_path' : VALDATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
-                    'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                    'grid_32', 'is_moving', 'is_object_in_view'],
+                    'object_data', 'reference_ids', 'max_coordinates', \
+                    'min_coordinates', 'full_particles', 'sparse_shape_32', 
+                    'is_moving', 'is_object_in_view'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -244,7 +249,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                'grid_32'],
+                'full_particles', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
@@ -477,6 +482,7 @@ if __name__ == '__main__':
     # run model ops
     predict_velocity = valid_targets_dict['valid0']['targets']['pred_velocity']
     predict_grid = valid_targets_dict['valid0']['targets']['pred_grid']
+    get_next_grid = valid_targets_dict['valid0']['targets']['next_grid']
     # placeholders
     grid_placeholder = valid_targets_dict['valid0']['targets']['grid_placeholder']
     grids_placeholder = valid_targets_dict['valid0']['targets']['grids_placeholder']
@@ -510,9 +516,10 @@ if __name__ == '__main__':
                     predicted_velocity = grids[frame,:,:,:,15:18]
                 else:
                     # predict next velocity
-                    predicted_velocity, predicted_grid = sess.run([predict_velocity, predict_grid], 
+                    predicted_velocity, predicted_grid, next_grid = \
+                            sess.run([predict_velocity, predict_grid, get_next_grid], 
                             feed_dict={
-                                grid_placeholder: grid[np.newaxis,:,:,:,0:10],
+                                grid_placeholder: grid[np.newaxis,np.newaxis,:,:,:,0:10],
                                 grids_placeholder: grids[np.newaxis,frame:frame+2],
                                 action_placeholder: actions[np.newaxis,frame:frame+2],
                                 })
@@ -521,6 +528,7 @@ if __name__ == '__main__':
                     res = {
                             'predicted_velocity': predicted_velocity,
                             'predicted_grid': predicted_grid,
+                            'next_grid': next_grid,
                             'grids': grids, 
                             }
                     res_file = os.path.join(SAVE_DIR, 'step1_' + EXP_ID[0] + '.pkl')

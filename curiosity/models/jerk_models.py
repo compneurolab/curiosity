@@ -599,6 +599,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         input_actions = inputs['actions']
 
         if my_test:
+            BATCH_SIZE = test_batch_size
             grid_shape = [test_batch_size, time_steps, 32, 32, 32, 10]
             grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
             grids = tf.placeholder(tf.float32, [test_batch_size, time_steps+1] + list(grid_shape[2:-1]) + [19 * num_rotations], 
@@ -689,6 +690,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
 
         rot_grids = tf.split(grids, num_rotations, axis=len(grids.get_shape().as_list())-1)
         encoded_grids = []
+        next_grids = []
         reuse_weights_for_rotation = False
         for rot_grid in rot_grids:
             # unnormalize grid 
@@ -768,8 +770,14 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 next_grid[:,:,:,:,7:13], partial_ids, next_grid[:,:,:,:,14:19]], axis=-1)
             states = tf.gather_nd(states, tf.where(nonzero_indices))
 
-            max_coord = tf.reduce_max(next_pos, axis=[1,2,3], keep_dims=True)
-            min_coord = tf.reduce_min(next_pos, axis=[1,2,3], keep_dims=True)
+            inf = 1000000
+            max_coord = tf.reduce_max(next_pos - inf *
+                    tf.expand_dims(tf.cast(tf.logical_not(nonzero_indices), tf.float32),
+                        axis=-1), axis=[1,2,3], keep_dims=True)
+            min_coord = tf.reduce_min(next_pos + inf * 
+                    tf.expand_dims(tf.cast(tf.logical_not(nonzero_indices), tf.float32),
+                        axis=-1), axis=[1,2,3], keep_dims=True)
+            #max_coord = tf.Print(max_coord, [max_coord, min_coord], summarize=100)
             indices = (next_pos - min_coord) / (max_coord - min_coord)
             grid_dim = np.array(grid_shape[2:5]).astype(np.float32)
             coordinates = tf.cast(tf.round(indices * (tf.reshape(grid_dim, [1,1,1,1,3]) - 1)), tf.int32)
@@ -833,6 +841,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
             next_grid = base_net.normalize_particle_data(
                     tf.expand_dims(next_grid, axis=1))[:,0] 
 
+            next_grids.append(next_grid)
             # predict grid (draw particles at correct locations)
             main_input_per_time = tf.unstack(grid[:,:,:,:,:,0:n_states], axis=1) + \
                     [next_grid[:,:,:,:,0:n_states]]
@@ -945,6 +954,7 @@ def flex_2nd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         retval = {
                 'pred_grid': pred_grid,
                 'pred_velocity': pred_velocity,
+                'next_grid': tf.stack(next_grids, axis=1),
                 'next_velocity': next_velocity,
                 'full_grids': input_grids,
                 'grid_placeholder': grid,
