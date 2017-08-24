@@ -32,10 +32,11 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 64 #64
-TIME_SEEN = 2 #2
+TIME_SEEN = 3 #2
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 2 #3
-MIN_LEN = 2 #3
+LONG_LEN = 3 #3
+MIN_LEN = 3 #3
+TIME_STEPS = 2
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
@@ -43,19 +44,24 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexBott2ndS7',
+'flexBott2ndR3T2',
 #'flex2d_5', 
 #'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 N_STATES = 7
+USE_ROTATIONS = True
+if USE_ROTATIONS:
+    NUM_ROTATIONS = 3
+else:
+    NUM_ROTATIONS = 1
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES, nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -182,7 +188,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_comp_model,
+    'func' : modelsource.flex_2nd_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -193,8 +199,9 @@ model_params = [{
     #'num_classes': 60.,
     'gpu_id' : 0,
     'n_states': N_STATES,
+    'time_steps': TIME_STEPS,
     'use_true_next_velocity': True,
-    'use_rotations': True,
+    'use_rotations': USE_ROTATIONS,
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
@@ -233,7 +240,7 @@ validation_params = [{
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
                     'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
-                    'sparse_particles_32', 'sparse_shape_32'],
+                    'full_particles', 'sparse_shape_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -275,7 +282,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
-                'sparse_particles_32', 'sparse_shape_32'],
+                'full_particles', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
