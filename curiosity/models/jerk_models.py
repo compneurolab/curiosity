@@ -2909,9 +2909,11 @@ def flex_next_state_loss(outputs, gpu_id, min_particle_distance,
         # dialate masks
         dialation_radius = 3
         dialation_kernel = tf.ones(
-                [dialation_radius,dialation_radius,dialation_radius,1,1])
-        masks = [tf.minimum(tf.nn.conv3d(mask, dialation_kernel, 
-        strides=[1,1,1,1,1], padding='SAME'), 1) for mask, in masks]
+                [dialation_radius,dialation_radius,dialation_radius,1,1], 
+                dtype=tf.float32)
+        masks = [tf.squeeze(tf.cast(tf.minimum(tf.nn.conv3d(
+            tf.expand_dims(tf.cast(mask, tf.float32), axis=-1), dialation_kernel,
+            strides=[1,1,1,1,1], padding='SAME'), 1), tf.bool)) for mask in masks]
     losses = []
     for (pred_next_state, gt_next_state, mask) in zip(pred_next_states, gt_next_states, masks):
         loss = (tf.boolean_mask(pred_next_state - gt_next_state, mask) ** 2) / 2
