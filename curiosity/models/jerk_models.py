@@ -2894,7 +2894,11 @@ def flex_next_state_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     gt_next_states = [gt[:,outputs['time_steps'],:,:,:,0:outputs['n_states']] for gt in rot_states]
     pred_next_states = tf.split(outputs['pred_grid'], outputs['num_rotations'], axis=len(outputs['pred_grid'].get_shape().as_list())-1)
     masks = [tf.not_equal(m[:,outputs['time_steps'],:,:,:,14], 0) for m in rot_states]
-    #loss = tf.nn.l2_loss(pred_next_vel - gt_next_vel)
+    # dialate masks
+    dialation_radius = 3
+    dialation_kernel = tf.ones([dialation_radius,dialation_radius,dialation_radius,1,1])
+    masks = [tf.minimum(tf.nn.conv3d(mask, dialation_kernel, 
+        strides=[1,1,1,1,1], padding='SAME'), 1) for mask, in masks]
     losses = []
     for (pred_next_state, gt_next_state, mask) in zip(pred_next_states, gt_next_states, masks):
         loss = (tf.boolean_mask(pred_next_state - gt_next_state, mask) ** 2) / 2
