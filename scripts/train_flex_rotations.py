@@ -29,39 +29,42 @@ else:
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
 BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
-N_GPUS = 1
+N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 64 #64
+MODEL_BATCH_SIZE = 50 #64
 TIME_SEEN = 3 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 3 #3
 MIN_LEN = 3 #3
-TIME_STEPS = 2
+TIME_STEPS = [1, 2, 2, 1]
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = [#'flex2dBott_5', 
+EXP_ID = ['flexBott2ndR3T1', 
+'flexBott2ndR1T2',
 'flexBott2ndR3T2',
-#'flex2d_5', 
-#'flex_5',
+'flexBott2ndR1T1',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
-LRS = [0.001, 0.001, 0.001, 0.001]
+LRS = [0.0005, 0.0005, 0.0005, 0.0005]
 N_STATES = 7
-USE_ROTATIONS = True
-if USE_ROTATIONS:
-    NUM_ROTATIONS = 3
-else:
-    NUM_ROTATIONS = 1
+USE_ROTATIONS = [True, False, True, False]
+NUM_ROTATIONS = 3
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
-        #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, 
+            nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES, 
+            nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, 
+            nonlin='relu'),
+        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES,
+            nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -199,9 +202,9 @@ model_params = [{
     #'num_classes': 60.,
     'gpu_id' : 0,
     'n_states': N_STATES,
-    'time_steps': TIME_STEPS,
+    'time_steps': TIME_STEPS[0],
     'use_true_next_velocity': True,
-    'use_rotations': USE_ROTATIONS,
+    'use_rotations': USE_ROTATIONS[0],
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
@@ -331,6 +334,8 @@ for i, _ in enumerate(model_params):
     validation_params[i]['valid0']['targets']['gpu_id'] = i
     #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['cfg'] = CFG[i]
+    model_params[i]['use_rotations'] = USE_ROTATIONS[i]
+    model_params[i]['time_steps'] = TIME_STEPS[i]
     learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
