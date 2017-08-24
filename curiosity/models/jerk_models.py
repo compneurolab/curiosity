@@ -1053,6 +1053,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
             # TODO This is only first rotation
             grids = grids[:,:,0]
         except KeyError:
+            raise NotImplementedError
             grids = tf.cast(inputs['grid'], tf.float32)
         input_grids = grids
         grid = grids[:,0]
@@ -1072,6 +1073,7 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
         input_actions = inputs['actions']
 
         if my_test:
+            BATCH_SIZE = test_batch_size
             grid_shape = [test_batch_size, 32, 32, 32, 10]
             grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
             grids = tf.placeholder(tf.float32, [test_batch_size, 2] + list(grid_shape[1:-1]) + [19], 'grids_input')
@@ -1230,8 +1232,13 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
             next_grid[:,:,:,:,7:13], partial_ids, next_grid[:,:,:,:,14:19]], axis=-1)
         states = tf.gather_nd(states, tf.where(nonzero_indices))
 
-        max_coord = tf.reduce_max(next_pos, axis=[1,2,3], keep_dims=True)
-        min_coord = tf.reduce_min(next_pos, axis=[1,2,3], keep_dims=True)
+        inf = 1000000
+        max_coord = tf.reduce_max(next_pos - inf *
+                tf.expand_dims(tf.cast(tf.logical_not(nonzero_indices), tf.float32),
+                    axis=-1), axis=[1,2,3], keep_dims=True)
+        min_coord = tf.reduce_min(next_pos + inf *
+                tf.expand_dims(tf.cast(tf.logical_not(nonzero_indices), tf.float32),
+                    axis=-1), axis=[1,2,3], keep_dims=True)
         indices = (next_pos - min_coord) / (max_coord - min_coord)
         grid_dim = np.array(grid_shape[1:4]).astype(np.float32)
         coordinates = tf.cast(tf.round(indices * (tf.reshape(grid_dim, [1,1,1,1,3]) - 1)), tf.int32)
@@ -1366,25 +1373,46 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
 
-        '''
+        
         next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
         mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
 
-        next_vel_loss = tf.reduce_mean((tf.boolean_mask(pred_velocity - next_velocity, mask) ** 2) / 2)
-        next_state_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,0:19] - grids[:,1,:,:,:,0:19], next_state_mask) ** 2) / 2)
-        pos_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3], next_state_mask) ** 2) / 2)
-        mass_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4], next_state_mask) ** 2) / 2)
-        vel_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7], next_state_mask) ** 2) / 2)
-        force_torque_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], next_state_mask) ** 2) / 2)
-        pid_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], next_state_mask) ** 2) / 2)
-        id_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], next_state_mask) ** 2) / 2)
-        next_next_vel_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], next_state_mask) ** 2) / 2)
-        count_loss = tf.reduce_mean((tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], next_state_mask) ** 2) / 2)
-        '''
+        next_vel_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_velocity - next_velocity, mask) ** 2) / 2)
+        next_state_loss = tf.reduce_mean(
+                (tf.boolean_mask(
+                    pred_grid[:,:,:,:,0:n_states] - grids[:,1,:,:,:,0:n_states], 
+                    next_state_mask) ** 2) / 2)
+        pos_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3], 
+                    next_state_mask) ** 2) / 2)
+        mass_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4], 
+                    next_state_mask) ** 2) / 2)
+        vel_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7], 
+                    next_state_mask) ** 2) / 2)
+        if n_states > 7:
+            force_torque_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], 
+                    next_state_mask) ** 2) / 2)
+            pid_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], 
+                    next_state_mask) ** 2) / 2)
+            id_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], 
+                    next_state_mask) ** 2) / 2)
+            next_next_vel_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], 
+                    next_state_mask) ** 2) / 2)
+            count_loss = tf.reduce_mean(
+                (tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], 
+                    next_state_mask) ** 2) / 2)
 
         retval = {
                 'pred_grid': pred_grid,
                 'pred_velocity': pred_velocity,
+                'next_grid': next_grid,
                 'next_velocity': next_velocity,
                 'full_grids': input_grids,
                 'grid_placeholder': grid,
@@ -1397,20 +1425,21 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'n_states': n_states,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
-                }
-        '''
                 'next_vel_loss': next_vel_loss,
                 'next_state_loss': next_state_loss,
                 'pos_loss': pos_loss,
                 'mass_loss': mass_loss,
                 'vel_loss': vel_loss,
+            }
+            '''
                 'force_torque_loss': force_torque_loss,
                 'pid_loss': pid_loss,
                 'id_loss': id_loss,
                 'next_next_vel_loss': next_next_vel_loss,
                 'count_loss': count_loss,
-                }
-        '''
+            }
+            '''
+
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
         print('------BYPASSES-------')

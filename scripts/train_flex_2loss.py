@@ -14,7 +14,7 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-CACHE_NUM = 2
+CACHE_NUM = 4
 LOCAL = False
 if LOCAL:
     DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
@@ -43,19 +43,20 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_5', 
-'flexShal2LossState7',
+'flexShal2LossS7new',
 #'flex2d_5', 
 #'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
-n_classes = 10
+N_STATES = 7
+#n_classes = 10
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
-        modelsource.particle_shallow_comp_cfg(nonlin='relu'),
+        modelsource.particle_bottleneck_comp_cfg(n_states=N_STATES, nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -101,8 +102,9 @@ def just_keep_everything(val_res):
 
 
 SAVE_TO_GFS = []
-           # [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
-           #     'mass_loss', 'vel_loss', 'force_torque_loss',
+           [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
+                'mass_loss', 'vel_loss', ]
+           #     'force_torque_loss',
            #     'pid_loss', 'id_loss', 'next_next_vel_loss', 'count_loss', 
            #     'reference_ids']
 
@@ -192,6 +194,7 @@ model_params = [{
     'image_width' : IMG_WIDTH,
     #'num_classes': 60.,
     'gpu_id' : 0,
+    'n_states': N_STATES,
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
@@ -229,8 +232,8 @@ validation_params = [{
             'data_path' : VALDATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
-                    'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                    'grid_32'],
+                'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
+                'full_particles', 'sparse_shape_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -272,7 +275,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                'grid_32'],
+                'full_particles', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
