@@ -1371,41 +1371,54 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 reuse_weights = True
         pred_grid = encoded_input_main[0]
 
-        
-        next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
-        mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
+        # norm loss ranges
+        value_ranges = 27.60602188 / np.array([
+                18.73734856, 4.05035114, 27.60602188, 0.7037037,
+                7.97082663, 3.00816584, 9.01172256]).astype(np.float32) / 10
+       
+        if not my_test:
+            next_state_mask = tf.not_equal(grids[:,1,:,:,:,14], 0)
+            mask = tf.not_equal(grids[:,0,:,:,:,14], 0)
 
-        next_vel_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_velocity - next_velocity, mask) ** 2) / 2)
-        next_state_loss = tf.reduce_mean(
-                (tf.boolean_mask(
-                    pred_grid[:,:,:,:,0:n_states] - grids[:,1,:,:,:,0:n_states], 
-                    next_state_mask) ** 2) / 2)
-        pos_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3], 
-                    next_state_mask) ** 2) / 2)
-        mass_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4], 
-                    next_state_mask) ** 2) / 2)
-        vel_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7], 
-                    next_state_mask) ** 2) / 2)
-        if n_states > 7:
-            force_torque_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], 
-                    next_state_mask) ** 2) / 2)
-            pid_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], 
-                    next_state_mask) ** 2) / 2)
-            id_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], 
-                    next_state_mask) ** 2) / 2)
-            next_next_vel_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], 
-                    next_state_mask) ** 2) / 2)
-            count_loss = tf.reduce_mean(
-                (tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], 
-                    next_state_mask) ** 2) / 2)
+            next_vel_loss = tf.reduce_mean(
+                    (tf.boolean_mask((pred_velocity - next_velocity) 
+                        / tf.reshape(value_ranges[4:7], [1,1,1,1,3])
+                        , mask) ** 2) / 2)
+            next_state_loss = tf.reduce_mean(
+                    (tf.boolean_mask(
+                        (pred_grid[:,:,:,:,0:n_states] - grids[:,1,:,:,:,0:n_states])
+                        / tf.reshape(value_ranges[0:7], [1,1,1,1,7])
+                        , next_state_mask) ** 2) / 2)
+            pos_loss = tf.reduce_mean(
+                    (tf.boolean_mask(
+                        (pred_grid[:,:,:,:,0:3] - grids[:,1,:,:,:,0:3])
+                        / tf.reshape(value_ranges[0:3], [1,1,1,1,3])
+                        , next_state_mask) ** 2) / 2)
+            mass_loss = tf.reduce_mean(
+                    (tf.boolean_mask(
+                        (pred_grid[:,:,:,:,3:4] - grids[:,1,:,:,:,3:4])
+                        / tf.reshape(value_ranges[3:4], [1,1,1,1,1])
+                        , next_state_mask) ** 2) / 2)
+            vel_loss = tf.reduce_mean(
+                    (tf.boolean_mask((pred_grid[:,:,:,:,4:7] - grids[:,1,:,:,:,4:7])
+                        / tf.reshape(value_ranges[4:7], [1,1,1,1,3])
+                        , next_state_mask) ** 2) / 2)
+            if n_states > 7:
+                force_torque_loss = tf.reduce_mean(
+                    (tf.boolean_mask(pred_grid[:,:,:,:,7:13] - grids[:,1,:,:,:,7:13], 
+                        next_state_mask) ** 2) / 2)
+                pid_loss = tf.reduce_mean(
+                    (tf.boolean_mask(pred_grid[:,:,:,:,13:14] - grids[:,1,:,:,:,13:14], 
+                        next_state_mask) ** 2) / 2)
+                id_loss = tf.reduce_mean(
+                    (tf.boolean_mask(pred_grid[:,:,:,:,14:15] - grids[:,1,:,:,:,14:15], 
+                        next_state_mask) ** 2) / 2)
+                next_next_vel_loss = tf.reduce_mean(
+                    (tf.boolean_mask(pred_grid[:,:,:,:,15:18] - grids[:,1,:,:,:,15:18], 
+                        next_state_mask) ** 2) / 2)
+                count_loss = tf.reduce_mean(
+                    (tf.boolean_mask(pred_grid[:,:,:,:,18:19] - grids[:,1,:,:,:,18:19], 
+                        next_state_mask) ** 2) / 2)
 
         retval = {
                 'pred_grid': pred_grid,
@@ -1423,12 +1436,14 @@ def flex_comp_model(inputs, cfg = None, time_seen = None, normalization_method =
                 'n_states': n_states,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
-                'next_vel_loss': next_vel_loss,
-                'next_state_loss': next_state_loss,
-                'pos_loss': pos_loss,
-                'mass_loss': mass_loss,
-                'vel_loss': vel_loss,
         }
+        if not my_test:
+            retval['next_vel_loss'] = next_vel_loss,
+            retval['next_state_loss'] = next_state_loss,
+            retval['pos_loss'] =  pos_loss,
+            retval['mass_loss'] = mass_loss,
+            retval['vel_loss'] = vel_loss,
+
         '''
                 'force_torque_loss': force_torque_loss,
                 'pid_loss': pid_loss,
@@ -2910,6 +2925,29 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
             return [-tf.reduce_mean(log_sum_exp(log_probs))]
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
+
+def flex_2loss_normed(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
+    gt_next_state = outputs['full_grids'][:,1,:,:,:,0:outputs['n_states']]
+    pred_next_state = outputs['pred_grid']
+    # norm loss ranges
+    value_ranges = 27.60602188 / np.array([
+        18.73734856, 4.05035114, 27.60602188, 0.7037037,
+        7.97082663, 3.00816584, 9.01172256]).astype(np.float32) / 10
+    next_state_mask = tf.not_equal(outputs['full_grids'][:,1,:,:,:,14], 0)
+    next_state_loss = (tf.boolean_mask(
+        (pred_next_state - gt_next_state) / tf.reshape(value_ranges, [1,1,1,1,7]), 
+        next_state_mask) ** 2) / 2
+
+    gt_next_vel = outputs['next_velocity']
+    pred_next_vel = outputs['pred_velocity']
+    mask = tf.not_equal(outputs['full_grids'][:,0,:,:,:,14], 0)
+    next_vel_loss = (tf.boolean_mask(
+        (pred_next_vel - gt_next_vel) / tf.reshape(value_ranges[4:7], [1,1,1,1,3]), 
+        mask) ** 2) / 2
+
+    total_loss = alpha * tf.reduce_mean(next_vel_loss) + \
+            (1 - alpha) * tf.reduce_mean(next_state_loss)
+    return[total_loss]
 
 def flex_2loss(outputs, gpu_id, min_particle_distance, alpha=0.5, **kwargs):
     gt_next_state = outputs['full_grids'][:,1,:,:,:,0:outputs['n_states']]
