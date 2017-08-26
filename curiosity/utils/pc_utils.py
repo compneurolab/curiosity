@@ -104,7 +104,7 @@ def tf_pts_arr_2_control_pts(pts_arr, ctrl_dist=4, n_vox=32):
     # get local coordinates
     dists = np.array([dist for dist in product(range(ctrl_dist), 
         repeat=3)]).astype(np.int32)
-    valid_mask = tf.reduce_any(tf.less_equal(tf.expand_dims(dists, axis=0), 
+    valid_mask = tf.reduce_all(tf.less_equal(tf.expand_dims(dists, axis=0), 
             tf.expand_dims(max_dists, axis=1)), axis=-1)
     # get control point indices
     ctrl_pts = tf.expand_dims(c_grid_origins, axis=1) + tf.expand_dims(dists, axis=0)
