@@ -83,45 +83,47 @@ def tf_fac(x):
 
 def tf_pts_arr_2_control_pts(pts_arr, ctrl_dist=4, n_vox=32):
     pts_arr = tf.cast(pts_arr, tf.float32)
-    N = tf.shape(pts_arr)[0]
-    ctrl_pts = tf.zeros([N, ctrl_dist ** 3, 3], dtype=tf.int32)
-    b_coeffs = tf.zeros([N, ctrl_dist ** 3], dtype=tf.float32)
+    B = pts_arr.get_shape().as_list()[0]
+    N = pts_arr.get_shape().as_list()[1]
+    ctrl_pts = tf.zeros([B, N, ctrl_dist ** 3, 3], dtype=tf.int32)
+    b_coeffs = tf.zeros([B, N, ctrl_dist ** 3], dtype=tf.float32)
     
     point_voxels = tf.cast(pts_arr, tf.int32)
     origin_offset = tf.cast((ctrl_dist-1)/2, tf.int32)
     default_origin_offset = tf.tile(tf.cast((
         tf.reshape(ctrl_dist, [1])-1)/2, tf.int32), [3])
     #Don't go below 0
-    point_offsets = tf.minimum(tf.tile(tf.expand_dims(default_origin_offset,axis=0), 
-        [N,1]), point_voxels)
+    point_offsets = tf.minimum(tf.tile(tf.reshape(
+        default_origin_offset, [1,1,3]),
+        [B,N,1]), point_voxels)
     #Get 'origin' ctrl point for each point
     c_grid_origins = tf.minimum(point_voxels-point_offsets, n_vox-2)
     #Compute size of local ctrl point grid for , to not go above max
-    max_dists = tf.minimum(tf.tile(tf.expand_dims(tf.tile(tf.reshape(ctrl_dist, [1])-1, 
-        [3]), axis=0), [N,1]), n_vox-1-c_grid_origins)
+    max_dists = tf.minimum(tf.tile(tf.reshape(tf.tile(tf.reshape(ctrl_dist, [1])-1, 
+        [3]), [1,1,3]), [B,N,1]), n_vox-1-c_grid_origins)
     #Scale each point to 0.0-1.0 range in its local ctrl point grid
     stus = (pts_arr-tf.cast(c_grid_origins, tf.float32)) / tf.cast(max_dists, tf.float32)
     # get local coordinates
-    dists = np.array([dist for dist in product(range(ctrl_dist), 
-        repeat=3)]).astype(np.int32)
-    valid_mask = tf.reduce_all(tf.less_equal(tf.expand_dims(dists, axis=0), 
-            tf.expand_dims(max_dists, axis=1)), axis=-1)
+    dists = np.reshape(np.array([dist for dist in product(range(ctrl_dist), 
+        repeat=3)]).astype(np.int32), [1, ctrl_dist**3, 3])
+    valid_mask = tf.reduce_all(tf.less_equal(tf.expand_dims(dists, axis=1), 
+            tf.expand_dims(max_dists, axis=2)), axis=-1)
     # get control point indices
-    ctrl_pts = tf.expand_dims(c_grid_origins, axis=1) + tf.expand_dims(dists, axis=0)
+    ctrl_pts = tf.expand_dims(c_grid_origins, axis=2) + tf.expand_dims(dists, axis=1)
     ctrl_pts = ctrl_pts * tf.cast(tf.expand_dims(valid_mask, axis=-1), tf.int32)
     # get b coefficients
-    dists_diff = tf.expand_dims(max_dists, axis=1) - tf.expand_dims(dists, axis=0)
+    dists_diff = tf.expand_dims(max_dists, axis=2) - tf.expand_dims(dists, axis=1)
     fac_max_dists = tf.reshape(tf.map_fn(tf_fac, tf.reshape(max_dists, [-1])), 
             tf.shape(max_dists))
     fac_dists = tf.reshape(tf.map_fn(tf_fac, tf.reshape(dists, [-1])),
             tf.shape(dists))
     fac_dists_diff = tf.reshape(tf.map_fn(tf_fac, tf.reshape(dists_diff, [-1])),
             tf.shape(dists_diff))
-    b_coeffs = tf.floor(tf.expand_dims(tf.cast(fac_max_dists, tf.float32), axis=1) / 
-        tf.cast(tf.expand_dims(fac_dists, axis=0) * fac_dists_diff, tf.float32))
-    b_coeffs = b_coeffs * (1 - tf.expand_dims(stus, axis=1)) ** \
-            tf.cast(dists_diff, tf.float32) * tf.expand_dims(stus, axis=1) ** \
-            tf.expand_dims(tf.cast(dists, tf.float32), axis=0)
+    b_coeffs = tf.floor(tf.expand_dims(tf.cast(fac_max_dists, tf.float32), axis=2) / 
+        tf.cast(tf.expand_dims(fac_dists, axis=1) * fac_dists_diff, tf.float32))
+    b_coeffs = b_coeffs * (1 - tf.expand_dims(stus, axis=2)) ** \
+            tf.cast(dists_diff, tf.float32) * tf.expand_dims(stus, axis=2) ** \
+            tf.expand_dims(tf.cast(dists, tf.float32), axis=1)
     b_coeffs = tf.reduce_prod(b_coeffs, axis=-1)
     b_coeffs = b_coeffs * tf.cast(valid_mask, tf.float32)
     return (ctrl_pts, b_coeffs)
@@ -132,6 +134,6 @@ N = 100
 n_vox = 32
 ctrl_pts, b_coeffs = pts_arr_2_control_pts(pts_arr)
 # Tensorflow reimplementation
-tf_ctrl_pts, tf_b_coeffs = tf_pts_arr_2_control_pts(pts_arr)
+tf_ctrl_pts, tf_b_coeffs = tf_pts_arr_2_control_pts(tf.expand_dims(pts_arr, axis=0))
 sess = tf.Session()
 tf_ctrl_pts, tf_b_coeffs = sess.run([tf_ctrl_pts, tf_b_coeffs])

@@ -200,6 +200,8 @@ class ShortLongFuturePredictionBase:
                 get_hacky_segmentation_map = False,
                 norm_depths = True,
                 use_particles = False,
+                use_control_points = False,
+                ctrl_dist = 4,
                 use_rotations = False,
                 normalize_particles = None,
                 grid_dim = 32,
@@ -432,6 +434,9 @@ class ShortLongFuturePredictionBase:
                 sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
                 
                 sparse_grids = []
+                all_ctrl_pts = []
+                all_ctrl_grids = []
+                all_b_coeffs = []
                 time_steps = len(sparse_shape_all_times)
                 for time_step, (sparse_particles_t, sparse_shape_t) in \
                         enumerate(zip(sparse_particles_all_times, sparse_shape_all_times)):
@@ -446,7 +451,12 @@ class ShortLongFuturePredictionBase:
                         sparse_shape_t = tf.cast(tf.concat([[batch_size], 
                             sparse_shape_t[0]], axis=0), tf.int32)
                     not_particle_mask = tf.equal(sparse_particles_t[:, :, 14:15], 0)
+
                     rot_grids = []
+                    rot_ctrl_pts = []
+                    rot_ctrl_grids = []
+                    rot_b_coeffs = []
+
                     if use_rotations:
                         rotations = [
                                 tf.constant([
@@ -531,14 +541,116 @@ class ShortLongFuturePredictionBase:
                         sparse_grid = tf.scatter_nd(sparse_coordinates, 
                                 sparse_particles, sparse_shape)
                         rot_grids.append(sparse_grid)
+
+                        if use_control_points:
+                            max_vox = grid_dim - np.floor(ctrl_dist / 2)
+                            min_vox = np.floor(ctrl_dist / 2)
+                            pts_arr = (rot_pos - min_coord) / \
+                                    (max_coord - min_coord) * \
+                                    (max_vox - min_vox) + min_vox
+                            pts_arr = tf.cast(pts_arr, tf.float32)
+                            B = pts_arr.get_shape().as_list()[0]
+                            N = pts_arr.get_shape().as_list()[1]
+                            ctrl_pts = tf.zeros([B, N, ctrl_dist ** 3, 3], 
+                                    dtype=tf.int32)
+                            b_coeffs = tf.zeros([B, N, ctrl_dist ** 3], 
+                                    dtype=tf.float32)
+
+                            point_voxels = tf.cast(pts_arr, tf.int32)
+                            origin_offset = tf.cast((ctrl_dist-1)/2, tf.int32)
+                            default_origin_offset = tf.tile(tf.cast((
+                                    tf.reshape(ctrl_dist, [1])-1)/2, tf.int32), [3])
+                            #Don't go below 0
+                            point_offsets = tf.minimum(tf.tile(tf.reshape(
+                                    default_origin_offset, [1,1,3]),
+                                    [B,N,1]), point_voxels)
+                            #Get 'origin' ctrl point for each point
+                            c_grid_origins = tf.minimum(point_voxels-point_offsets, 
+                                    grid_dim-2)
+                            #Compute size of local ctrl point grid for , to not go above max
+                            max_dists = tf.minimum(tf.tile(tf.reshape(tf.tile(
+                                    tf.reshape(ctrl_dist, [1])-1, [3]), [1,1,3]), 
+                                    [B,N,1]), grid_dim-1-c_grid_origins)
+                            #Scale each point to 0.0-1.0 range in its local ctrl point grid
+                            stus = (pts_arr-tf.cast(c_grid_origins, tf.float32)) / \
+                                    tf.cast(max_dists, tf.float32)
+                            # get local coordinates
+                            dists = np.reshape(np.array([dist \
+                                    for dist in product(range(ctrl_dist),
+                                    repeat=3)]).astype(np.int32), [1, ctrl_dist**3, 3])
+                            valid_mask = tf.reduce_all(tf.less_equal(
+                                    tf.expand_dims(dists, axis=1),
+                                    tf.expand_dims(max_dists, axis=2)), axis=-1)
+                            # get control point indices
+                            ctrl_pts = tf.expand_dims(c_grid_origins, axis=2) + \
+                                    tf.expand_dims(dists, axis=1)
+                            ctrl_pts = ctrl_pts * tf.cast(tf.expand_dims(
+                                    valid_mask, axis=-1),
+                                    tf.int32)
+                            # get b coefficients
+                            dists_diff = tf.expand_dims(max_dists, axis=2) - \
+                                    tf.expand_dims(dists, axis=1)
+                            fac_max_dists = tf.reshape(tf.map_fn(tf_fac, \
+                                    tf.reshape(max_dists, [-1]),
+                                    parallel_iterations=32),
+                                    tf.shape(max_dists))
+                            fac_dists = tf.reshape(tf.map_fn(tf_fac, 
+                                    tf.reshape(dists, [-1]),
+                                    parallel_iterations=32),
+                                    tf.shape(dists))
+                            fac_dists_diff = tf.reshape(tf.map_fn(tf_fac, \
+                                    tf.reshape(dists_diff, [-1]),
+                                    parallel_iterations=32),
+                                    tf.shape(dists_diff))
+                            b_coeffs = tf.floor(tf.expand_dims(tf.cast(
+                                fac_max_dists, tf.float32), axis=2) /
+                                tf.cast(tf.expand_dims(fac_dists, axis=1) * \
+                                    fac_dists_diff, tf.float32))
+                            b_coeffs = b_coeffs * (1 - \
+                                    tf.expand_dims(stus, axis=2)) ** \
+                                    tf.cast(dists_diff, tf.float32) * \
+                                    tf.expand_dims(stus, axis=2) ** \
+                                    tf.expand_dims(tf.cast(dists, tf.float32), axis=1)
+                            b_coeffs = tf.reduce_prod(b_coeffs, axis=-1)
+                            b_coeffs = b_coeffs * tf.cast(valid_mask, tf.float32)
+                            rot_ctrl_pts.append(ctrl_pts)
+                            rot_b_coeffs.append(b_coeffs)
+
+                            def minmax_2_grid(minmax_coord):
+                            #TODO Worl out the alignment between 
+                            # 2.0-30.0 range and 0.0-32-0 range min-max
+                                min_coord = minmax_coord[0:3]
+                                max_coord = minmax_coord[3:6]
+                                x = tf.lin_space(min_coord[0], max_coord[0], grid_dim)
+                                y = tf.lin_space(min_coord[1], max_coord[1], grid_dim)
+                                z = tf.lin_space(min_coord[2], max_coord[2], grid_dim)
+                                return tf.stack(tf.meshgrid(x,y,z,indexing='ij'),
+                                        axis=-1)
+                            ctrl_grid = tf.map_fn(minmax_2_grid, 
+                                    tf.squeeze(tf.concat([min_coord, max_coord], 
+                                        axis=-1)), parallel_iterations=32)
+                            rot_ctrl_grids.append(ctrl_grid)
+
                     sparse_grids.append(tf.concat(rot_grids, axis=-1))
+                    if use_control_points:
+                        all_ctrl_pts.append(tf.concat(rot_ctrl_pts, axis=-1)
+                        all_b_coeffs.append(tf.concat(rot_b_coeffs, axis=-1)
+                        all_ctrl_grids.append(tf.concat(rot_ctrl_grids, axis=-1)
+
                 sparse_grids = tf.stack(sparse_grids, axis=1)
                 sparse_grids.set_shape(list([batch_size, time_steps]) + \
                         list([grid_dim]) * 3 + list([feature_size * num_rotations]))
                 self.inputs['sparse_grids_per_time'] = sparse_grids
+                if use_control_points:
+                    all_b_coeffs = tf.stack(all_b_coeffs, axis=1)
+                    all_ctrl_pts = tf.stack(all_ctrl_pts, axis=1)
+                    all_ctrl_grids = tf.stack(all_ctrl_grids, axis=1)
+                    self.inputs['b_coeffs'] = all_b_coeffs
+                    self.inputs['ctrl_pts'] = all_ctrl_pts
+                    self.inputs['ctrl_grid'] = all_ctrl_grids
+
             except KeyError:
                 print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + str(grid_dim) + ' not loaded!')
-
 
 	if store_jerk:
 		#jerk
