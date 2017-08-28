@@ -617,13 +617,13 @@ class ShortLongFuturePredictionBase:
                             rot_b_coeffs.append(b_coeffs)
 
                             def minmax_2_grid(minmax_coord):
-                            #TODO Worl out the alignment between 
-                            # 2.0-30.0 range and 0.0-32-0 range min-max
                                 min_coord = minmax_coord[0:3]
                                 max_coord = minmax_coord[3:6]
-                                x = tf.lin_space(min_coord[0], max_coord[0], grid_dim)
-                                y = tf.lin_space(min_coord[1], max_coord[1], grid_dim)
-                                z = tf.lin_space(min_coord[2], max_coord[2], grid_dim)
+                                lin = (tf.lin_space(0.0, 1.0, grid_dim) * \
+                                        (grid_dim - 1.0) - min_vox) / (max_vox - min_vox)
+                                x = lin * (max_coord[0] - min_coord[0]) + min_coord[0]
+                                y = lin * (max_coord[1] - min_coord[1]) + min_coord[1]
+                                z = lin * (max_coord[2] - min_coord[2]) + min_coord[2]
                                 return tf.stack(tf.meshgrid(x,y,z,indexing='ij'),
                                         axis=-1)
                             ctrl_grid = tf.map_fn(minmax_2_grid, 
