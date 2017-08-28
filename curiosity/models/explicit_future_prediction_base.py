@@ -434,6 +434,7 @@ class ShortLongFuturePredictionBase:
                 sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
                 
                 sparse_grids = []
+                all_sparse_particles = []
                 all_ctrl_pts = []
                 all_ctrl_grids = []
                 all_b_coeffs = []
@@ -444,6 +445,7 @@ class ShortLongFuturePredictionBase:
                     # normalize particles if requested
                     if self.normalize_particles is not None:
                         sparse_particles_t = self.normalize_sparse_particle_data(sparse_particles_t)
+                    all_sparse_particles.append(sparse_particles_t)
                     # control for correct data
                     with tf.control_dependencies([tf.assert_equal(
                                     tf.reduce_prod(sparse_shape_t, axis=-1), 
@@ -641,12 +643,15 @@ class ShortLongFuturePredictionBase:
                 sparse_grids.set_shape(list([batch_size, time_steps]) + \
                         list([grid_dim]) * 3 + list([feature_size * num_rotations]))
                 self.inputs['sparse_grids_per_time'] = sparse_grids
+                all_sparse_particles = tf.stack(all_sparse_particles, axis=1)
+                all_sparse_particles.set_shape([batch_size, time_steps, num_particles, feature_size]) 
+                self.inputs['sparse_particles'] = all_sparse_particles
                 if use_control_points:
                     all_b_coeffs = tf.stack(all_b_coeffs, axis=1)
                     all_ctrl_pts = tf.stack(all_ctrl_pts, axis=1)
                     all_ctrl_grids = tf.stack(all_ctrl_grids, axis=1)
                     self.inputs['b_coeffs'] = all_b_coeffs
-                    self.inputs['ctrl_pts'] = all_ctrl_pts
+                    self.inputs['ctrl_pts_idx'] = all_ctrl_pts
                     self.inputs['ctrl_grid'] = all_ctrl_grids
 
             except KeyError:
