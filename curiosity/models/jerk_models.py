@@ -1052,7 +1052,6 @@ def flex_ffd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         except KeyError:
             raise NotImplementedError
             grids = tf.cast(inputs['grid'], tf.float32)
-        input_grids = grids
         grid = grids[:,0]
         next_velocity = grids[:,0,:,:,:,15:18]
 
@@ -1067,14 +1066,27 @@ def flex_ffd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         grid_shape = [BATCH_SIZE, 32, 32, 32, 10]
         grid.set_shape(grid_shape)
 
-        input_actions = inputs['actions']
+        ctrl_pts_idx = inputs['ctrl_pts_idx'][:, 0]
+        b_coeff = inputs['b_coeffs'][:, 0] # (BS, N, ctrl_dist**3)
+        num_particles = ctrl_pts_idx.get_shape().as_list()[1]
 
+        full_particles = inputs['full_particles']
+        sparse_shapes = inputs['sparse_shapes']
         if my_test:
             BATCH_SIZE = test_batch_size
             grid_shape = [test_batch_size, 32, 32, 32, 10]
-            grid = tf.placeholder(tf.float32, [test_batch_size] + list(grid_shape[1:]), 'grid_input')
-            grids = tf.placeholder(tf.float32, [test_batch_size, 2] + list(grid_shape[1:-1]) + [19], 'grids_input')
-            input_actions = tf.placeholder(tf.float32, [test_batch_size, 2] + input_actions.get_shape().as_list()[2:], 'action_input')
+            grid = tf.placeholder(tf.float32, \
+                    [test_batch_size] + list(grid_shape[1:]), 'grid_input')
+            full_particles = tf.placeholder(tf.float32, \
+                    [test_batch_size, 1, num_particles, 19], 'particle_input')
+            sparse_shapes = tf.placeholder(tf.float32, \
+                    [test_batch_size, 1, 4], 'shape_input')
+            ctrl_pts_idx, b_coeff = base_net.parse_particles(
+                    full_particles, sparse_shapes, return_control_points=True)
+            ctrl_pts_idx = ctrl_pts_idx[:, 0]
+            b_coeff = b_coeff[:, 0]
+            ctrl_pts_idx = ctrl_pts_idx[0:1]
+            b_coeff = b_coeff[0:1]
 
         # encode per time input
         main_input_per_time = [grid]
@@ -1159,24 +1171,27 @@ def flex_ffd_model(inputs, cfg = None, time_seen = None, normalization_method = 
         ctrl_grid = pred_velocity
         # add batch dimension
         batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(
-            tf.range(batch_size), axis=-1), \
+            tf.range(BATCH_SIZE), axis=-1), \
             [1, num_particles * ctrl_dist**3]), \
-            [batch_size, num_particles, ctrl_dist**3, 1])
-        ctrl_pts_idx = tf.concat([batch_coordinates, inputs['ctrl_pts_idx']], axis=-1)
+            [BATCH_SIZE, num_particles, ctrl_dist**3, 1])
+        ctrl_pts_idx = tf.concat([batch_coordinates, ctrl_pts_idx], axis=-1)
         ctrl_pts = tf.gather_nd(ctrl_grid, ctrl_pts_idx) # (BS, N, ctrl_dist**3, 3)
-        b_coeff = inputs['b_coeffs'] # (BS, N, ctrl_dist**3)
         ffd = tf.matmul(tf.expand_dims(b_coeff, axis=2), ctrl_pts) # (BS, N, 1, 3)
-        pred_particle_velocity = tf.reshape(ffd, tf.shape(ffd)[:2] + [tf.shape(ffd)[3]]) # (BS, N, 3)
+        ffd_shape = ffd.get_shape().as_list()
+        pred_particle_velocity = tf.reshape(ffd, 
+                list(ffd_shape[:2]) + list([ffd_shape[3]])) # (BS, N, 3)
        
         retval = {
                 'pred_velocity': pred_velocity,
                 'next_velocity': next_velocity,
                 'pred_particle_velocity': pred_particle_velocity,
-                'sparse_particles': inputs['sparse_particles']
-                'full_grids': input_grids,
+                'full_particles': inputs['full_particles'], # unnormalized
+                'sparse_particles': inputs['sparse_particles'], # normalized
+                'sparse_shapes': inputs['sparse_shapes'],
+                'full_grids': inputs['sparse_grids_per_time'],
                 'grid_placeholder': grid,
-                'grids_placeholder': grids,
-                'action_placeholder': input_actions,
+                'particles_placeholder': full_particles,
+                'shapes_placeholder': sparse_shapes,
                 'actions': inputs['actions'],
                 'is_moving': inputs['is_moving'],
                 'in_view': inputs['in_view'],

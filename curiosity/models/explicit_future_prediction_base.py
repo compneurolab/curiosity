@@ -8,7 +8,8 @@ Future prediction base. Like threeworld_base, but we
 import threeworld_base as tb
 import copy
 import tensorflow as tf
-
+import numpy as np
+from itertools import product
 
 def create_gaussian_channel(size, 
                             center=None, 
@@ -191,10 +192,21 @@ class FuturePredictionBaseModel:
 
 class ShortLongFuturePredictionBase:
 
-    def __init__(self, inputs, normalization_method = None, stats_file = None,
-            objects_to_include = None, add_gaussians = True, img_height = None, img_width = None,
-            time_seen = None, scale_down_height = None, scale_down_width = None, add_depth_gaussian = False,
-		store_jerk = False, hack_jerk_norm = True, depth_cutoff = None,
+    def __init__(self, 
+                inputs, 
+                normalization_method = None, 
+                stats_file = None,
+                objects_to_include = None, 
+                add_gaussians = True, 
+                img_height = None, 
+                img_width = None,
+                time_seen = None, 
+                scale_down_height = None, 
+                scale_down_width = None, 
+                add_depth_gaussian = False,
+		store_jerk = False, 
+                hack_jerk_norm = True, 
+                depth_cutoff = None,
 		get_actions_map = False,
 		get_segmentation = False,
                 get_hacky_segmentation_map = False,
@@ -209,6 +221,10 @@ class ShortLongFuturePredictionBase:
         self.inputs = {}
         self.normalization_method = dict(normalization_method)
         self.normalize_particles = normalize_particles
+        self.use_rotations = use_rotations
+        self.use_control_points = use_control_points
+        self.ctrl_dist = ctrl_dist
+        self.grid_dim = grid_dim
         assert time_seen is not None
 
         # store reference to not normed inputs for not normed pixel positions
@@ -418,244 +434,21 @@ class ShortLongFuturePredictionBase:
             self.inputs['actions'] = inputs_not_normed['actions']
             particles_loaded = False
             try:
-                grid = inputs_not_normed['grid_' + str(grid_dim)]
+                grid = inputs_not_normed['grid_' + str(self.grid_dim)]
                 # normalize particles if requested
                 if self.normalize_particles is not None:
                     grid = self.normalize_particle_data(grid)
                 self.inputs['grid'] = grid
                 particles_loaded = True
             except KeyError:
-                print('WARNING: Grid grid dimensions ' + str(grid_dim) + ' not loaded!')
-
-            # sparse version
-            try:
-                sparse_particles_all_times = tf.unstack(inputs_not_normed['full_particles'], axis=1)
-                #sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
-                sparse_shape_all_times = tf.unstack(inputs_not_normed['sparse_shape_' + str(grid_dim)], axis=1)
-                
-                sparse_grids = []
-                all_sparse_particles = []
-                all_ctrl_pts = []
-                all_ctrl_grids = []
-                all_b_coeffs = []
-                time_steps = len(sparse_shape_all_times)
-                for time_step, (sparse_particles_t, sparse_shape_t) in \
-                        enumerate(zip(sparse_particles_all_times, sparse_shape_all_times)):
-                    batch_size, num_particles, feature_size = sparse_particles_t.get_shape().as_list()
-                    # normalize particles if requested
-                    if self.normalize_particles is not None:
-                        sparse_particles_t = self.normalize_sparse_particle_data(sparse_particles_t)
-                    all_sparse_particles.append(sparse_particles_t)
-                    # control for correct data
-                    with tf.control_dependencies([tf.assert_equal(
-                                    tf.reduce_prod(sparse_shape_t, axis=-1), 
-                                    tf.reduce_prod(sparse_shape_t[0]))]):
-                        sparse_shape_t = tf.cast(tf.concat([[batch_size], 
-                            sparse_shape_t[0]], axis=0), tf.int32)
-                    not_particle_mask = tf.equal(sparse_particles_t[:, :, 14:15], 0)
-
-                    rot_grids = []
-                    rot_ctrl_pts = []
-                    rot_ctrl_grids = []
-                    rot_b_coeffs = []
-
-                    if use_rotations:
-                        rotations = [
-                                tf.constant([
-                                    [1, 0, 0],
-                                    [0, 1, 0],
-                                    [0, 0, 1]], tf.float32),
-                                tf.constant([
-                                    [ 0.4, -0.2,  0.8],
-                                    [-0.1,  0.5, -0.5],
-                                    [ 0.5,  0.6, -0.7]], tf.float32),
-                                tf.constant([
-                                    [ 0.9,  0.1, -0.2],
-                                    [-0.2,  0.4,  0.5],
-                                    [-0.2,  0.6, -0.3]], tf.float32),
-                                ]
-                    else:
-                        rotations = [tf.constant([[1,0,0],[0,1,0],[0,0,1]], tf.float32)]
-                    num_rotations = len(rotations)
-                    for rotation in rotations:
-                        sparse_particles = sparse_particles_t
-                        sparse_shape = sparse_shape_t
-                        # rotate particles and discritize into grid
-                        rot_pos = tf.matmul(tf.reshape(sparse_particles, 
-                            [-1, feature_size])[:, 0:3], rotation)
-                        rot_pos = tf.reshape(rot_pos, [batch_size, num_particles, 3])
-                        inf = 1000000
-                        max_coord = tf.reduce_max(rot_pos - inf * 
-                                tf.cast(not_particle_mask, tf.float32), 
-                                axis=1, keep_dims=True)
-                        min_coord = tf.reduce_min(rot_pos + inf * 
-                                tf.cast(not_particle_mask, tf.float32),
-                                axis=1, keep_dims=True)
-                        indices = (rot_pos - min_coord) / (max_coord - min_coord)
-                        grid_dimensions = tf.cast(sparse_shape[1:4], tf.float32)
-                        sparse_coordinates = tf.cast(tf.round(indices * 
-                            (tf.reshape(grid_dimensions, [1,1,3]) - 1)), tf.int32)
-                        # add batch dimensions and flatten coordinates across batch
-                        batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(
-                            tf.range(batch_size), axis=-1), 
-                            [1, num_particles]), [batch_size, num_particles, 1])
-                        sparse_coordinates = tf.concat([batch_coordinates, 
-                            sparse_coordinates], axis=-1)
-                        sparse_coordinates = tf.cast(sparse_coordinates, tf.int32)
-                        # gather all real particles
-                        sparse_coordinates = tf.gather_nd(sparse_coordinates, 
-                                tf.where(tf.logical_not(tf.squeeze(not_particle_mask))))
-                        sparse_particles = tf.gather_nd(sparse_particles,
-                                tf.where(tf.logical_not(tf.squeeze(not_particle_mask))))
-                        # remove duplicate (especially padded all zero) indices:
-                        cum = tf.cumprod(sparse_shape[:-1], axis=-1, 
-                                reverse=True, exclusive=True)
-                        linearized_coordinates = tf.matmul(sparse_coordinates, 
-                                tf.expand_dims(cum, axis=-1))
-                        unique_coordinates, unique_coordinates_indices = tf.unique(
-                                tf.squeeze(linearized_coordinates))
-                        num_segments = tf.shape(unique_coordinates)[0]
-                        i = tf.expand_dims(unique_coordinates, 1)
-                        idx0 = i // cum[0]
-                        i = i - idx0 * cum[0]
-                        idx1 = i // cum[1]
-                        i = i - idx1 * cum[1]
-                        idx2 = i // cum[2]
-                        i = i - idx2 * cum[2]
-                        idx3 = i // cum[3]
-                        sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], 
-                            axis=-1), tf.int32)
-                        counts = tf.ones(tf.shape(sparse_particles[:,18:19])) 
-                        counts = tf.maximum(tf.unsorted_segment_sum(counts,
-                                unique_coordinates_indices, num_segments), 1)
-                        sparse_particles = tf.unsorted_segment_sum(sparse_particles, 
-                                unique_coordinates_indices, num_segments)
-                        sparse_particles = tf.concat([
-                            sparse_particles[:,0:3] / counts,
-                            sparse_particles[:,3:4],
-                            sparse_particles[:,4:13] / counts,
-                            sparse_particles[:,13:14] / counts + 1,
-                            sparse_particles[:,14:15],
-                            sparse_particles[:,15:18] / counts,
-                            counts,
-                            ], axis=-1)
-                        sparse_shape = tf.cast(sparse_shape, tf.int32)
-                        sparse_grid = tf.scatter_nd(sparse_coordinates, 
-                                sparse_particles, sparse_shape)
-                        rot_grids.append(sparse_grid)
-
-                        if use_control_points:
-                            max_vox = grid_dim - np.floor(ctrl_dist / 2)
-                            min_vox = np.floor(ctrl_dist / 2)
-                            pts_arr = (rot_pos - min_coord) / \
-                                    (max_coord - min_coord) * \
-                                    (max_vox - min_vox) + min_vox
-                            pts_arr = tf.cast(pts_arr, tf.float32)
-                            B = pts_arr.get_shape().as_list()[0]
-                            N = pts_arr.get_shape().as_list()[1]
-                            ctrl_pts = tf.zeros([B, N, ctrl_dist ** 3, 3], 
-                                    dtype=tf.int32)
-                            b_coeffs = tf.zeros([B, N, ctrl_dist ** 3], 
-                                    dtype=tf.float32)
-
-                            point_voxels = tf.cast(pts_arr, tf.int32)
-                            origin_offset = tf.cast((ctrl_dist-1)/2, tf.int32)
-                            default_origin_offset = tf.tile(tf.cast((
-                                    tf.reshape(ctrl_dist, [1])-1)/2, tf.int32), [3])
-                            #Don't go below 0
-                            point_offsets = tf.minimum(tf.tile(tf.reshape(
-                                    default_origin_offset, [1,1,3]),
-                                    [B,N,1]), point_voxels)
-                            #Get 'origin' ctrl point for each point
-                            c_grid_origins = tf.minimum(point_voxels-point_offsets, 
-                                    grid_dim-2)
-                            #Compute size of local ctrl point grid for , to not go above max
-                            max_dists = tf.minimum(tf.tile(tf.reshape(tf.tile(
-                                    tf.reshape(ctrl_dist, [1])-1, [3]), [1,1,3]), 
-                                    [B,N,1]), grid_dim-1-c_grid_origins)
-                            #Scale each point to 0.0-1.0 range in its local ctrl point grid
-                            stus = (pts_arr-tf.cast(c_grid_origins, tf.float32)) / \
-                                    tf.cast(max_dists, tf.float32)
-                            # get local coordinates
-                            dists = np.reshape(np.array([dist \
-                                    for dist in product(range(ctrl_dist),
-                                    repeat=3)]).astype(np.int32), [1, ctrl_dist**3, 3])
-                            valid_mask = tf.reduce_all(tf.less_equal(
-                                    tf.expand_dims(dists, axis=1),
-                                    tf.expand_dims(max_dists, axis=2)), axis=-1)
-                            # get control point indices
-                            ctrl_pts = tf.expand_dims(c_grid_origins, axis=2) + \
-                                    tf.expand_dims(dists, axis=1)
-                            ctrl_pts = ctrl_pts * tf.cast(tf.expand_dims(
-                                    valid_mask, axis=-1),
-                                    tf.int32)
-                            # get b coefficients
-                            dists_diff = tf.expand_dims(max_dists, axis=2) - \
-                                    tf.expand_dims(dists, axis=1)
-                            fac_max_dists = tf.reshape(tf.map_fn(tf_fac, \
-                                    tf.reshape(max_dists, [-1]),
-                                    parallel_iterations=32),
-                                    tf.shape(max_dists))
-                            fac_dists = tf.reshape(tf.map_fn(tf_fac, 
-                                    tf.reshape(dists, [-1]),
-                                    parallel_iterations=32),
-                                    tf.shape(dists))
-                            fac_dists_diff = tf.reshape(tf.map_fn(tf_fac, \
-                                    tf.reshape(dists_diff, [-1]),
-                                    parallel_iterations=32),
-                                    tf.shape(dists_diff))
-                            b_coeffs = tf.floor(tf.expand_dims(tf.cast(
-                                fac_max_dists, tf.float32), axis=2) /
-                                tf.cast(tf.expand_dims(fac_dists, axis=1) * \
-                                    fac_dists_diff, tf.float32))
-                            b_coeffs = b_coeffs * (1 - \
-                                    tf.expand_dims(stus, axis=2)) ** \
-                                    tf.cast(dists_diff, tf.float32) * \
-                                    tf.expand_dims(stus, axis=2) ** \
-                                    tf.expand_dims(tf.cast(dists, tf.float32), axis=1)
-                            b_coeffs = tf.reduce_prod(b_coeffs, axis=-1)
-                            b_coeffs = b_coeffs * tf.cast(valid_mask, tf.float32)
-                            rot_ctrl_pts.append(ctrl_pts)
-                            rot_b_coeffs.append(b_coeffs)
-
-                            def minmax_2_grid(minmax_coord):
-                                min_coord = minmax_coord[0:3]
-                                max_coord = minmax_coord[3:6]
-                                lin = (tf.lin_space(0.0, 1.0, grid_dim) * \
-                                        (grid_dim - 1.0) - min_vox) / (max_vox - min_vox)
-                                x = lin * (max_coord[0] - min_coord[0]) + min_coord[0]
-                                y = lin * (max_coord[1] - min_coord[1]) + min_coord[1]
-                                z = lin * (max_coord[2] - min_coord[2]) + min_coord[2]
-                                return tf.stack(tf.meshgrid(x,y,z,indexing='ij'),
-                                        axis=-1)
-                            ctrl_grid = tf.map_fn(minmax_2_grid, 
-                                    tf.squeeze(tf.concat([min_coord, max_coord], 
-                                        axis=-1)), parallel_iterations=32)
-                            rot_ctrl_grids.append(ctrl_grid)
-
-                    sparse_grids.append(tf.concat(rot_grids, axis=-1))
-                    if use_control_points:
-                        all_ctrl_pts.append(tf.concat(rot_ctrl_pts, axis=-1)
-                        all_b_coeffs.append(tf.concat(rot_b_coeffs, axis=-1)
-                        all_ctrl_grids.append(tf.concat(rot_ctrl_grids, axis=-1)
-
-                sparse_grids = tf.stack(sparse_grids, axis=1)
-                sparse_grids.set_shape(list([batch_size, time_steps]) + \
-                        list([grid_dim]) * 3 + list([feature_size * num_rotations]))
-                self.inputs['sparse_grids_per_time'] = sparse_grids
-                all_sparse_particles = tf.stack(all_sparse_particles, axis=1)
-                all_sparse_particles.set_shape([batch_size, time_steps, num_particles, feature_size]) 
-                self.inputs['sparse_particles'] = all_sparse_particles
-                if use_control_points:
-                    all_b_coeffs = tf.stack(all_b_coeffs, axis=1)
-                    all_ctrl_pts = tf.stack(all_ctrl_pts, axis=1)
-                    all_ctrl_grids = tf.stack(all_ctrl_grids, axis=1)
-                    self.inputs['b_coeffs'] = all_b_coeffs
-                    self.inputs['ctrl_pts_idx'] = all_ctrl_pts
-                    self.inputs['ctrl_grid'] = all_ctrl_grids
-
-            except KeyError:
-                print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + str(grid_dim) + ' not loaded!')
+                print('WARNING: Grid grid dimensions ' + str(self.grid_dim) + ' not loaded!')
+            self.inputs['full_particles'] = inputs_not_normed['full_particles']
+            self.inputs['sparse_shapes'] = inputs_not_normed['sparse_shape_' \
+                    + str(self.grid_dim)]
+            outputs = self.parse_particles(inputs_not_normed['full_particles'],
+                    inputs_not_normed['sparse_shape_' + str(self.grid_dim)])
+            for k in outputs:
+                self.inputs[k] = outputs[k]
 
 	if store_jerk:
 		#jerk
@@ -707,6 +500,257 @@ class ShortLongFuturePredictionBase:
                         self.inputs['jerk_map2'] = jerk_map
                         self.inputs['vel_map2'] = vel_maps
 
+    def parse_particles(self, full_particles, sparse_shapes, 
+            return_control_points=False):
+        outputs = {}
+        # sparse version
+        try:
+            sparse_particles_all_times = tf.unstack(full_particles, axis=1)
+            #sparse_coordinates_all_times = tf.unstack(inputs_not_normed['sparse_coordinates_' + str(grid_dim)], axis=1)
+            sparse_shape_all_times = tf.unstack(sparse_shapes, axis=1)
+            
+            sparse_grids = []
+            all_sparse_particles = []
+            all_ctrl_pts = []
+            all_ctrl_grids = []
+            all_b_coeffs = []
+            time_steps = len(sparse_shape_all_times)
+            for time_step, (sparse_particles_t, sparse_shape_t) in \
+                    enumerate(zip(sparse_particles_all_times, sparse_shape_all_times)):
+                batch_size, num_particles, feature_size = sparse_particles_t.get_shape().as_list()
+                # normalize particles if requested
+                if self.normalize_particles is not None:
+                    sparse_particles_t = self.normalize_sparse_particle_data(sparse_particles_t)
+                all_sparse_particles.append(sparse_particles_t)
+                # control for correct data
+                with tf.control_dependencies([tf.assert_equal(
+                                tf.reduce_prod(sparse_shape_t, axis=-1), 
+                                tf.reduce_prod(sparse_shape_t[0]))]):
+                    sparse_shape_t = tf.cast(tf.concat([[batch_size], 
+                        sparse_shape_t[0]], axis=0), tf.int32)
+                not_particle_mask = tf.equal(sparse_particles_t[:, :, 14:15], 0)
+
+                rot_grids = []
+                rot_ctrl_pts = []
+                rot_ctrl_grids = []
+                rot_b_coeffs = []
+
+                if self.use_rotations:
+                    rotations = [
+                            tf.constant([
+                                [1, 0, 0],
+                                [0, 1, 0],
+                                [0, 0, 1]], tf.float32),
+                            tf.constant([
+                                [ 0.4, -0.2,  0.8],
+                                [-0.1,  0.5, -0.5],
+                                [ 0.5,  0.6, -0.7]], tf.float32),
+                            tf.constant([
+                                [ 0.9,  0.1, -0.2],
+                                [-0.2,  0.4,  0.5],
+                                [-0.2,  0.6, -0.3]], tf.float32),
+                            ]
+                else:
+                    rotations = [tf.constant([[1,0,0],[0,1,0],[0,0,1]], tf.float32)]
+                num_rotations = len(rotations)
+                for rotation in rotations:
+                    sparse_particles = sparse_particles_t
+                    sparse_shape = sparse_shape_t
+                    # rotate particles and discritize into grid
+                    rot_pos = tf.matmul(tf.reshape(sparse_particles, 
+                        [-1, feature_size])[:, 0:3], rotation)
+                    rot_pos = tf.reshape(rot_pos, [batch_size, num_particles, 3])
+                    inf = 1000000
+                    max_coord = tf.reduce_max(rot_pos - inf * 
+                            tf.cast(not_particle_mask, tf.float32), 
+                            axis=1, keep_dims=True)
+                    min_coord = tf.reduce_min(rot_pos + inf * 
+                            tf.cast(not_particle_mask, tf.float32),
+                            axis=1, keep_dims=True)
+                    indices = (rot_pos - min_coord) / (max_coord - min_coord)
+                    grid_dimensions = tf.cast(sparse_shape[1:4], tf.float32)
+                    sparse_coordinates = tf.cast(tf.round(indices * 
+                        (tf.reshape(grid_dimensions, [1,1,3]) - 1)), tf.int32)
+                    # add batch dimensions and flatten coordinates across batch
+                    batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(
+                        tf.range(batch_size), axis=-1), 
+                        [1, num_particles]), [batch_size, num_particles, 1])
+                    sparse_coordinates = tf.concat([batch_coordinates, 
+                        sparse_coordinates], axis=-1)
+                    sparse_coordinates = tf.cast(sparse_coordinates, tf.int32)
+                    # gather all real particles
+                    sparse_coordinates = tf.gather_nd(sparse_coordinates, 
+                            tf.where(tf.logical_not(tf.reshape(
+                                not_particle_mask, 
+                                not_particle_mask.get_shape().as_list()[:-1]))))
+                    sparse_particles = tf.gather_nd(sparse_particles,
+                            tf.where(tf.logical_not(tf.reshape(
+                                not_particle_mask,
+                                not_particle_mask.get_shape().as_list()[:-1]))))
+                    # remove duplicate (especially padded all zero) indices:
+                    cum = tf.cumprod(sparse_shape[:-1], axis=-1, 
+                            reverse=True, exclusive=True)
+                    linearized_coordinates = tf.matmul(sparse_coordinates, 
+                            tf.expand_dims(cum, axis=-1))
+                    unique_coordinates, unique_coordinates_indices = tf.unique(
+                            tf.reshape(linearized_coordinates,
+                                tf.shape(linearized_coordinates)[:-1]))
+                    num_segments = tf.shape(unique_coordinates)[0]
+                    i = tf.expand_dims(unique_coordinates, 1)
+                    idx0 = i // cum[0]
+                    i = i - idx0 * cum[0]
+                    idx1 = i // cum[1]
+                    i = i - idx1 * cum[1]
+                    idx2 = i // cum[2]
+                    i = i - idx2 * cum[2]
+                    idx3 = i // cum[3]
+                    sparse_coordinates = tf.cast(tf.concat([idx0, idx1, idx2, idx3], 
+                        axis=-1), tf.int32)
+                    counts = tf.ones(tf.shape(sparse_particles[:,18:19])) 
+                    counts = tf.maximum(tf.unsorted_segment_sum(counts,
+                            unique_coordinates_indices, num_segments), 1)
+                    sparse_particles = tf.unsorted_segment_sum(sparse_particles, 
+                            unique_coordinates_indices, num_segments)
+                    sparse_particles = tf.concat([
+                        sparse_particles[:,0:3] / counts,
+                        sparse_particles[:,3:4],
+                        sparse_particles[:,4:13] / counts,
+                        sparse_particles[:,13:14] / counts + 1,
+                        sparse_particles[:,14:15],
+                        sparse_particles[:,15:18] / counts,
+                        counts,
+                        ], axis=-1)
+                    sparse_shape = tf.cast(sparse_shape, tf.int32)
+                    sparse_grid = tf.scatter_nd(sparse_coordinates, 
+                            sparse_particles, sparse_shape)
+                    rot_grids.append(sparse_grid)
+
+                    if self.use_control_points:
+                        max_vox = self.grid_dim - np.floor(self.ctrl_dist / 2)
+                        min_vox = np.floor(self.ctrl_dist / 2)
+                        pts_arr = (rot_pos - min_coord) / \
+                                (max_coord - min_coord) * \
+                                (max_vox - min_vox) + min_vox
+                        pts_arr = tf.cast(pts_arr, tf.float32)
+                        B = pts_arr.get_shape().as_list()[0]
+                        N = pts_arr.get_shape().as_list()[1]
+                        ctrl_pts = tf.zeros([B, N, self.ctrl_dist ** 3, 3], 
+                                dtype=tf.int32)
+                        b_coeffs = tf.zeros([B, N, self.ctrl_dist ** 3], 
+                                dtype=tf.float32)
+
+                        point_voxels = tf.cast(pts_arr, tf.int32)
+                        origin_offset = tf.cast((self.ctrl_dist-1)/2, tf.int32)
+                        default_origin_offset = tf.tile(tf.cast((
+                                tf.reshape(self.ctrl_dist, [1])-1)/2, 
+                                tf.int32), [3])
+                        #Don't go below 0
+                        point_offsets = tf.minimum(tf.tile(tf.reshape(
+                                default_origin_offset, [1,1,3]),
+                                [B,N,1]), point_voxels)
+                        #Get 'origin' ctrl point for each point
+                        c_grid_origins = tf.minimum(point_voxels-point_offsets, 
+                                self.grid_dim-2)
+                        #Compute size of local ctrl point grid for , to not go above max
+                        max_dists = tf.minimum(tf.tile(tf.reshape(tf.tile(
+                                tf.reshape(self.ctrl_dist, [1])-1, [3]), 
+                                [1,1,3]), 
+                                [B,N,1]), self.grid_dim-1-c_grid_origins)
+                        #Scale each point to 0.0-1.0 range in its local ctrl point grid
+                        stus = (pts_arr-tf.cast(c_grid_origins, tf.float32)) / \
+                                tf.cast(max_dists, tf.float32)
+                        # get local coordinates
+                        dists = tf.constant(np.reshape(np.array([dist \
+                                for dist in product(range(self.ctrl_dist),
+                                repeat=3)]).astype(np.int32), 
+                                [1, self.ctrl_dist**3, 3]), tf.int32)
+                        valid_mask = tf.reduce_all(tf.less_equal(
+                                tf.expand_dims(dists, axis=1),
+                                tf.expand_dims(max_dists, axis=2)), axis=-1)
+                        # get control point indices
+                        ctrl_pts = tf.expand_dims(c_grid_origins, axis=2) + \
+                                tf.expand_dims(dists, axis=1)
+                        ctrl_pts = ctrl_pts * tf.cast(tf.expand_dims(
+                                valid_mask, axis=-1),
+                                tf.int32)
+                        # get b coefficients
+                        def tf_fac(x):
+                            return tf.reduce_prod(
+                                    tf.range(tf.maximum(x,1))+1)
+                        def tf_fac_fast(x):
+                            facs = tf.cumprod(tf.range(
+                                tf.reduce_max(x)+1)+1, exclusive=True)
+                            facs = tf.reshape(tf.gather_nd(facs, 
+                                tf.reshape(tf.maximum(x,0)
+                                    , [-1, 1])), tf.shape(x))
+                            return facs
+                        dists_diff = tf.expand_dims(max_dists, axis=2) - \
+                                tf.expand_dims(dists, axis=1)
+                        fac_max_dists = tf_fac_fast(max_dists)
+                        fac_dists = tf_fac_fast(dists)
+                        fac_dists_diff = tf_fac_fast(dists_diff)
+                        b_coeffs = tf.floor(tf.expand_dims(tf.cast(
+                            fac_max_dists, tf.float32), axis=2) /
+                            tf.cast(tf.expand_dims(fac_dists, axis=1) * \
+                                fac_dists_diff, tf.float32))
+                        b_coeffs = b_coeffs * (1 - \
+                                tf.expand_dims(stus, axis=2)) ** \
+                                tf.cast(dists_diff, tf.float32) * \
+                                tf.expand_dims(stus, axis=2) ** \
+                                tf.expand_dims(tf.cast(dists, tf.float32), axis=1)
+                        b_coeffs = tf.reduce_prod(b_coeffs, axis=-1)
+                        b_coeffs = b_coeffs * tf.cast(valid_mask, tf.float32)
+                        rot_ctrl_pts.append(ctrl_pts)
+                        rot_b_coeffs.append(b_coeffs)
+
+                        def minmax_2_grid(minmax_coord):
+                            min_coord = minmax_coord[0:3]
+                            max_coord = minmax_coord[3:6]
+                            lin = (tf.lin_space(0.0, 1.0, self.grid_dim) * \
+                                    (self.grid_dim - 1.0) - min_vox) / \
+                                    (max_vox - min_vox)
+                            x = lin * (max_coord[0] - min_coord[0]) + min_coord[0]
+                            y = lin * (max_coord[1] - min_coord[1]) + min_coord[1]
+                            z = lin * (max_coord[2] - min_coord[2]) + min_coord[2]
+                            return tf.stack(tf.meshgrid(x,y,z,indexing='ij'),
+                                    axis=-1)
+                        ctrl_grid = tf.map_fn(minmax_2_grid, 
+                                tf.reshape(tf.concat([min_coord, 
+                                    max_coord], axis=-1), [batch_size, 6]), 
+                                parallel_iterations=32,
+                                name='minmax_2_grid')
+                        rot_ctrl_grids.append(ctrl_grid)
+
+                sparse_grids.append(tf.concat(rot_grids, axis=-1))
+                if self.use_control_points:
+                    all_ctrl_pts.append(tf.concat(rot_ctrl_pts, axis=-1))
+                    all_b_coeffs.append(tf.concat(rot_b_coeffs, axis=-1))
+                    all_ctrl_grids.append(tf.concat(rot_ctrl_grids, axis=-1))
+
+            sparse_grids = tf.stack(sparse_grids, axis=1)
+            sparse_grids.set_shape(list([batch_size, time_steps]) + \
+                    list([self.grid_dim]) * 3 + \
+                    list([feature_size * num_rotations]))
+            outputs['sparse_grids_per_time'] = sparse_grids
+            all_sparse_particles = tf.stack(all_sparse_particles, axis=1)
+            all_sparse_particles.set_shape([batch_size, time_steps, num_particles, feature_size])
+            outputs['sparse_particles'] = all_sparse_particles
+            if self.use_control_points:
+                all_b_coeffs = tf.stack(all_b_coeffs, axis=1)
+                all_ctrl_pts = tf.stack(all_ctrl_pts, axis=1)
+                all_ctrl_grids = tf.stack(all_ctrl_grids, axis=1)
+                outputs['b_coeffs'] = all_b_coeffs
+                outputs['ctrl_pts_idx'] = all_ctrl_pts
+                outputs['ctrl_grid'] = all_ctrl_grids
+
+        except KeyError:
+            print('WARNING: Sparse Grid sparse_grids_per_time dimension ' + \
+                    str(self.grid_dim) + ' not loaded!')
+
+        if return_control_points:
+            return all_ctrl_pts, all_b_coeffs
+        else:
+            return outputs
 
     def unnormalize_particle_data(self, grid):
         assert self.stats is not None, 'Statistics have to be provided to normalize particles'

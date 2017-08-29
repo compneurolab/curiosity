@@ -46,7 +46,7 @@ EXP_ID = [#'flex2dBott_5',
 #'flex2d_5', 
 #'flex_5',
 ]
-LRS = [0.001, 0.001, 0.001, 0.001]
+LRS = [0.0005, 0.0005, 0.0005, 0.0005]
 n_classes = 3
 min_particle_distance = 0.01
 DEPTH_DIM = 32
@@ -58,7 +58,7 @@ CFG = [
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 4
+SEED = 1
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
