@@ -516,8 +516,66 @@ def update_particle_position(grid):
          unique_coordinates[:,2]] = states
     return grid
 
-def particles_2_grid(particles):
-    return np.ones((32,32,32,19))
+def particles_2_grid(particles, grid_dim=32):
+    particles = particles[particles[:,14].nonzero()]
+    batch_dim_added = False
+    if len(particles.shape) == 2:
+        batch_dim_added = True
+        particles = particles[np.newaxis]
+    BATCH_SIZE = particles.shape[0]
+    if BATCH_SIZE > 1:
+        raise NotImplementedError
+    #pos, mass, vel, force, torque, 0/1 id, id, next_vel, counts
+    state_dim = 7 + 6 + 2 + 3 + 1 
+    if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
+        assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
+    else:
+        grid_dim = [grid_dim] * 3
+    grid_dim = np.array(grid_dim).astype(np.int32)
+    grid = np.zeros([BATCH_SIZE] + list(grid_dim) + [state_dim])
+
+    states = particles
+    indices = particles[:,:,0:3]
+    max_coordinates = np.amax(indices, axis=1)
+    min_coordinates = np.amin(indices, axis=1)
+    indices = (indices - min_coordinates[:,np.newaxis,:]) / \
+            (max_coordinates[:,np.newaxis,:] - min_coordinates[:,np.newaxis,:])
+    indices = np.round(indices * (grid_dim - 1))
+    batch_indices = np.reshape(np.tile(np.arange(BATCH_SIZE)[:,np.newaxis],
+        [1,particles.shape[1]]), [BATCH_SIZE, particles.shape[1], 1])
+    coordinates = np.concatenate([batch_indices, indices], axis=-1).astype(np.int32)
+
+    # melt together points at the same index, if two different object are at the same position, reflect that in the relation grid, and set id to be belonging to both
+    for batch, (batch_coordinates, batch_states) in enumerate(zip(coordinates, states)):
+        particle_coordinates = \
+                [tuple(particle_coordinate) for particle_coordinate in batch_coordinates]
+        sorted_particle_coordinates_indices = sorted(range(len(particle_coordinates)), \
+                key=particle_coordinates.__getitem__)
+        #sorted_particle_coordinates = sorted(particle_coordinates)
+        sorted_particle_coordinates = [particle_coordinates[i] \
+                for i in sorted_particle_coordinates_indices]
+        unique_coordinates, idx_start, counts = np.unique(sorted_particle_coordinates, \
+                return_index=True, return_counts=True, axis=0)
+        identical_coordinates_sets = np.split(sorted_particle_coordinates_indices, \
+                idx_start[1:])
+        # mean position, sum mass, mean velocity, mean force, mean torque, mean ids
+        particle_states = np.array([np.sum(batch_states[particle_coordinate], \
+                axis=0) / counts[i] for i, particle_coordinate in enumerate(identical_coordinates_sets)])
+        particle_states[:,3] *= counts # sum mass
+        particle_states[:,13] += 1 # add 1 to distinguish from empty pixels -> range: [1,2]
+        particle_states[:,14] *= counts # sum real ids, but not binary ones
+        particle_states[:,18] = counts
+
+        # fill grid
+        grid[unique_coordinates[:,0], \
+             unique_coordinates[:,1], \
+             unique_coordinates[:,2], \
+             unique_coordinates[:,3]] = particle_states
+
+    grid = grid.astype(np.float32)
+    if batch_dim_added:
+        grid = np.reshape(grid, grid.shape[1:])
+    return grid
 
 if __name__ == '__main__':
     # load stats file
@@ -619,8 +677,10 @@ if __name__ == '__main__':
                 particle[val,4:7] = predicted_velocity[val]
                 particle[val,7:] = particles[frame,val,7:]
                 gt_velocity = particle[:,15:18]
+                #print('PRED', np.mean(predicted_velocity[val],axis=0))
+                #print('TRUE', np.mean(gt_velocity[val],axis=0))
 
-                grid = particles_2_grid(particles)
+                grid = particles_2_grid(particle)
 
                 # Store unnormalized grid
                 predicted_grids.append(grid.astype(np.float32))
