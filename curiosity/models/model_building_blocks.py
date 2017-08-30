@@ -82,7 +82,7 @@ class ConvNetwithBypasses(ConvNet):
 		               'activation': activation}
 		return self.output
 
-	def activation(self, kind='relu', in_layer=None):
+	def activation(self, kind='relu', alpha=0.01, in_layer=None):
 		if in_layer is None:
 			in_layer = self.output
 		last_axis = len(in_layer.get_shape().as_list()) - 1
@@ -92,10 +92,11 @@ class ConvNetwithBypasses(ConvNet):
 		for k in kind:
 			print('activation: ' + k)
 			if k == 'relu':
-				print('relu')
 				for_out.append(tf.nn.relu(in_layer, name='relu'))
                         elif k == 'crelu':
                                 for_out.append(tf.nn.crelu(in_layer, name='crelu'))
+                        elif k == 'leaky_relu':
+                                for_out.append(tf.maximum(in_layer, alpha * in_layer))
 			elif k == 'tanh':
 				for_out.append(tf.tanh(in_layer, name = 'tanh'))
 			elif k == 'concat_square':

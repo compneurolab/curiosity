@@ -629,17 +629,18 @@ if __name__ == '__main__':
         predicted_grids = []
         max_coordinates = []
         min_coordinates = []
-        for frame in range(16, 24): #trange(r[0], r[1]): #trange
+        for frame in range(16, 24): #16, 24, #trange(r[0], r[1]): #trange
             if init:
                 grid = grids[frame]
-                particle = particles[frame]
+                particle = particles[frame].copy()
                 grid_shape = grid_shapes[frame]
                 action = actions[frame]
                 init = False
 
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
-                    predicted_velocity = grids[frame,:,:,:,15:18]
-                    predicted_grid = grids[frame+1,:,:,:,0:7]
+                    predicted_velocity = particles[frame,:,15:18]
+                    predicted_velocity = normalize_next_particle_vel(
+                            predicted_velocity, stats)
                 else:
                     # predict next velocity
                     predicted_velocity = \
@@ -650,18 +651,6 @@ if __name__ == '__main__':
                                 shapes_placeholder: grid_shape[np.newaxis,np.newaxis],
                                 })
                     predicted_velocity = np.squeeze(predicted_velocity[0])
-                    '''
-                    res = {
-                            'predicted_velocity': predicted_velocity,
-                            'predicted_grid': predicted_grid,
-                            'next_grid': next_grid,
-                            'grids': grids, 
-                            }
-                    res_file = os.path.join(SAVE_DIR, 'step1_' + EXP_ID[0] + '.pkl')
-                    with open(res_file, 'w') as f:
-                        cPickle.dump(res, f)
-                    raise NotImplementedError
-                    '''
 
                 # Undo normalization before storing
                 unnormalized_grid = unnormalize_grid(grid, stats)
@@ -670,15 +659,18 @@ if __name__ == '__main__':
                 max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0))
                 min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0))
             else:
+                val = particle[:,14].nonzero()
+                print('NORM', frame, np.mean(predicted_velocity[val],axis=0))
                 predicted_velocity = unnormalize_next_particle_vel(
                         predicted_velocity, stats)
-                val = particle[:,14].nonzero()
                 particle[val,0:3] += predicted_velocity[val]
                 particle[val,4:7] = predicted_velocity[val]
                 particle[val,7:] = particles[frame,val,7:]
-                gt_velocity = particle[:,15:18]
-                #print('PRED', np.mean(predicted_velocity[val],axis=0))
-                #print('TRUE', np.mean(gt_velocity[val],axis=0))
+                gt_velocity = particles[frame,:,4:7] #particle[:,15:18]
+                print('PRED', frame, np.mean(predicted_velocity[val],axis=0))
+                print('TRUE', frame, np.mean(gt_velocity[val],axis=0))
+                print('DIFF', frame, np.mean(
+                    predicted_velocity[val] - gt_velocity[val],axis=0))
 
                 grid = particles_2_grid(particle)
 
@@ -694,8 +686,11 @@ if __name__ == '__main__':
                 grid = normalize_grid(grid, stats)
 
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
-                    predicted_velocity = grids[frame,:,:,:,15:18]
-                    predicted_grid = grids[frame+1,:,:,:,0:7]
+                    predicted_velocity = particles[frame,:,15:18]
+                    print('-------------------------------------------------')
+                    print('TRUE', frame, np.mean(predicted_velocity[val],axis=0))
+                    predicted_velocity = normalize_next_particle_vel(
+                            predicted_velocity, stats)
                 else:
                     # predict next velocity
                     predicted_velocity = sess.run([predict_velocity], 

@@ -27,7 +27,7 @@ def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
                 scope.reuse_variables()
 
             bypass = cfg[desc][i].get('bypass')
-            if bypass:
+            if bypass is not None:
                 if type(bypass) == list:
                     bypass_node = [bypass_nodes[bp] for bp in bypass]
                 elif type(bypass) == dict:
@@ -43,7 +43,9 @@ def deconv_loop(input_node, m, cfg, desc = 'deconv', bypass_nodes = None,
                                 bypass_node = bypass_nodes[bypass[k]]
                 else:
                     bypass_node = bypass_nodes[bypass]
+                print('BYPASS before:', m.output)
                 m.add_bypass(bypass_node)
+                print('BYPASS after:', m.output)
 
             bn = cfg[desc][i]['deconv'].get('batch_normalize')
             if bn:
@@ -115,7 +117,7 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                                 scope.reuse_variables()
 
                         bypass = cfg[desc][i].get('bypass')
-                        if bypass:
+                        if bypass is not None:
                                 if type(bypass) == list:
                                         bypass_node = [bypass_nodes[bp] for bp in bypass]
                                 elif type(bypass) == dict:
@@ -130,7 +132,9 @@ def feedforward_conv_loop(input_node, m, cfg, desc = 'encode', bypass_nodes = No
                                                 bypass_node = bypass_nodes[bypass[k]]
                                 else:
                                         bypass_node = bypass_nodes[bypass]
+                                print('BYPASS before:', m.output)
                                 m.add_bypass(bypass_node)
+                                print('BYPASS after:', m.output)
 
                         bn = cfg[desc][i]['conv'].get('batch_normalize')
                         if bn:  
@@ -191,9 +195,11 @@ def hidden_loop_with_bypasses(input_node, m, cfg, nodes_for_bypass = [], stddev 
                         if reuse_weights:
                                 scope.reuse_variables()
                         bypass = cfg['hidden'][i].get('bypass')
-                        if bypass:
+                        if bypass is not None:
                                 bypass_node = nodes_for_bypass[bypass]
+                                print('BYPASS before:', m.output)
                                 m.add_bypass(bypass_node)
+                                print('BYPASS after:', m.output)
                         nf = cfg['hidden'][i]['num_features']
                         my_activation = cfg['hidden'][i].get('activation')
                         if my_activation is None:
@@ -1085,8 +1091,6 @@ def flex_ffd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                     full_particles, sparse_shapes, return_control_points=True)
             ctrl_pts_idx = ctrl_pts_idx[:, 0]
             b_coeff = b_coeff[:, 0]
-            ctrl_pts_idx = ctrl_pts_idx[0:1]
-            b_coeff = b_coeff[0:1]
 
         # encode per time input
         main_input_per_time = [grid]
@@ -4348,6 +4352,45 @@ def particle_bottleneck_comp_cfg(n_states=7, nonlin='relu'):
                 },
         },
 
+}
+
+def particle_bottlebyp_cfg(n_classes, nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 3,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_depth': 4,
+        '3d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                'nonlinearity': nonlin,
+                #'bypass': 4,
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 16},
+                'nonlinearity': nonlin,
+                'bypass': 2,
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 8},
+                'nonlinearity': nonlin,
+                'bypass': 1,
+                },
+            4 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
+                'nonlinearity': nonlin,
+                'bypass': 0,
+                },
+        },
 }
 
 def particle_bottleneck_cfg(n_classes, nonlin='relu'):
