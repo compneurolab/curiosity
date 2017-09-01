@@ -626,8 +626,8 @@ class ShortLongFuturePredictionBase:
                     rot_grids.append(sparse_grid)
 
                     if self.use_control_points:
-                        max_vox = self.grid_dim - np.floor(self.ctrl_dist / 2)
-                        min_vox = np.floor(self.ctrl_dist / 2)
+                        max_vox = self.grid_dim - np.ceil(self.ctrl_dist / 2.0)
+                        min_vox = np.floor(self.ctrl_dist / 2.0)
                         pts_arr = (rot_pos - min_coord) / \
                                 (max_coord - min_coord) * \
                                 (max_vox - min_vox) + min_vox
@@ -640,9 +640,9 @@ class ShortLongFuturePredictionBase:
                                 dtype=tf.float32)
 
                         point_voxels = tf.cast(pts_arr, tf.int32)
-                        origin_offset = tf.cast((self.ctrl_dist-1)/2, tf.int32)
+                        origin_offset = tf.cast((self.ctrl_dist-1)/2.0, tf.int32)
                         default_origin_offset = tf.tile(tf.cast((
-                                tf.reshape(self.ctrl_dist, [1])-1)/2, 
+                                tf.reshape((self.ctrl_dist-1)/2.0, [1])), 
                                 tf.int32), [3])
                         #Don't go below 0
                         point_offsets = tf.minimum(tf.tile(tf.reshape(
@@ -650,7 +650,7 @@ class ShortLongFuturePredictionBase:
                                 [B,N,1]), point_voxels)
                         #Get 'origin' ctrl point for each point
                         c_grid_origins = tf.minimum(point_voxels-point_offsets, 
-                                self.grid_dim-2)
+                                max_vox)
                         #Compute size of local ctrl point grid for , to not go above max
                         max_dists = tf.minimum(tf.tile(tf.reshape(tf.tile(
                                 tf.reshape(self.ctrl_dist, [1])-1, [3]), 
