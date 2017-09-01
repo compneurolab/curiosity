@@ -681,11 +681,13 @@ class ShortLongFuturePredictionBase:
                             facs = tf.cumprod(tf.range(
                                 tf.reduce_max(x)+1)+1, exclusive=True)
                             facs = tf.reshape(tf.gather_nd(facs, 
-                                tf.reshape(tf.maximum(x,0)
+                                tf.reshape(x#tf.maximum(x,0)
                                     , [-1, 1])), tf.shape(x))
                             return facs
                         dists_diff = tf.expand_dims(max_dists, axis=2) - \
-                                tf.expand_dims(dists, axis=1)
+                                tf.expand_dims(dists, axis=1) \
+                                * tf.cast(tf.expand_dims(
+                                    valid_mask, axis=-1), tf.int32)
                         fac_max_dists = tf_fac_fast(max_dists)
                         fac_dists = tf_fac_fast(dists)
                         fac_dists_diff = tf_fac_fast(dists_diff)
