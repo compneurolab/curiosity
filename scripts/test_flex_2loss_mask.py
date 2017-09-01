@@ -16,7 +16,8 @@ import copy
 from tqdm import trange
 import cPickle
 
-USE_GROUND_TRUTH_FOR_VALIDATION = True
+N_STATES = 7
+USE_GROUND_TRUTH_FOR_VALIDATION = False
 CACHE_NUM = 2
 LOCAL = False
 if LOCAL:
@@ -48,24 +49,25 @@ SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
 EXP_ID = [#'flex2dBott_4', 
-'flexBottFFD',
+'flexBott2LossS7normMask',
 #'flex2d_4', 
 #'flex_4',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
+buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
-        modelsource.particle_bottleneck_cfg(n_classes, nonlin='relu'),
+        modelsource.particle_bottleneck_comp_cfg(n_states=N_STATES+2, nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 3
+SEED = 4
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -111,15 +113,15 @@ SAVE_TO_GFS = []#['pred_vel_flat', 'reference_ids']
 def grab_all(inputs, outputs, bin_file = BIN_FILE, 
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {
-            'pred_particle_velocity': outputs['pred_particle_velocity'],
+            'pred_velocity': outputs['pred_velocity'],
+            'pred_mask': outputs['pred_mask'],
+            'pred_grid': outputs['pred_grid'],
+            'next_grid': outputs['next_grid'],
             'next_velocity': outputs['next_velocity'],
             'full_grids': outputs['full_grids'],
-            'sparse_particles': outputs['sparse_particles'],
-            'full_particles': outputs['full_particles'],
-            'sparse_shapes': outputs['sparse_shapes'],
             'grid_placeholder': outputs['grid_placeholder'],
-            'particles_placeholder': outputs['particles_placeholder'],
-            'shapes_placeholder': outputs['shapes_placeholder'],
+            'grids_placeholder': outputs['grids_placeholder'],
+            'action_placeholder': outputs['action_placeholder'],
             'actions': outputs['actions'],
             'in_view': outputs['in_view'],
             'is_moving': outputs['is_moving'],
@@ -152,7 +154,7 @@ load_params = [{
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_ffd_model,
+    'func' : modelsource.flex_comp_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -162,9 +164,11 @@ model_params = [{
     'image_width' : IMG_WIDTH,
     #'num_classes': 60.,
     'gpu_id' : 0,
-    'ctrl_dist': 4,
     'my_test' : True,
     'test_batch_size': TEST_BATCH_SIZE,
+    'n_states': N_STATES,
+    'predict_mask': True,
+    'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
 loss_params = [{
@@ -304,66 +308,6 @@ params = {
     'inter_op_parallelism_threads': 500,
     'dont_run': True,
 }
-
-def normalize_next_particle_vel(unnormalized_next_velocity, stats):
-    next_velocity = copy.deepcopy(unnormalized_next_velocity)
-    minimum = stats['full_particles']['min'][:,15:18]
-    maximum = stats['full_particles']['max'][:,15:18]
-    next_velocity = (next_velocity[:,0:3] - \
-	    minimum) / (maximum - minimum)
-    return next_velocity
-
-def unnormalize_next_particle_vel(next_velocity, stats):
-    unnormalized_next_velocity = copy.deepcopy(next_velocity)
-    minimum = stats['full_particles']['min'][:,15:18]
-    maximum = stats['full_particles']['max'][:,15:18]
-    unnormalized_next_velocity = unnormalized_next_velocity[:,0:3] \
-            * (maximum - minimum) + minimum
-    return unnormalized_next_velocity
-
-def normalize_particles(unnormalized_particles, stats):
-    particles = copy.deepcopy(unnormalized_particles)
-    # pos, mass, vel
-    minimum = stats['full_particles']['min'][:,0:7]
-    maximum = stats['full_particles']['max'][:,0:7]
-    normalized_states = (particles[:,:,0:7] - minimum) \
-	    / (maximum - minimum)
-    # next_vel
-    minimum = stats['full_particles']['min'][:,15:18]
-    maximum = stats['full_particles']['max'][:,15:18]
-    normalized_next_velocity = (particles[:,:,15:18] - \
-	    minimum) / (maximum - minimum)
-    # actions
-    minimum = stats['actions']['min'][0,0:6]
-    maximum = stats['actions']['max'][0,0:6]
-    normalized_actions = (particles[:,:,7:13] - minimum) \
-	    / (maximum - minimum)
-    particles = tf.concat([normalized_states, normalized_actions, \
-            particles[:,:,13:15], normalized_next_velocity, 
-            particles[:,:,18:19]], axis=-1)
-    return particles
-
-def unnormalize_particles(particles, stats):
-    unnormalized_particles = copy.deepcopy(particles)
-    # pos, mass, vel
-    minimum = stats['full_particles']['min'][:,0:7]
-    maximum = stats['full_particles']['max'][:,0:7]
-    unnormalized_states = unnormalized_particles[:,:,0:7] \
-	    * (maximum - minimum) + minimum
-    # next_vel
-    minimum = stats['full_particles']['min'][:,15:18]
-    maximum = stats['full_particles']['max'][:,15:18]
-    unnormalized_next_velocity = unnormalized_particles[:,:,15:18] \
-	    * (maximum - minimum) + minimum
-    # actions
-    minimum = stats['actions']['min'][0,0:6]
-    maximum = stats['actions']['max'][0,0:6]
-    unnormalized_actions = unnormalized_particles[:,:,7:13] \
-	    * (maximum - minimum) + minimum
-    unnormalized_particles = tf.concat([unnormalized_states, unnormalized_actions, \
-            unnormalized_particles[:,:,13:15], unnormalized_next_velocity, 
-            unnormalized_particles[:,:,18:19]], axis=-1)
-    return unnormalized_particles
 
 def normalize_grid(unnormalized_grid, stats):
     grid = copy.deepcopy(unnormalized_grid)
@@ -516,67 +460,6 @@ def update_particle_position(grid):
          unique_coordinates[:,2]] = states
     return grid
 
-def particles_2_grid(particles, grid_dim=32):
-    particles = particles[particles[:,14].nonzero()]
-    batch_dim_added = False
-    if len(particles.shape) == 2:
-        batch_dim_added = True
-        particles = particles[np.newaxis]
-    BATCH_SIZE = particles.shape[0]
-    if BATCH_SIZE > 1:
-        raise NotImplementedError
-    #pos, mass, vel, force, torque, 0/1 id, id, next_vel, counts
-    state_dim = 7 + 6 + 2 + 3 + 1 
-    if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
-        assert len(grid_dim) == 3, 'len(grid_dim) = %d' % len(grid_dim)
-    else:
-        grid_dim = [grid_dim] * 3
-    grid_dim = np.array(grid_dim).astype(np.int32)
-    grid = np.zeros([BATCH_SIZE] + list(grid_dim) + [state_dim])
-
-    states = particles
-    indices = particles[:,:,0:3]
-    max_coordinates = np.amax(indices, axis=1)
-    min_coordinates = np.amin(indices, axis=1)
-    indices = (indices - min_coordinates[:,np.newaxis,:]) / \
-            (max_coordinates[:,np.newaxis,:] - min_coordinates[:,np.newaxis,:])
-    indices = np.round(indices * (grid_dim - 1))
-    batch_indices = np.reshape(np.tile(np.arange(BATCH_SIZE)[:,np.newaxis],
-        [1,particles.shape[1]]), [BATCH_SIZE, particles.shape[1], 1])
-    coordinates = np.concatenate([batch_indices, indices], axis=-1).astype(np.int32)
-
-    # melt together points at the same index, if two different object are at the same position, reflect that in the relation grid, and set id to be belonging to both
-    for batch, (batch_coordinates, batch_states) in enumerate(zip(coordinates, states)):
-        particle_coordinates = \
-                [tuple(particle_coordinate) for particle_coordinate in batch_coordinates]
-        sorted_particle_coordinates_indices = sorted(range(len(particle_coordinates)), \
-                key=particle_coordinates.__getitem__)
-        #sorted_particle_coordinates = sorted(particle_coordinates)
-        sorted_particle_coordinates = [particle_coordinates[i] \
-                for i in sorted_particle_coordinates_indices]
-        unique_coordinates, idx_start, counts = np.unique(sorted_particle_coordinates, \
-                return_index=True, return_counts=True, axis=0)
-        identical_coordinates_sets = np.split(sorted_particle_coordinates_indices, \
-                idx_start[1:])
-        # mean position, sum mass, mean velocity, mean force, mean torque, mean ids
-        particle_states = np.array([np.sum(batch_states[particle_coordinate], \
-                axis=0) / counts[i] for i, particle_coordinate in enumerate(identical_coordinates_sets)])
-        particle_states[:,3] *= counts # sum mass
-        particle_states[:,13] += 1 # add 1 to distinguish from empty pixels -> range: [1,2]
-        particle_states[:,14] *= counts # sum real ids, but not binary ones
-        particle_states[:,18] = counts
-
-        # fill grid
-        grid[unique_coordinates[:,0], \
-             unique_coordinates[:,1], \
-             unique_coordinates[:,2], \
-             unique_coordinates[:,3]] = particle_states
-
-    grid = grid.astype(np.float32)
-    if batch_dim_added:
-        grid = np.reshape(grid, grid.shape[1:])
-    return grid
-
 if __name__ == '__main__':
     # load stats file
     f = open(STATS_FILE)
@@ -592,28 +475,23 @@ if __name__ == '__main__':
     # get handles to network parts
     # data ops
     get_grids = valid_targets_dict['valid0']['targets']['full_grids']
-    get_particles = valid_targets_dict['valid0']['targets']['full_particles']
-    get_normed_particles = valid_targets_dict['valid0']['targets']['sparse_particles']
-    get_shapes = valid_targets_dict['valid0']['targets']['sparse_shapes']
     get_actions = valid_targets_dict['valid0']['targets']['actions']
     get_is_moving = valid_targets_dict['valid0']['targets']['is_moving']
     get_in_view = valid_targets_dict['valid0']['targets']['in_view']
     get_true_velocity = valid_targets_dict['valid0']['targets']['next_velocity']
     # run model ops
-    predict_velocity = valid_targets_dict['valid0']['targets']['pred_particle_velocity']
+    predict_velocity = valid_targets_dict['valid0']['targets']['pred_velocity']
+    predict_mask = valid_targets_dict['valid0']['targets']['pred_mask']
+    predict_grid = valid_targets_dict['valid0']['targets']['pred_grid']
+    get_next_grid = valid_targets_dict['valid0']['targets']['next_grid']
     # placeholders
     grid_placeholder = valid_targets_dict['valid0']['targets']['grid_placeholder']
-    particles_placeholder = valid_targets_dict['valid0']['targets']['particles_placeholder']
-    shapes_placeholder = valid_targets_dict['valid0']['targets']['shapes_placeholder']
+    grids_placeholder = valid_targets_dict['valid0']['targets']['grids_placeholder']
+    action_placeholder = valid_targets_dict['valid0']['targets']['action_placeholder']
     # unroll across time
     print('Starting prediction')
-    grids, particles, particles_normed, grid_shapes, actions, is_moving, in_view = \
-            sess.run([get_grids, get_particles, get_normed_particles, get_shapes,
-                get_actions, get_is_moving, get_in_view])
+    grids, actions, is_moving, in_view = sess.run([get_grids, get_actions, get_is_moving, get_in_view])
     grids = np.squeeze(grids)
-    particles = np.squeeze(particles)
-    particles_normed = np.squeeze(particles_normed)
-    grid_shapes = np.squeeze(grid_shapes)
     actions = np.squeeze(actions)
     is_moving = np.squeeze(is_moving)
     in_view = np.squeeze(in_view)
@@ -627,63 +505,85 @@ if __name__ == '__main__':
         print('Processing sequence %d' % i)
         init = True
         predicted_grids = []
-        predicted_particles = []
-        true_particles = [] 
         max_coordinates = []
         min_coordinates = []
-        for frame in range(17, 24): #16, 24, #trange(r[0], r[1]): #trange
+        for frame in range(16, 24): #trange(r[0], r[1]): #trange
             if init:
                 grid = grids[frame]
-                particle = particles[frame].copy()
-                grid_shape = grid_shapes[frame]
                 action = actions[frame]
                 init = False
 
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
-                    predicted_velocity = particles[frame,:,15:18]
-                    predicted_velocity = normalize_next_particle_vel(
-                            predicted_velocity, stats)
+                    predicted_velocity = grids[frame,:,:,:,15:18]
+                    predicted_grid = grids[frame+1,:,:,:,0:7]
                 else:
                     # predict next velocity
-                    predicted_velocity = \
-                            sess.run([predict_velocity], 
+                    predicted_velocity, predicted_grid, predicted_mask, next_grid = \
+                            sess.run([predict_velocity, predict_grid, 
+                                predict_mask, get_next_grid], 
                             feed_dict={
                                 grid_placeholder: grid[np.newaxis,:,:,:,0:10],
-                                particles_placeholder: particle[np.newaxis,np.newaxis],
-                                shapes_placeholder: grid_shape[np.newaxis,np.newaxis],
+                                grids_placeholder: grids[np.newaxis,frame:frame+2],
+                                action_placeholder: actions[np.newaxis,frame:frame+2],
                                 })
                     predicted_velocity = np.squeeze(predicted_velocity[0])
+                    predicted_grid = np.squeeze(predicted_grid[0])
+                    predicted_mask = np.squeeze(predicted_mask[0])
+                    '''
+                    res = {
+                            'predicted_velocity': predicted_velocity,
+                            'predicted_grid': predicted_grid,
+                            'next_grid': next_grid,
+                            'grids': grids, 
+                            }
+                    res_file = os.path.join(SAVE_DIR, 'step1_' + EXP_ID[0] + '.pkl')
+                    with open(res_file, 'w') as f:
+                        cPickle.dump(res, f)
+                    raise NotImplementedError
+                    '''
 
                 # Undo normalization before storing
                 unnormalized_grid = unnormalize_grid(grid, stats)
                 predicted_grids.append(unnormalized_grid)
-                predicted_particles.append(particle)
-                true_particles.append(particles[frame])
                 x,y,z = unnormalized_grid[:,:,:,14].nonzero()
                 max_coordinates.append(np.amax(unnormalized_grid[x,y,z,0:3], axis=0))
                 min_coordinates.append(np.amin(unnormalized_grid[x,y,z,0:3], axis=0))
             else:
-                val = particle[:,14].nonzero()
-                print('NORM', frame, np.mean(predicted_velocity[val],axis=0))
-                predicted_velocity = unnormalize_next_particle_vel(
-                        predicted_velocity, stats)
-                particle = particle.copy()
-                particle[val,0:3] += predicted_velocity[val]
-                particle[val,4:7] = predicted_velocity[val]
-                particle[val,7:] = particles[frame,val,7:]
-                gt_velocity = particles[frame,:,4:7] #particle[:,15:18]
-                print('PRED', frame, np.mean(predicted_velocity[val],axis=0))
-                print('TRUE', frame, np.mean(gt_velocity[val],axis=0))
-                print('DIFF', frame, np.mean(
-                    predicted_velocity[val] - gt_velocity[val],axis=0))
-                print('PART', frame, np.mean(particle[:,0],axis=0))
+                do_move_particles = False
+                if do_move_particles:
+                    # Undo normalization
+                    grid = unnormalize_grid(grid, stats)
+                    predicted_velocity = unnormalize_prediction(predicted_velocity, 
+                            stats)
 
-                grid = particles_2_grid(particle)
+                    # TODO Match particles and predictions up or not?
+                    x,y,z = grid[:,:,:,14].nonzero()
+                    #xp,yp,zp = np.sum(np.abs(predicted_velocity), axis=-1).nonzero()
+                    grid[x,y,z,0:3] += predicted_velocity[x,y,z] # pos # mass remains unchanged
+                    grid[x,y,z,4:7] = predicted_velocity[x,y,z] # velocity
+
+                    # Assign current actions by id
+                    grid = assign_actions(grid, actions[frame])
+
+                    # Move particles to new coordinates and fuse if necessary, remember max and min coordinates or derive later
+                    grid = update_particle_position(grid)
+                else:
+                    predicted_grid = np.concatenate([predicted_grid,
+                            grids[frame,:,:,:,7:19]], axis=-1)
+                    assert predicted_grid.shape[-1] == 19, predicted_grid.shape
+                    predicted_grid = unnormalize_grid(predicted_grid, stats)
+                    # softmax
+                    predicted_mask = np.exp(predicted_mask) / \
+                            np.sum(np.exp(predicted_mask), axis=0)
+                    predicted_mask = np.argmax(predicted_mask, axis=-1)
+                    #x,y,z = predicted_grid[:,:,:,14].nonzero()
+                    x,y,z = predicted_mask.nonzero()
+                    grid = np.zeros(predicted_grid.shape)
+                    grid[x,y,z] = predicted_grid[x,y,z]
+                    grid[x,y,z,14] = 23
 
                 # Store unnormalized grid
                 predicted_grids.append(grid.astype(np.float32))
-                predicted_particles.append(particle)
-                true_particles.append(particles[frame])
                 x,y,z = grid[:,:,:,14].nonzero()
                 max_coordinates.append(np.amax(
                     grid[x,y,z,0:3], axis=0).astype(np.float32))
@@ -693,38 +593,36 @@ if __name__ == '__main__':
                 # redo normalization
                 grid = normalize_grid(grid, stats)
 
+
                 if USE_GROUND_TRUTH_FOR_VALIDATION:
-                    predicted_velocity = particles[frame,:,15:18]
-                    print('-------------------------------------------------')
-                    print('TRUE', frame, np.mean(predicted_velocity[val],axis=0))
-                    predicted_velocity = normalize_next_particle_vel(
-                            predicted_velocity, stats)
+                    predicted_velocity = grids[frame,:,:,:,15:18]
+                    predicted_grid = grids[frame+1,:,:,:,0:7]
                 else:
                     # predict next velocity
-                    predicted_velocity = sess.run([predict_velocity], 
+                    predicted_velocity, predicted_grid, predicted_mask = \
+                            sess.run([predict_velocity, 
+                                predict_grid, predict_mask], 
                             feed_dict={
                                 grid_placeholder: grid[np.newaxis,:,:,:,0:10],
-                                particles_placeholder: particle[np.newaxis,np.newaxis],
-                                shapes_placeholder: grid_shape[np.newaxis,np.newaxis],
+                                grids_placeholder: grids[np.newaxis,frame:frame+2],
+                                action_placeholder: actions[np.newaxis,frame:frame+2],
                                 })
                     predicted_velocity = np.squeeze(predicted_velocity[0])
+                    predicted_grid = np.squeeze(predicted_grid[0])
+                    predicted_mask = np.squeeze(predicted_mask[0])
         predicted_sequences.append({
             'predicted_grids': np.stack(predicted_grids, axis=0), 
-            'predicted_particles': np.stack(predicted_particles, axis=0),
-            'true_particles': np.stack(true_particles, axis=0),
             'max_coordinates': np.stack(max_coordinates, axis=0), 
             'min_coordinates': np.stack(min_coordinates, axis=0)})
 
     # Store results and ground truth in .pkl file
     print('Storing results')
     if USE_GROUND_TRUTH_FOR_VALIDATION:
-        results_file = os.path.join(SAVE_DIR, 'true_results_' + EXP_ID[0] + \
-                '_' + str(SEED) + '.pkl')
+        results_file = os.path.join(SAVE_DIR, 'true_results_' + EXP_ID[0] + '.pkl')
         with open(results_file, 'w') as f:
             cPickle.dump(predicted_sequences, f)
     else:
-        results_file = os.path.join(SAVE_DIR, 'results_' + EXP_ID[0] + \
-                '_' + str(SEED) + '.pkl')
+        results_file = os.path.join(SAVE_DIR, 'results_' + EXP_ID[0] + '.pkl')
         with open(results_file, 'w') as f:
             cPickle.dump(predicted_sequences, f)
     print('Results stored in ' + results_file)

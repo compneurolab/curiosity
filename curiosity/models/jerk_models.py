@@ -4354,6 +4354,54 @@ def particle_bottleneck_comp_cfg(n_states=7, nonlin='relu'):
 
 }
 
+def particle_bottle3lay_cfg(n_classes, nonlin='relu'):
+    return {
+        # Encoding the inputs
+        '3d_encode_depth': 6,
+        '3d_encode' : {
+            1 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 64},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            2 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 128},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            3 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'pool' : {'size' : 2, 'stride' : 2, 'type' : 'max'}, 
+                 'nonlinearity': nonlin
+                },
+            4 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            5 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+            6 : {'conv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : 256},
+                 'nonlinearity': nonlin
+                },
+        },
+        '3d_decode_depth': 4,
+        '3d_decode' : {
+            1 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 128},
+                'nonlinearity': nonlin,
+                #'bypass': 4,
+                },
+            2 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 64},
+                'nonlinearity': nonlin,
+                'bypass': 2,
+                },
+            3 : {'deconv' : {'filter_size' : 3, 'stride' : 2, 'num_filters' : 32},
+                'nonlinearity': nonlin,
+                'bypass': 1,
+                },
+            4 : {'deconv' : {'filter_size' : 3, 'stride' : 1, 'num_filters' : n_classes},
+                'nonlinearity': nonlin,
+                'bypass': 0,
+                },
+        },
+}
+
 def particle_bottlebyp_cfg(n_classes, nonlin='relu'):
     return {
         # Encoding the inputs
