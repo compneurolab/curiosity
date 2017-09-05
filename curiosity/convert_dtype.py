@@ -47,7 +47,7 @@ Parallel(n_jobs=32)(delayed(convert_record)(
         base_folder=base_folder,
         input_data=input_data,
         input_dtype=input_dtype, 
-        ouput_data=output_data, 
+        output_data=output_data, 
         output_dtype=output_dtype) \
                 for num, record in \
                 enumerate(tqdm(records, desc='tfrecords')))
