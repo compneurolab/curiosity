@@ -19,7 +19,7 @@ GRID_DIM = 32 #64
 OUTPUT_SPARSE_ONLY = False #True
 kNN_ONLY = True
 USE_FLOAT16 = False
-assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
+assert GRID_DIM <= 256, 'extend data type from uint8 to int16!'
 KEEP_EXISTING_FILES = True
 SECOND_DATASET_LOCS = [dataset]
 SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', loc + '.hdf5') for loc in SECOND_DATASET_LOCS]
@@ -413,7 +413,7 @@ def get_kNN(particles, kNN_per_dim, bn):
         batch_num=batch) \
                 for batch, batch_particles in \
                 enumerate(tqdm(particles, desc='kNN batch %d' % bn)))
-    kNN = np.array(kNN).astype(np.uint16)
+    kNN = np.array(kNN).astype(np.int16)
     assert kNN.shape == (batch_size, n_particles, kNN_per_dim**3), kNN.shape
     return kNN
 
