@@ -16,6 +16,7 @@ PREFIX = int(sys.argv[2])
 USE_DELTA_VELOCITY = True
 GRID_DIM = 32 #64
 OUTPUT_SPARSE_ONLY = False #True
+kNN_ONLY = True
 USE_FLOAT16 = False
 assert GRID_DIM <= 256, 'extend data type from uint8 to uint16!'
 KEEP_EXISTING_FILES = True
@@ -24,7 +25,7 @@ SECOND_DATASET_LOCS = [os.path.join('/mnt/fs1/datasets/eight_world_dataset/', lo
 NEW_TFRECORD_TRAIN_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_tfdata'
 NEW_TFRECORD_VAL_LOC = '/mnt/fs1/datasets/eight_world_dataset/new_tfvaldata'
 ATTRIBUTE_NAMES = ['images', 'objects', 'depths', 'vels', 'vels_curr', 
-        'actions', 'object_data', 'agent_data', 'is_moving', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles', 'full_particles'] 
+        'actions', 'object_data', 'agent_data', 'is_moving', 'is_not_teleporting', 'is_not_dropping', 'is_acting', 'is_not_waiting', 'reference_ids', 'is_object_there', 'is_object_in_view', 'max_coordinates', 'min_coordinates', 'particles', 'full_particles', 'kNN'] 
 for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape', 'grid']:
     ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM)) 
 HEIGHT = 128
@@ -32,13 +33,17 @@ WIDTH = 170
 
 MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 19), (MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 19)]
+kNN_PER_DIM = 7
+datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 19), (MAX_PARTICLES, kNN_PER_DIM**3), (MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 19)]
 
 if OUTPUT_SPARSE_ONLY:
     ATTRIBUTE_NAMES = []
     for k in ['sparse_coordinates', 'sparse_particles', 'sparse_length', 'sparse_shape']:
         ATTRIBUTE_NAMES.append(k + '_' + str(GRID_DIM))
     datum_shapes = [(MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,)]
+if kNN_ONLY:
+    ATTRIBUTE_NAMES = ['kNN']
+    datum_shapes = [(MAX_PARTICLES, kNN_PER_DIM**3)]
 
 ATTRIBUTE_SHAPES = dict(x for x in zip(ATTRIBUTE_NAMES, datum_shapes))
 
@@ -366,6 +371,34 @@ def get_reference_ids((file_num, bn)):
             file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
+def get_kNN(particles, kNN_per_dim):
+    batch_size, n_particles, num_features = particles.shape
+    assert batch_size == BATCH_SIZE
+    assert n_particles == MAX_PARTICLES
+    assert num_features == 19
+    kNN = np.tile(np.arange(n_particles)[np.newaxis,:,np.newaxis], \
+            [batch_size,1, kNN_per_dim**3])
+    pos = particles[:,:,0:3]
+    for batch, batch_particles in enumerate(particles):
+        pos = batch_particles[:,0:3]
+        r = np.sum(pos*pos, axis=-1)
+        r = np.reshape(r, [-1, 1])
+        distance = r - 2*np.matmul(pos, pos.transpose()) + r.transpose()
+        distance = np.sqrt(np.abs(distance))
+        assert distance.shape == (n_particles, n_particles), \
+                (distance.shape, (n_particles, n_particles))
+        objs = [(batch_particles[:,14:15] == 23).astype(np.int32), 
+                (batch_particles[:,14:15] == 24).astype(np.int32)]
+        infinity = 10000000
+        for obj in objs:
+            mask = 1 - np.matmul(obj, obj.transpose())
+            assert mask.shape == distance.shape
+            tmp = distance.copy()
+            tmp[np.where(mask)] = infinity
+            sorted_idx = tmp.argsort(axis=1)
+            kNN[batch, np.where(obj)] = sorted_idx[np.where(obj), 0:kNN_per_dim**3]
+    return kNN
+
 def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
     state_dim = 7 + 6 + 2 + 3 + 1 #pos, mass, vel, force, torque, 0/1 id, id, next_vel, counts
     if isinstance(grid_dim, list) or isinstance(grid_dim, np.ndarray):
@@ -520,9 +553,10 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         actions = get_actions(actions_raw, coordinate_transformations)
         object_data, is_object_there, is_object_in_view, original_id_order = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
         grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates, full_particles = create_occupancy_grid(particles, object_data, original_id_order, actions, GRID_DIM)
+        kNN = get_kNN(full_particles, kNN_PER_DIM)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
-        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates, 'full_particles': full_particles}
+        to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates, 'full_particles': full_particles, 'kNN': kNN}
         # add grid data
         to_ret['grid' + '_' + str(GRID_DIM)] = grid
         to_ret['sparse_coordinates' + '_' + str(GRID_DIM)] = sparse_coordinates
