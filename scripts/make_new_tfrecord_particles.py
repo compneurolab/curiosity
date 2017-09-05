@@ -9,6 +9,7 @@ import sys
 import cPickle
 from tqdm import trange, tqdm
 from multiprocessing import Pool
+from joblib import Parallel, delayed
 
 #SECOND_DATASET_LOCS = ['dataset0', 'dataset1', 'dataset2', 'dataset3']
 dataset = sys.argv[1]
@@ -33,7 +34,7 @@ WIDTH = 170
 
 MAX_PARTICLES = 3456
 NUM_OBJECTS_EXPLICIT = 2
-kNN_PER_DIM = 7
+kNN_PER_DIM = 5
 datum_shapes = [(HEIGHT, WIDTH, 3)] * 5 + [(2, 9), (NUM_OBJECTS_EXPLICIT, 14), (6,), (1,), (1,), (1,), (1,), (1,), (2,), (NUM_OBJECTS_EXPLICIT,), (NUM_OBJECTS_EXPLICIT,), (3,), (3,), (MAX_PARTICLES * 7,), (MAX_PARTICLES, 19), (MAX_PARTICLES, kNN_PER_DIM**3), (MAX_PARTICLES, 3), (MAX_PARTICLES, 19), (1,), (4,), (GRID_DIM, GRID_DIM, GRID_DIM, 19)]
 
 if OUTPUT_SPARSE_ONLY:
@@ -371,32 +372,49 @@ def get_reference_ids((file_num, bn)):
             file_num = PREFIX
         return [np.array([file_num, bn * BATCH_SIZE + i]).astype(np.int32) for i in range(BATCH_SIZE)]
 
-def get_kNN(particles, kNN_per_dim):
+def kNN_per_batch(batch_particles, batch_kNN, 
+        n_particles, kNN_per_dim, batch_num):
+    batch_kNN = batch_kNN.copy()
+    pos = batch_particles[:,0:3]
+    r = np.sum(pos*pos, axis=-1)
+    r = np.reshape(r, [-1, 1])
+    distance = r - 2*np.matmul(pos, pos.transpose()) + r.transpose()
+    distance = np.sqrt(np.abs(distance))
+    assert distance.shape == (n_particles, n_particles), \
+            (distance.shape, (n_particles, n_particles))
+    objs = [(batch_particles[:,14:15] == 23).astype(np.int32), 
+            (batch_particles[:,14:15] == 24).astype(np.int32)]
+    infinity = 10000000
+    for obj in objs:
+        mask = 1 - np.matmul(obj, obj.transpose())
+        assert mask.shape == distance.shape
+        tmp = distance.copy()
+        tmp[np.where(mask)] = infinity
+        sorted_idx = tmp.argsort(axis=1)
+        obj = np.squeeze(obj)
+        batch_kNN[np.where(obj)] = \
+                sorted_idx[np.where(obj), 0:kNN_per_dim**3]
+    return batch_kNN
+
+def get_kNN(particles, kNN_per_dim, bn):
     batch_size, n_particles, num_features = particles.shape
     assert batch_size == BATCH_SIZE
     assert n_particles == MAX_PARTICLES
     assert num_features == 19
-    kNN = np.tile(np.arange(n_particles)[np.newaxis,:,np.newaxis], \
+    init_kNN = np.tile(np.arange(n_particles)[np.newaxis,:,np.newaxis], \
             [batch_size,1, kNN_per_dim**3])
     pos = particles[:,:,0:3]
-    for batch, batch_particles in enumerate(particles):
-        pos = batch_particles[:,0:3]
-        r = np.sum(pos*pos, axis=-1)
-        r = np.reshape(r, [-1, 1])
-        distance = r - 2*np.matmul(pos, pos.transpose()) + r.transpose()
-        distance = np.sqrt(np.abs(distance))
-        assert distance.shape == (n_particles, n_particles), \
-                (distance.shape, (n_particles, n_particles))
-        objs = [(batch_particles[:,14:15] == 23).astype(np.int32), 
-                (batch_particles[:,14:15] == 24).astype(np.int32)]
-        infinity = 10000000
-        for obj in objs:
-            mask = 1 - np.matmul(obj, obj.transpose())
-            assert mask.shape == distance.shape
-            tmp = distance.copy()
-            tmp[np.where(mask)] = infinity
-            sorted_idx = tmp.argsort(axis=1)
-            kNN[batch, np.where(obj)] = sorted_idx[np.where(obj), 0:kNN_per_dim**3]
+
+    kNN = Parallel(n_jobs=32)(delayed(kNN_per_batch)(
+        batch_particles=batch_particles, 
+        batch_kNN=init_kNN[batch], 
+        n_particles=n_particles,
+        kNN_per_dim=kNN_per_dim,
+        batch_num=batch) \
+                for batch, batch_particles in \
+                enumerate(tqdm(particles, desc='kNN batch %d' % bn)))
+    kNN = np.array(kNN).astype(np.uint16)
+    assert kNN.shape == (batch_size, n_particles, kNN_per_dim**3), kNN.shape
     return kNN
 
 def create_occupancy_grid(particles, object_data, original_id_order, actions, grid_dim):
@@ -553,7 +571,7 @@ def get_batch_data((file_num, bn), with_non_object_images = True):
         actions = get_actions(actions_raw, coordinate_transformations)
         object_data, is_object_there, is_object_in_view, original_id_order = get_object_data(worldinfos, objects, actions_raw, indicators, coordinate_transformations)
         grid, sparse_coordinates, sparse_particles, sparse_length, sparse_shape, max_coordinates, min_coordinates, full_particles = create_occupancy_grid(particles, object_data, original_id_order, actions, GRID_DIM)
-        kNN = get_kNN(full_particles, kNN_PER_DIM)
+        kNN = get_kNN(full_particles, kNN_PER_DIM, bn)
         agent_data = get_agent_data(worldinfos)
         reference_ids = get_reference_ids((file_num, bn))
         to_ret = {'objects' : objects, 'depths': depths, 'vels': vels, 'vels_curr': vels_curr, 'actions' : actions, 'object_data' : object_data, 'agent_data' : agent_data, 'reference_ids' : reference_ids, 'is_object_there' : is_object_there, 'is_object_in_view' : is_object_in_view, 'particles': particles, 'max_coordinates': max_coordinates, 'min_coordinates': min_coordinates, 'full_particles': full_particles, 'kNN': kNN}
