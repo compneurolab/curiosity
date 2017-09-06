@@ -43,10 +43,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['flexBott2ndR3T1', 
-'flexBott2ndR1T2',
-'flexBott2ndR3T2',
-'flexBott2ndR1T1',
+EXP_ID = ['flexBott2ndR3T1dial', 
+'flexBott2ndR1T2dial',
+'flexBott2ndR3T2dial',
+'flexBott2ndR1T1dial',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.0005, 0.0005, 0.0005, 0.0005]
@@ -127,7 +127,8 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     retval = {}
     batch_size = outputs['pred_velocity'].get_shape().as_list()[0]
     retval['loss'] = modelsource.flex_next_state_loss( 
-            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
+            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance,
+            use_dialation=True)
     for k in SAVE_TO_GFS:
         if k == 'num_to_save':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
@@ -213,7 +214,8 @@ loss_params = [{
     'agg_func' : modelsource.parallel_reduce_mean,
     'loss_per_case_func' : modelsource.flex_next_state_loss,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
-    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
+    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance,
+        'use_dialation': True}, 
     #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 

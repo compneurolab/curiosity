@@ -14,7 +14,7 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-CACHE_NUM = 2
+CACHE_NUM = 5
 LOCAL = False
 if LOCAL:
     DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
@@ -29,42 +29,34 @@ else:
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
 BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
-N_GPUS = 4
+N_GPUS = 1
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 50 #64
-TIME_SEEN = 3 #2
+MODEL_BATCH_SIZE = 64 #64
+TIME_SEEN = 2 #2
 SHORT_LEN = TIME_SEEN
-LONG_LEN = 3 #3
-MIN_LEN = 3 #3
-TIME_STEPS = [1, 2, 2, 1]
+LONG_LEN = 2 #3
+MIN_LEN = 2 #3
 NUM_BATCHES_PER_EPOCH = 4000 * 256 / MODEL_BATCH_SIZE
 IMG_HEIGHT = 128
 IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['flexBott2ndR3T1', 
-'flexBott2ndR1T2',
-'flexBott2ndR3T2',
-'flexBott2ndR1T1',
+EXP_ID = [#'flex2dBott_5', 
+'flexBott2LossS7normMask',
+#'flex2d_5', 
+#'flex_5',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
-LRS = [0.0005, 0.0005, 0.0005, 0.0005]
+LRS = [0.001, 0.001, 0.001, 0.001]
 N_STATES = 7
-USE_ROTATIONS = [True, False, True, False]
-NUM_ROTATIONS = 3
+#n_classes = 10
 buckets = 0
 min_particle_distance = 0.01
 DEPTH_DIM = 32
 CFG = [
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, 
-            nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES, 
-            nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES * NUM_ROTATIONS, 
-            nonlin='relu'),
-        modelsource.particle_bottleneck_2nd_only_cfg(N_STATES,
-            nonlin='relu'),
+        #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
+        modelsource.particle_bottleneck_comp_cfg(n_states=N_STATES+2, nonlin='relu'),
         #modelsource.particle_bottleneck_comp_cfg(nonlin='relu'),
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
@@ -109,9 +101,10 @@ def just_keep_everything(val_res):
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
 
-SAVE_TO_GFS = []
-           # [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
-           #     'mass_loss', 'vel_loss', 'force_torque_loss',
+SAVE_TO_GFS = \
+           [ 'next_vel_loss', 'next_state_loss', 'pos_loss',
+                'mass_loss', 'vel_loss', 'mask_loss']
+           #     'force_torque_loss',
            #     'pid_loss', 'id_loss', 'next_next_vel_loss', 'count_loss', 
            #     'reference_ids']
 
@@ -126,7 +119,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
         num_to_save = 1, gpu_id = 0, **garbage_params):
     retval = {}
     batch_size = outputs['pred_velocity'].get_shape().as_list()[0]
-    retval['loss'] = modelsource.flex_next_state_loss( 
+    retval['loss'] = modelsource.flex_2loss_normed( 
             outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
         if k == 'num_to_save':
@@ -186,12 +179,12 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'flex',
     'exp_id' : EXP_ID[0],
-    'do_restore': False,
+    'do_restore': True,
     'load_query': None
 }] * N_GPUS
 
 model_params = [{
-    'func' : modelsource.flex_2nd_model,
+    'func' : modelsource.flex_comp_model,
     'cfg' : CFG[0],
     'time_seen' : TIME_SEEN,
     'normalization_method' : {
@@ -202,16 +195,14 @@ model_params = [{
     #'num_classes': 60.,
     'gpu_id' : 0,
     'n_states': N_STATES,
-    'time_steps': TIME_STEPS[0],
-    'use_true_next_velocity': True,
-    'use_rotations': USE_ROTATIONS[0],
+    'predict_mask': True,
     'reuse_weights_for_reconstruction': False,
 }] * N_GPUS
 
 loss_params = [{
     'targets' : [],
     'agg_func' : modelsource.parallel_reduce_mean,
-    'loss_per_case_func' : modelsource.flex_next_state_loss,
+    'loss_per_case_func' : modelsource.flex_2loss_normed,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
     'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
     #{'l2_coef' : L2_COEF}
@@ -242,8 +233,8 @@ validation_params = [{
             'data_path' : VALDATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
-                    'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
-                    'full_particles', 'sparse_shape_32'],
+                'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
+                'full_particles', 'sparse_shape_32'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -260,8 +251,8 @@ validation_params = [{
             'queue_type' : 'fifo',
             'batch_size' : MODEL_BATCH_SIZE,
             'seed' : SEED,
-            'capacity' : MODEL_BATCH_SIZE * 30,
-            'min_after_dequeue': MODEL_BATCH_SIZE * 10
+            'capacity' : MODEL_BATCH_SIZE * 10,
+            'min_after_dequeue': MODEL_BATCH_SIZE * 1
             },
         'targets' : {
             'func' : grab_all,
@@ -284,7 +275,7 @@ train_params =  {
         'data_path' : DATA_PATH,
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
-                'object_data', 'reference_ids', #'max_coordinates', 'min_coordinates', \
+                'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
                 'full_particles', 'sparse_shape_32'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
@@ -303,7 +294,7 @@ train_params =  {
         'queue_type' : 'random',
         'batch_size' : MODEL_BATCH_SIZE,
         'seed' : SEED,
-        'capacity' : MODEL_BATCH_SIZE * 60
+        'capacity' : MODEL_BATCH_SIZE * 40
     },
     'num_steps' : float('inf'),
     'thres_loss' : float('inf'),
@@ -334,8 +325,6 @@ for i, _ in enumerate(model_params):
     validation_params[i]['valid0']['targets']['gpu_id'] = i
     #validation_params[i]['valid0']['targets']['bin_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['cfg'] = CFG[i]
-    model_params[i]['use_rotations'] = USE_ROTATIONS[i]
-    model_params[i]['time_steps'] = TIME_STEPS[i]
     learning_rate_params[i]['learning_rate'] = LRS[i]
 
 params = {
