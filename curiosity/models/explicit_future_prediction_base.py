@@ -443,6 +443,11 @@ class ShortLongFuturePredictionBase:
             except KeyError:
                 print('WARNING: Grid grid dimensions ' + str(self.grid_dim) + ' not loaded!')
             self.inputs['full_particles'] = inputs_not_normed['full_particles']
+            try:
+                self.inputs['kNN'] = inputs_not_normed['kNN']
+            except KeyError:
+                print('WARNING: kNN not loaded!')
+
             self.inputs['sparse_shapes'] = inputs_not_normed['sparse_shape_' \
                     + str(self.grid_dim)]
             outputs = self.parse_particles(inputs_not_normed['full_particles'],
@@ -915,3 +920,100 @@ class ShortLongFuturePredictionBase:
             raise KeyError('Unknown normalization method for particle actions')
         sparse_particles = tf.concat([normalized_states, normalized_actions, sparse_particles[:,:,13:15], normalized_next_velocity, sparse_particles[:,:,18:19]], axis=-1)
         return sparse_particles
+
+    def unnormalize_sparse_particle_data(self, sparse_particles):
+        assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+        if self.normalize_particles['states'] == 'minmax':
+            # pos, mass, vel
+            minimum = self.stats['full_particles']['min'][:,0:7]
+            maximum = self.stats['full_particles']['max'][:,0:7]
+            unnormalized_states = (sparse_particles[:,:,0:7]) \
+                    * (maximum - minimum) + minimum
+            # next_vel
+            minimum = self.stats['full_particles']['min'][:,15:18]
+            maximum = self.stats['full_particles']['max'][:,15:18]
+            unnormalized_next_velocity = (sparse_particles[:,:,15:18]) \
+                    * (maximum - minimum) + minimum
+        elif self.normalize_particles['states'] == 'standard':
+            # pos, mass, vel
+            mean = self.stats['full_particles']['mean'][:,0:7]
+            std = self.stats['full_particles']['std'][:,0:7]
+            eps = 1e-4
+            unnormalized_states = (sparse_particles[:,:,0:7]) \
+                    * (std + eps) + mean
+            # next_vel
+            mean = self.stats['full_particles']['mean'][:,15:18]
+            std = self.stats['full_particles']['std'][:,15:18]
+            eps = 1e-4
+            unnormalized_next_velocity = (sparse_particles[:,:,15:18]) \
+                    * (std + eps) + mean
+        else:
+            raise KeyError('Unknown normalization method for particle states')
+
+        if self.normalize_particles['actions'] == 'minmax':
+            minimum = self.stats['actions']['min'][0,0:6]
+            maximum = self.stats['actions']['max'][0,0:6]
+            unnormalized_actions = (sparse_particles[:,:,7:13]) \
+                    * (maximum - minimum) + minimum
+        elif self.normalize_particles['actions'] == 'standard':
+            mean = self.stats['actions']['mean'][0,0:6]
+            std = self.stats['actions']['std'][0,0:6]
+            eps = 1e-4
+            unnormalized_actions = (sparse_particles[:,:,7:13]) \
+                    * (std + eps) + mean
+        else:
+            raise KeyError('Unknown normalization method for particle actions')
+        sparse_particles = tf.concat([unnormalized_states, unnormalized_actions, sparse_particles[:,:,13:15], unnormalized_next_velocity, sparse_particles[:,:,18:19]], axis=-1)
+        return sparse_particles
+
+    def normalize_pos(self, pos):
+        assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+        if self.normalize_particles['states'] == 'minmax':
+            minimum = self.stats['full_particles']['min'][:,0:3]
+            maximum = self.stats['full_particles']['max'][:,0:3]
+            normalized_pos = (pos[:,:,0:3] - minimum) \
+                    / (maximum - minimum)
+        elif self.normalize_particles['states'] == 'standard':
+            mean = self.stats['full_particles']['mean'][:,0:3]
+            std = self.stats['full_particles']['std'][:,0:3]
+            eps = 1e-4
+            normalized_pos = (pos[:,:,0:3] - mean) \
+                    / (std + eps)
+        else:
+            raise KeyError('Unknown normalization method for particle states')
+        return normalized_pos
+
+
+    def unnormalize_pos(self, pos):
+        assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+        if self.normalize_particles['states'] == 'minmax':
+            minimum = self.stats['full_particles']['min'][:,0:3]
+            maximum = self.stats['full_particles']['max'][:,0:3]
+            unnormalized_pos = (pos[:,:,0:3]) \
+                    * (maximum - minimum) + minimum
+        elif self.normalize_particles['states'] == 'standard':
+            mean = self.stats['full_particles']['mean'][:,0:3]
+            std = self.stats['full_particles']['std'][:,0:3]
+            eps = 1e-4
+            unnormalized_pos = (pos[:,:,0:3]) \
+                    * (std + eps) + mean
+        else:
+            raise KeyError('Unknown normalization method for particle states')
+        return unnormalized_pos
+
+    def unnormalize_next_velocity(self, next_velocity):
+        assert self.stats is not None, 'Statistics have to be provided to normalize particles'
+        if self.normalize_particles['states'] == 'minmax':
+            minimum = self.stats['full_particles']['min'][:,15:18]
+            maximum = self.stats['full_particles']['max'][:,15:18]
+            unnormalized_next_velocity = (next_velocity[:,:,0:3]) \
+                    * (maximum - minimum) + minimum
+        elif self.normalize_particles['states'] == 'standard':
+            mean = self.stats['full_particles']['mean'][:,15:18]
+            std = self.stats['full_particles']['std'][:,15:18]
+            eps = 1e-4
+            unnormalized_next_velocity = (next_velocity[:,:,0:3]) \
+                    * (std + eps) + mean
+        else:
+            raise KeyError('Unknown normalization method for particle states')
+        return unnormalized_next_velocity

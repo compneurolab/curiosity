@@ -1199,10 +1199,15 @@ def flex_ffd_model(inputs, cfg = None, time_seen = None, normalization_method = 
                 'actions': inputs['actions'],
                 'is_moving': inputs['is_moving'],
                 'in_view': inputs['in_view'],
+                'base_net': base_net,
                 'bypasses': bypass_nodes,
                 #'relation_same': relations_same[0],
                 #'relation_solid': relations_solid[0],
         }
+
+        retval['kNN'] = inputs['kNN']
+        retval.update(flex_l2_particle_loss(retval, gpu_id, 0.01, alpha = 0.5,
+                preserve_distance_radius = 1000000, separate_return=True))
 
         retval.update(base_net.inputs)
         print('------NETWORK END-----')
@@ -3161,14 +3166,86 @@ def discretized_mix_logistic_loss(outputs, gpu_id=0, buckets = 255.0,
         else:
             return [-tf.reduce_mean(log_sum_exp(log_probs), [1, 2])]
 
-def flex_l2_particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
+def pairwise_distance(A):
+    # NOTE CAREFUL WHEN USING THIS SINCE INACCURATE
+    assert len(A.get_shape().as_list()) == 3
+    r = tf.reduce_sum(A*A, axis=-1)
+    r = tf.reshape(r, [A.get_shape().as_list()[0], -1, 1])
+    distance = r - 2*tf.matmul(A, tf.transpose(A, perm=[0,2,1])) + \
+            tf.transpose(r, perm=[0,2,1])
+    return tf.sqrt(tf.maximum(distance, 0))
+
+def flex_l2_particle_loss(outputs, gpu_id, min_particle_distance, alpha = 0.5, 
+        preserve_distance_radius = 0, separate_return=False, 
+        load_kNN=True, **kwargs):
     valid_particles_mask = tf.not_equal(outputs['sparse_particles'][:,0,:,14], 0)
     gt_next_vel_pts = tf.gather_nd(outputs['sparse_particles'][:,0,:,15:18],
             tf.where(valid_particles_mask))
     pred_next_vel_pts = tf.gather_nd(outputs['pred_particle_velocity'],
             tf.where(valid_particles_mask))
-    loss = (pred_next_vel_pts - gt_next_vel_pts) ** 2 / 2
-    return [tf.reduce_mean(loss)]
+    velocity_loss = (pred_next_vel_pts - gt_next_vel_pts) ** 2 / 2
+    
+    if preserve_distance_radius > 0:
+        base_net = outputs['base_net']
+        pos = outputs['sparse_particles'][:,0,:,0:3]
+        unnorm_pos = base_net.unnormalize_pos(pos)
+        unnorm_pred_next_vel = base_net.unnormalize_next_velocity(
+                outputs['pred_particle_velocity'])
+        pred_pos = unnorm_pos + unnorm_pred_next_vel
+        pred_pos = base_net.normalize_pos(pred_pos)
+
+        obj1_mask = tf.cast(tf.equal(outputs['sparse_particles'][:,0,:,14:15], 23), \
+                tf.float32)
+        obj2_mask = tf.cast(tf.equal(outputs['sparse_particles'][:,0,:,14:15], 24), \
+                tf.float32)
+
+        if load_kNN:
+            kNN_idx = tf.cast(outputs['kNN'][:,0], tf.int32)
+	    batch_size, n_particles, n_neighbors = \
+		    kNN_idx.get_shape().as_list()
+	    batch_coordinates = tf.reshape(tf.tile(tf.expand_dims(
+			tf.range(batch_size), axis=-1), \
+			[1, n_particles * n_neighbors]), \
+			[batch_size, n_particles, n_neighbors])
+            kNN_idx = tf.stack([batch_coordinates, kNN_idx], axis=3)
+            # (BS, N, NN, 3) with NN << N
+            kNN = tf.gather_nd(pos, kNN_idx)
+            gt_distance = tf.sqrt(tf.reduce_sum(
+                (tf.expand_dims(pos, axis=2) - kNN) ** 2, axis=-1))
+            pred_distance = tf.sqrt(tf.reduce_sum(
+                (tf.expand_dims(pred_pos, axis=2) - kNN) ** 2, axis=-1))
+
+            distance_mask = tf.cast(tf.less(gt_distance, preserve_distance_radius), \
+                    tf.float32)
+            preserve_distance_loss = (pred_distance - gt_distance) ** 2 / 2 * \
+                    distance_mask
+
+            preserve_distance_loss = \
+                    preserve_distance_loss * obj1_mask + \
+                    preserve_distance_loss * obj2_mask
+        else:
+            # (BS, N, N, 3)
+            gt_distance = pairwise_distance(pos)
+            pred_distance = pairwise_distance(pred_pos)
+
+            distance_mask = tf.cast(tf.less(gt_distance, preserve_distance_radius), \
+                    tf.float32)
+            preserve_distance_loss = (pred_distance - gt_distance) ** 2 / 2 * \
+                    distance_mask
+
+            obj1_mask = tf.matmul(obj1_mask, tf.transpose(obj1_mask, perm=[0,2,1]))
+            obj2_mask = tf.matmul(obj2_mask, tf.transpose(obj2_mask, perm=[0,2,1]))
+            preserve_distance_loss = preserve_distance_loss * obj1_mask + \
+                    preserve_distance_loss * obj2_mask
+
+        if separate_return:
+            return {'velocity_loss': tf.reduce_mean(velocity_loss),
+                    'preserve_distance_loss': tf.reduce_mean(preserve_distance_loss)}
+        else:
+            return [alpha * tf.reduce_mean(velocity_loss) + \
+                    (1 - alpha) * tf.reduce_mean(preserve_distance_loss)]
+    else:
+        return [tf.reduce_mean(velocity_loss)]
 
 def flex_nn_particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     import curiosity.utils.tf_nndistance as nndist
