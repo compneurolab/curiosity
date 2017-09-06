@@ -40,9 +40,8 @@ parser.add_argument('--objsize', default = .4, type = float)
 parser.add_argument('--lossfac', default = 1., type = float)
 parser.add_argument('--nclasses', default = 4, type = int)
 
-
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ms'
+EXP_ID_PREFIX = 'dbgcrsh'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -166,7 +165,8 @@ um_cfg = {
 	'thresholds' : [.05, .3, .6],
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
-	'just_random' : 1
+	'heat' : args['heat'],
+	'just_random' : 0
 }
 
 model_cfg = {

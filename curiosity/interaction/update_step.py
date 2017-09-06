@@ -367,13 +367,17 @@ class JustUncertaintyUpdater:
 class ActionUncertaintyUpdater:
 	def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
                 self.data_provider = data_provider
-                self.wm = world_model
-                self.um = uncertainty_model
+                self.wm = models['world_model']
+                self.um = models['uncertainty_model']
                 self.postprocessor = postprocessor
                 self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
                 self.act_lr_params, act_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['act_model'])
                 self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+		act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+                um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
                 self.global_step = self.global_step / 2
+	
+
 		self.targets = {'act_pred' : self.wm.act_pred, 'act_loss' : self.wm.act_loss,
 				'act_optimizer' : act_opt, 'um_optimizer' : um_opt,
 				'estimated_world_loss' : self.um.estimated_world_loss,
@@ -382,7 +386,7 @@ class ActionUncertaintyUpdater:
 
         def update(self, sess, visualize = False):
                 batch = self.data_provider.dequeue_batch()
-                state_desc = self.state_desc
+                state_desc = 'depths1'
                 #depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
                 feed_dict = {
                         self.wm.states : batch[state_desc],
