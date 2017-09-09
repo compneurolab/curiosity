@@ -7,23 +7,55 @@ import h5py
 import threading
 import numpy as np
 import json
+import six.moves.queue as queue
+import cPickle
+
+def check_obj_there(hdf5_filenames):
+	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
+	print('starting check')
+	for file_num, src in enumerate(hdf5s):
+		msgs_all = src['msg']
+		incomplete_filenum = False
+		for idx in range(0, msgs_all.shape[0], 32):
+			msgs = msgs_all[idx : idx + 32]
+			for msg in msgs:
+				msg = json.loads(msg)
+				if msg['msg']['action_type'] == 'OBJ_NOT_PRESENT':
+					print((file_num, idx))
+					incomplete_filenum = True
+					break
+			if incomplete_filenum:
+				break
+
+def get_uniform_metadata(hdf5_filenames, save_loc, data_lengths):
+	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
+	print('starting inspection')
+	valid_idxs = []
+	min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
+	for file_num, src in enumerate(hdf5s):
+		msgs_all = src['msg']
+		incomplete_filenum = False
+		print(msgs_all.shape)
+		for idx in range(min_idx, msgs_all.shape[0], 32):
+			msgs = msgs_all[idx : idx + 32]
+			for k, msg in enumerate(msgs):
+				msg = json.loads(msg)
+				if msg is not None:
+					valid_idxs.append((file_num, idx + k))
+	print('num valid sequences: ' + str(len(valid_idxs)))
+	metadata = {'filenames' : hdf5_filenames, 'valid_idxs' : valid_idxs}
+	with open(save_loc, 'w') as stream:
+		cPickle.dump(metadata, stream)
+	return metadata
+
+
 
 class UniformRandomBatcher:
-	def __init__(self, hdf5s, batch_size, data_lengths, seed):
+	def __init__(self, batch_size, metadata, seed):
 		print('initializing UniformRandomBatcher')
 		self.batch_size = batch_size
 		self.rng = np.random.RandomState(seed)
-		min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
-		self.data_lengths = [len(src['depths1']) for src in hdf5s]
-		self.valid_idxs = []
-		for file_num, src in enumerate(hdf5s):
-			msgs_all = src['msg']
-			for idx in range(min_idx, msgs_all.shape[0], self.batch_size):
-				msgs = msgs_all[idx : idx + self.batch_size]
-				for msg in msgs:
-					msg = json.loads(msg)
-					if msg is not None:
-						self.valid_idxs.append((file_num, idx))
+		self.valid_idxs = metadata['valid_idxs']
 		self.init_epoch()
 		print('Initialization complete')
 
@@ -33,32 +65,45 @@ class UniformRandomBatcher:
 		self.schedule = self.rng.permutation(self.valid_idxs)
 
 	def get_batch_indices(self):
+		print('check check')
+		print(type(self.start))
+		print(type(self.batch_size))
 		if self.start + self.batch_size > len(self.schedule):
 			self.init_epoch()
 		retval = self.schedule[self.start : self.start + self.batch_size]
 		self.start += self.batch_size
 		return retval
 
+
+def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths):
+	min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
+	batch_size = 32
+	obj_there_idxs = []
+	obj_not_there_idxs = []
+	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
+	for file_num, src in enumerate(hdf5s):
+		msgs_all = src['msg']
+		for idx in range(min_idx, msgs_all.shape[0], batch_size):
+			msgs = msgs_all[idx : idx + batch_size]
+			for k, msg in enumerate(msgs):
+				msg = json.loads(msg)
+				if msg is None:
+					continue
+				if msg['msg']['action_type'] == 'OBJ_ACT':
+					obj_there_idxs.append((file_num, idx + k))
+				else:
+					obj_not_there_idxs.append((file_num, idx + k))
+	metadata = {'filenames' : hdf5_filenames, 'obj_there_idxs' : obj_there_idxs, 'obj_not_there_idxs' : obj_not_there_idxs}
+	with open(save_loc, 'w') as stream:
+		cPickle.dump(metadata, stream)
+	return metadata
+
 class ObjectThereBatcher:
-	def __init__(self, hdf5s, batch_size, data_lengths, seed, num_there_per_batch, num_not_there_per_batch):
-		print('intializing ObjectThereBatcher')
+	def __init__(self, batch_size, metadata, seed, num_there_per_batch, num_not_there_per_batch):
 		self.batch_size = batch_size
 		self.rng = np.random.RandomState(seed)
-		min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
-		self.obj_there_idxs = []
-		self.obj_not_there_idxs = []
-		for file_num, src in enumerate(hdf5s):
-			msgs_all = src['msg']
-			for idx in range(min_idx, msgs_all.shape[0], self.batch_size):
-				msgs = msgs_all[idx : idx + self.batch_size]
-				for msg in msgs:
-					msg = json.loads(msg)
-					if msg is None:
-						continue
-					if msg['msg']['action_type'] == 'OBJ_ACT':
-						self.obj_there_idxs.append((file_num, idx))
-					else:
-						self.obj_not_there_idxs.append((file_num, idx))
+		self.obj_there_idxs = metadata['obj_there_idxs']
+		self.obj_not_there_idxs = metadata['obj_not_there_idxs']
 		self.there_start = -1
 		self.not_there_start = -1
 		self.check_init()
@@ -84,22 +129,25 @@ class ObjectThereBatcher:
 		obj_there_batch = self.there_schedule[self.there_start : self.there_start + self.num_there_per_batch]
 		self.there_start += self.num_there_per_batch
 		self.not_there_start += self.num_not_there_per_batch
-		return obj_there_batch + obj_not_there_batch
+		return list(obj_there_batch) + list(obj_not_there_batch)
 		
 		
 
 
 class OfflineDataProvider(threading.Thread):
 	def __init__(self, 
-			hdf5_filenames,
 			batch_size, 
 			batcher_constructor, 
 			data_lengths, 
 			capacity, 
+			metadata_filename,
 			batcher_kwargs = None):
-		self.batcher = batcher
+		threading.Thread.__init__(self)
+		with open(metadata_filename) as stream:
+			metadata = cPickle.load(stream)
+		hdf5_filenames = metadata['filenames']
 		self.hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
-		self.batcher = batcher_constructor(self.hdf5s, batch_size, data_lengths, ** batcher_kwargs)
+		self.batcher = batcher_constructor(batch_size, metadata, ** batcher_kwargs)
 		self.batch_size = batch_size
 		self.data_lengths = data_lengths
 		self.queue = queue.Queue(capacity)
@@ -107,16 +155,16 @@ class OfflineDataProvider(threading.Thread):
 
 	def run_env(self):
 		while True:
+			batch = {'recent' : {}}
 			chosen = self.batcher.get_batch_indices()
-			for k, v in data_lengths.iteritems():
+			for k, v in self.data_lengths.iteritems():
 				if k == 'obs':
 					for k_obs, v_obs in v.iteritems():
 						collected_dat = []
 						for (file_num, idx) in chosen:
 							dat_raw = self.hdf5s[file_num][k_obs][idx - v_obs + 1 : idx + 1]
 							collected_dat.append(dat_raw)
-						collected_dat.append(nones_replaced)
-					batch[k_obs] = np.array(collected_dat)
+						batch[k_obs] = np.array(collected_dat)
 				else:
 					collected_dat = []
 					for file_num, idx in chosen:
@@ -137,14 +185,15 @@ class OfflineDataProvider(threading.Thread):
 	def _run(self):
 		yielded = self.run_env()
 		while True:
-			history = next(yielded)
-			batch = self.batching_fn(history)
+			batch = next(yielded)
 			self.queue.put(batch, timeout = 5000.0)
 
 	def dequeue_batch(self):
 		return self.queue.get(timeout = 5000.0)
 
-
+	def close(self):
+		for f in self.hdf5s:
+			f.close()
 
 
 
