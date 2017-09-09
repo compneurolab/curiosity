@@ -885,6 +885,11 @@ def get_action_model(inputs, cfg, reuse_weights = False):
 
 	enc_i_flat = flatten(encoding_i)
 	enc_f_flat = flatten(encoding_f)
+
+	if 'mlp_before_concat' in cfg['action_model']:
+		with tf.variable_scope('before_action'):
+			enc_i_flat = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp_before_concat'], reuse_weights = reuse_weights, train = True)
+			enc_f_flat = hidden_loop_with_bypasses(enc_f_flat, m, cfg['action_model']['mlp_before_concat'], reuse_weights = True, train = True)
 	
 	assert act_given.get_shape().as_list()[1] == 1
 	act_given = act_given[:, 0]
@@ -1220,7 +1225,9 @@ class MSExpectedUncertaintyModel:
 			m = ConvNetwithBypasses()
 			self.s_i = x = world_model.s_i
 			self.true_loss = world_model.act_loss_per_example
-			n_timesteps = len(world_model.act_loss_per_example) 
+			n_timesteps = len(world_model.act_loss_per_example)
+			print('n timesteps!')
+			print(n_timesteps) 
 			t_per_state = self.s_i.get_shape().as_list()[1]
 			#the action it decides on is the first action giving a transition from the starting state.
 			self.action_sample = ac = world_model.action[:, t_per_state - 1]

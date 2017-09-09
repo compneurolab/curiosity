@@ -133,11 +133,13 @@ class ExperienceReplayPostprocessor:
 		else:
 			save_keys = self.little_save_keys
 		res.update(dict(pair for pair in training_results.iteritems() if pair[0] in save_keys))
-		entropies = [other[0] for other in batch['recent']['other']]
-                entropies = np.mean(entropies)
-                res['entropy'] = entropies
-		looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
-                res['obj_freq'] = np.mean(looking_at_obj)
+		if 'other' in batch['recent']:
+			entropies = [other[0] for other in batch['recent']['other']]
+                	entropies = np.mean(entropies)
+                	res['entropy'] = entropies
+		if 'msg' in batch['recent']:
+			looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
+                	res['obj_freq'] = np.mean(looking_at_obj)
                 return res
 
 class UncertaintyPostprocessor:

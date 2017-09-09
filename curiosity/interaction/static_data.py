@@ -65,9 +65,6 @@ class UniformRandomBatcher:
 		self.schedule = self.rng.permutation(self.valid_idxs)
 
 	def get_batch_indices(self):
-		print('check check')
-		print(type(self.start))
-		print(type(self.batch_size))
 		if self.start + self.batch_size > len(self.schedule):
 			self.init_epoch()
 		retval = self.schedule[self.start : self.start + self.batch_size]
@@ -170,10 +167,10 @@ class OfflineDataProvider(threading.Thread):
 					for file_num, idx in chosen:
 						collected_dat.append(self.hdf5s[file_num][k][idx - v + 1 : idx + 1])
 					batch[k] = np.array(collected_dat)
-			collected_dat = []
-			for file_num, idx in chosen:
-				collected_dat.append(self.hdf5s[file_num]['msg'][idx])
-			batch['recent']['msg'] = collected_dat
+#			collected_dat = []
+#			for file_num, idx in chosen:
+#				collected_dat.append([self.hdf5s[file_num]['msg'][idx]])
+#			batch['recent']['msg'] = collected_dat
 			yield batch
 
 	def start_runner(self, sess):
