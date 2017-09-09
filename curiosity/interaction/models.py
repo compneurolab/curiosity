@@ -896,7 +896,7 @@ def get_action_model(inputs, cfg, reuse_weights = False):
 	x = tf_concat([enc_i_flat, enc_f_flat, act_given], 1)
 	with tf.variable_scope('action_model'):
 			x = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
-	lpe, loss = cfg['action_model']['loss_func'](act_tv, x, cfg)
+	lpe, loss = cfg['action_model']['loss_func'](act_tv, x, cfg['action_model'])
 	return {'act_loss_per_example' : lpe, 'act_loss' : loss, 'pred' : x}
 
 
@@ -1414,6 +1414,21 @@ def bin_values(values, thresholds):
 			lab += tf.cast(tf.greater(values, th), tf.int32)
 	return lab
 
+
+def binned_softmax_loss_per_example(tv, prediction, cfg):
+	thresholds = cfg['thresholds']
+	n_classes = len(thresholds) + 1
+	tv_shape = tv.get_shape().as_list()
+	d = tv_shape[1]
+	assert len(tv_shape) == 2
+	tv = bin_values(tv, thresholds)
+	prediction = tf.reshape(prediction, [-1, d, n_classes])
+	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv, logits = prediction) *  cfg.get('loss_factor', 1.)
+	loss_per_example = tf.reduce_mean(loss_per_example, axis = 1, keep_dims = True)
+	print('per example!')
+	print(loss_per_example.get_shape().as_list())
+	loss = tf.reduce_mean(loss_per_example)
+	return loss_per_example, loss
 
 def binned_softmax_loss(tv, prediction, cfg):
 	thresholds = cfg['thresholds']
