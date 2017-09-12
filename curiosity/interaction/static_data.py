@@ -16,6 +16,7 @@ def check_obj_there(hdf5_filenames):
 	for file_num, src in enumerate(hdf5s):
 		msgs_all = src['msg']
 		incomplete_filenum = False
+		print(file_num)
 		for idx in range(0, msgs_all.shape[0], 32):
 			msgs = msgs_all[idx : idx + 32]
 			for msg in msgs:

@@ -162,7 +162,7 @@ class UncertaintyPostprocessor:
 			save_keys = self.big_save_keys
 			est_losses = [other[1] for other in batch['recent']['other']]
 			action_sample = [other[2] for other in batch['recent']['other']]
-			res['batch'] = {'obs' : batch['depths1'][:, -1], 'act' : batch['action'][:, -1], 'act_post' : batch['action_post'][:, -1],  'est_loss' : est_losses, 'action_sample' : action_sample}
+			res['batch'] = {'obs' : batch['depths1'], 'act' : batch['action'], 'act_post' : batch['action_post'],  'est_loss' : est_losses, 'action_sample' : action_sample}
 			res['msg'] = batch['recent']['msg']
 		else:
 			print('little time')
