@@ -19,7 +19,9 @@ import os
 parser = argparse.ArgumentParser()
 parser.add_argument('-g', '--gpu', default = '0', type = str)
 parser.add_argument('--tasknum', required = True, type = str)
-parser.add_argument('--nsave', default = 1024 * 1024, type = int)
+parser.add_argument('--nsave', default = 256 * 1024, type = int)
+parser.add_argument('--forcescaling', default = 200., type = float)
+
 args = vars(parser.parse_args())
 
 
@@ -32,8 +34,8 @@ obj_size = .4
 scene_len = 32 * 1024
 image_shape = image_scale =  (128, 170)
 RENDER1_HOST_ADDRESS = '10.102.2.161'
-save_filename = '/media/data2/nhaber/offline_data' + tasknum + '.hdf5'
-force_scaling = 80.
+force_scaling = args['forcescaling']
+save_filename = '/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + tasknum + '.hdf5'
 room_dims = (5., 5.)
 state_time_length = 2
 data_seed = int(tasknum) + 10

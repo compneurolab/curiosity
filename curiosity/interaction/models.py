@@ -906,6 +906,9 @@ def l2_loss_per_example(tv, pred, cfg):
 	loss = tf.reduce_mean(lpe)
 	return lpe, loss
 
+
+
+
 class MSActionWorldModel(object):
 	def __init__(self, cfg):
 		num_timesteps = cfg['num_timesteps']
