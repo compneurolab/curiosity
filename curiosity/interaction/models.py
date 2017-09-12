@@ -908,6 +908,71 @@ def l2_loss_per_example(tv, pred, cfg):
 
 
 
+class MoreInfoActionWorldModel(object):
+	def __init__(self, cfg):
+		#placeholder setup
+		num_timesteps = cfg['num_timesteps']
+		image_shape = list(cfg['image_shape'])
+		state_steps = list(cfg['state_steps'])
+		states_given = list(cfg['states_given'])
+		actions_given = list(cfg['actions_given'])
+		t_back = - (min(state_steps) + min(states_given))
+		t_forward = max(state_steps) + max(states_given)
+		states_shape = [num_timesteps + t_back + t_forward] + image_shape
+		self.states = tf.placeholder(tf.float32, [None] + states_shape)
+		acts_shape = [num_timesteps + max(actions_given) - min(actions_given)]
+		self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
+		self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
+		act_back = - min(actions_given)		
+
+		#things we gotta fill in
+		self.act_loss_per_example = []
+		self.act_pred = []
+
+		#concat states at all timesteps needed
+		states_collected = {}
+		#this could be more general, for now all timesteps tested on are adjacent, but one could imagine this changing...
+		for t in range(num_timesteps):
+			for s in states_given:
+				if t + s not in states_collected:
+					states_collected[t+s] = tf_concat([self.states[:, t + s + i + t_back] for i in state_steps], axis = 3)
+		#good job. now encode each state
+		reuse_weights = False
+		flat_encodings = {}
+		for s, collected_state in states_collected.iteritems():
+			with tf.variable_scope('encode_model'):
+				encoding = feedforward_conv_loop(collected_state, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+			enc_flat = flatten(encoding)
+			if 'mlp_before_concat' in cfg['action_model']:
+				with tf.variable_scope('before_action'):
+					enc_flat = hidden_loop_with_bypasses(enc_i_flat, m, cfg['action_model']['mlp_before_concat'], reuse_weights = reuse_weights, train = True)
+			flat_encodings[s] = enc_flat
+			#reuse weights after first time doing computation
+			reuse_weights = True
+
+		#great. now let's make our predictions and count our losses
+		act_loss_list = []
+		reuse_weights = False
+		for t in range(num_timesteps):
+			encoded_states_given = [flat_encodings[t + s] for s in states_given]
+			act_given = [self.action[:, t + a + act_back] for a in actions_given]
+			act_tv = self.action_post[:, t + act_back]
+			x = tf_concat(encoded_states_given + act_given, axis = 1)
+			with tf.variable_scope('action_model'):
+				pred = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
+			lpe, loss = cfg['action_model']['loss_func'](act_tv, pred, cfg['action_model'])
+			reuse_weights = True
+			self.act_loss_per_example.append(lpe)
+			self.act_pred.append(pred)
+			act_loss_list.append(loss)
+		self.act_loss = tf.reduce_mean(act_loss_list)
+		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
+		self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
+			
+
+
+
+
 
 class MSActionWorldModel(object):
 	def __init__(self, cfg):
@@ -936,7 +1001,7 @@ class MSActionWorldModel(object):
 			act_loss_list.append(outputs['act_loss'])
 			self.act_pred.append(outputs['pred'])
 		self.act_loss = tf.reduce_mean(act_loss_list)
-		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name]
+		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
 		self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
 
 
