@@ -124,10 +124,7 @@ class ExperienceReplayPostprocessor:
 			#action_sample = [other[2] for other in batch['other']]
 			res['batch'] = {}
 			for desc, val in batch.iteritems():
-				print(desc)
-				if desc == 'obj_there':
-					res['batch'][desc] = val
-				elif desc != 'recent':
+				if desc != 'recent':
 					res['batch'][desc] = val[:, -1]
 			res['recent'] = batch['recent']
 		else:
