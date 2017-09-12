@@ -125,7 +125,7 @@ class ExperienceReplayPostprocessor:
 			res['batch'] = {}
 			for desc, val in batch.iteritems():
 				if desc != 'recent':
-					res['batch'][desc] = val[:, -1]
+					res['batch'][desc] = val
 			res['recent'] = batch['recent']
 		else:
 			save_keys = self.little_save_keys
