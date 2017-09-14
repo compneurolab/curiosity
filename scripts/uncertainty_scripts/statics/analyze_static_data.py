@@ -23,12 +23,15 @@ import numpy as np
 data_pfx = '/media/data2/nhaber/offline_data'
 #HDF5_FILENAMES = [data_pfx + str(i) + '.hdf5' for i in range(1)]#due to seeding issue, the others should in fact be identical.
 force_scaling = 200
-HDF5_FILENAMES = ['/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2, 4, 5]]
+TRAIN_HDF5_FILENAMES = ['/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2, 4, 5, 11, 13]]
+TEST_HDF5_FILENAMES = ['/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [14]]
 BATCH_SIZE = 32
 #T_PER_STATE = 2
 #NUM_TIMESTEPS = 1
-UNIFORM_METADATA_LOC = '/media/data2/nhaber/uniform_scal200.pkl'
-OBJTHERE_METADATA_LOC = '/media/data2/nhaber/objthere_scal200.pkl'
+TRAIN_UNIFORM_METADATA_LOC = '/media/data2/nhaber/train_uniform_scal200.pkl'
+TRAIN_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_objthere_scal200.pkl'
+TEST_UNIFORM_METADATA_LOC = '/media/data2/nhaber/test_uniform_scal200.pkl'
+TEST_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_scal200.pkl'
 
 data_lengths = {
                         'obs' : {'depths1' : 5},
@@ -39,11 +42,14 @@ data_lengths = {
 
 
 print('checking if object there')
-static_data.check_obj_there(HDF5_FILENAMES)
+static_data.check_obj_there(TRAIN_HDF5_FILENAMES)
+static_data.check_obj_there(TEST_HDF5_FILENAMES)
 print('done checking')
 
-uniform_metadata = static_data.get_uniform_metadata(HDF5_FILENAMES, UNIFORM_METADATA_LOC, data_lengths)
-objthere_metadata = static_data.get_objthere_metadata(HDF5_FILENAMES, OBJTHERE_METADATA_LOC, data_lengths)
+train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths)
+train_objthere_metadata = static_data.get_objthere_metadata(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, data_lengths)
+test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths)
+test_objthere_metadata = static_data.get_objthere_metadata(TEST_HDF5_FILENAMES, TEST_OBJTHERE_METADATA_LOC, data_lengths)
 
 '''
 dummy_sess = None

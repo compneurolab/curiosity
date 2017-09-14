@@ -237,6 +237,11 @@ class LatentUncertaintyValidator:
 				res['batch'][desc] = val[:, -1]
 		res['recent'] = batch['recent']
 
+
+
+
+
+
 class ObjectThereValidater:
 	def __init__(self, models, data_provider):
 		self.um = models['uncertainty_model']
@@ -253,6 +258,28 @@ class ObjectThereValidater:
                         self.wm.obj_there : batch['obj_there']
                 }
 		return sess.run(self.targets, feed_dict = feed_dict)
+
+
+class ActionUncertaintyValidator:
+	def __init__(self, models, data_provider):
+		self.um = um = models['uncertainty_model']
+		self.wm = wm = models['world_model']
+		self.targets = {'act_pred' : self.wm.act_pred, 'act_loss' : self.wm.act_loss,
+                                'estimated_world_loss' : self.um.estimated_world_loss,
+                                'um_loss' : self.um.uncertainty_loss, 'loss_per_example' : self.um.true_loss}
+		self.dp = data_provider
+	
+	def run(self, sess):
+		batch = self.dp.dequeue_batch()
+		feed_dict = {
+			self.wm.states : batch['depths1'],
+			self.wm.action : batch['action'],
+			self.wm.action_post : batch['action_post']
+		}
+		res = sess.run(self.targets, feed_dict = feed_dict)
+		res['batch'] = batch
+		return res
+
 
 
 class ObjectThereUpdater:

@@ -104,7 +104,7 @@ def test_action_to_message_fn(action, env):
 	return msg
 
 
-def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True):
+def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True, use_absolute_coordinates = True):
 	'''
 		Sends message given forward vel, y-angular speed, force, torque.
 		If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
@@ -151,7 +151,9 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 			seen_cm = np.round(np.array(zip(xs, ys)).mean(0))
 			msg['msg']['action_type'] = 'OBJ_ACT'
 			msg_action = {}
-			msg_action['use_absolute_coordinates'] = True
+			msg_action['use_absolute_coordinates'] = use_absolute_coordinates
+			if not use_absolute_coordinates:
+				print('using relative coordinates!')
 			msg_action['force'] = list(action[2:5])
 			if do_torque:
 				msg_action['torque'] = list(action[5:])
