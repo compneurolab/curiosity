@@ -23,15 +23,15 @@ import numpy as np
 data_pfx = '/media/data2/nhaber/offline_data'
 #HDF5_FILENAMES = [data_pfx + str(i) + '.hdf5' for i in range(1)]#due to seeding issue, the others should in fact be identical.
 force_scaling = 200
-TRAIN_HDF5_FILENAMES = ['/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2, 4, 5, 11, 13]]
-TEST_HDF5_FILENAMES = ['/media/data2/nhaber/scal' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [14]]
+TRAIN_HDF5_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [0, 1, 4, 20, 21]]
+TEST_HDF5_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [22]]
 BATCH_SIZE = 32
 #T_PER_STATE = 2
 #NUM_TIMESTEPS = 1
-TRAIN_UNIFORM_METADATA_LOC = '/media/data2/nhaber/train_uniform_scal200.pkl'
-TRAIN_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_objthere_scal200.pkl'
-TEST_UNIFORM_METADATA_LOC = '/media/data2/nhaber/test_uniform_scal200.pkl'
-TEST_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_scal200.pkl'
+TRAIN_UNIFORM_METADATA_LOC = '/media/data2/nhaber/train_uniform_rel200.pkl'
+TRAIN_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_objthere_rel200.pkl'
+TEST_UNIFORM_METADATA_LOC = '/media/data2/nhaber/test_uniform_rel200.pkl'
+TEST_OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_rel200.pkl'
 
 data_lengths = {
                         'obs' : {'depths1' : 5},
