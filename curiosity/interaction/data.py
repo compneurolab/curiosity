@@ -207,7 +207,7 @@ class BSInteractiveDataProvider(threading.Thread):
 	A batching, sampling interactive data provider.
 	Meant to support a light amount of experience replay, as well as simply giving batches of data.
 	'''
-	def __init__(self, environment, policy, scene_params, scene_lengths, action_sampler, batching_fn, capacity = 5, gather_per_batch = 32, gather_at_beginning = 32):
+	def __init__(self, environment, policy, scene_params, scene_lengths, action_sampler, batching_fn, capacity = 5, gather_per_batch = 32, gather_at_beginning = 32, action_repeat = 1):
 		threading.Thread.__init__(self)
 		self.env = environment
 		self.policy = policy
@@ -221,6 +221,7 @@ class BSInteractiveDataProvider(threading.Thread):
 		self.gather_per_batch = gather_per_batch
 		self.gather_at_beginning = gather_at_beginning
 		self.batching_fn = batching_fn
+		self.action_repeat = action_repeat
 
 	def start_runner(self, sess):
 		self.sess = sess
@@ -257,18 +258,19 @@ class BSInteractiveDataProvider(threading.Thread):
 					scene_len = self.scene_lengths.next()
 					action = None
 				#select action and act on world
-				action_sample = self.action_sampler.sample_actions()
-				state_desc = obs.keys()[0]
-				obs_for_actor = replace_the_nones(obs[state_desc][-2:])
-				action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs_for_actor)
-				obs, msg, action, action_post, other_mem = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
-			
-
+				if total_gathered % self.action_repeat == 0:
+					action_sample = self.action_sampler.sample_actions()
+					state_desc = obs.keys()[0]
+					obs_for_actor = replace_the_nones(obs[state_desc][-2:])
+					action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs_for_actor)
+				else:
+					print('Action repeating')
+				obs, msg, action_hist, action_post, other_mem = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
 				#update counters
 				num_this_yield += 1
 				total_gathered += 1
 			if action is not None:
-				yield {'obs' : obs,'msg' : msg, 'action' : action, 'action_post' : action_post, 'other' : other_mem}
+				yield {'obs' : obs,'msg' : msg, 'action' : action_hist, 'action_post' : action_post, 'other' : other_mem}
 	
 		
 

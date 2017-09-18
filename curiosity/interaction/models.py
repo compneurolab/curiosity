@@ -920,8 +920,14 @@ class MoreInfoActionWorldModel(object):
 		t_back = - (min(state_steps) + min(states_given))
 		t_forward = max(state_steps) + max(states_given)
 		states_shape = [num_timesteps + t_back + t_forward] + image_shape
+		print('debugging state shape')
+		print(states_given)
+		print(state_steps)
+		print(num_timesteps)
+		print(states_shape)
 		self.states = tf.placeholder(tf.float32, [None] + states_shape)
-		acts_shape = [num_timesteps + max(actions_given) - min(actions_given), act_dim]
+		acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
+		print(acts_shape)
 		self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
 		self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
 		act_back = - min(actions_given)		
