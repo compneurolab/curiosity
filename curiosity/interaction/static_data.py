@@ -13,21 +13,29 @@ import cPickle
 def check_obj_there(hdf5_filenames):
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
 	print('starting check')
+	good_until = {}
 	for file_num, (src, filename) in enumerate(zip(hdf5s, hdf5_filenames)):
 		msgs_all = src['msg']
 		incomplete_filenum = False
 		print(file_num)
 		print(filename)
 		for idx in range(0, msgs_all.shape[0], 32):
-			msgs = msgs_all[idx : idx + 32]
-			for msg in msgs:
-				msg = json.loads(msg)
-				if msg['msg']['action_type'] == 'OBJ_NOT_PRESENT':
-					print((file_num, idx))
-					incomplete_filenum = True
+			try:
+				msgs = msgs_all[idx : idx + 32]
+				for msg in msgs:
+					msg = json.loads(msg)
+					if msg['msg']['action_type'] == 'OBJ_NOT_PRESENT':
+						print((file_num, idx))
+						incomplete_filenum = True
+						break
+				if incomplete_filenum:
 					break
-			if incomplete_filenum:
+			except:
+				print('ran into error when trying')
+				idx -= 32
 				break
+		good_until[filename] = idx
+	return good_until
 
 def print_some_actions(hdf5_filenames, batches_to_print = 2):
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
@@ -85,27 +93,33 @@ class UniformRandomBatcher:
 		return retval
 
 
-def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0):
+def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0, good_until = {}):
 	min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
 	batch_size = 32
 	obj_there_idxs = []
 	obj_not_there_idxs = []
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
-	for file_num, src in enumerate(hdf5s):
+	for file_num, (src, filename) in enumerate(zip(hdf5s, hdf5_filenames)):
 		msgs_all = src['msg']
-		for idx in range(min_idx, msgs_all.shape[0], batch_size):
+		do_until = good_until.get(filename, msgs_all.shape[0])
+		print(filename)
+		print(do_until)
+		if do_until <= 0:
+			break
+		for idx in range(min_idx, do_until, batch_size):
 			msgs = msgs_all[idx : idx + batch_size]
 			for k, msg in enumerate(msgs):
 				msg = json.loads(msg)
-				if msg is None or idx + k % action_repeat_mod != action_repeat_offset:
+				if msg is None or (idx + k) % action_repeat_mod != action_repeat_offset:
 					continue
 				if msg['msg']['action_type'] == 'OBJ_ACT':
 					obj_there_idxs.append((file_num, idx + k))
 				else:
 					obj_not_there_idxs.append((file_num, idx + k))
-	metadata = {'filenames' : hdf5_filenames, 'obj_there_idxs' : obj_there_idxs, 'obj_not_there_idxs' : obj_not_there_idxs}
-	with open(save_loc, 'w') as stream:
-		cPickle.dump(metadata, stream)
+	metadata = {'filenames' : hdf5_filenames, 'obj_there_idxs' : obj_there_idxs, 'obj_not_there_idxs' : obj_not_there_idxs, 'data_lengths' : data_lengths}
+	print('got here')
+#	with open(save_loc, 'w') as stream:
+#		cPickle.dump(metadata, stream)
 	return metadata
 
 def get_objthere_metadata_deluxe(hdf5_filenames, save_loc, timesteps_before, timesteps_after, action_repeat_mod = 1, action_repeat_offset = 0):

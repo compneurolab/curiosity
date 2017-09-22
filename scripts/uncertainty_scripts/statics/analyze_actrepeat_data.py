@@ -23,8 +23,8 @@ import numpy as np
 data_pfx = '/media/data2/nhaber/offline_data'
 #HDF5_FILENAMES = [data_pfx + str(i) + '.hdf5' for i in range(1)]#due to seeding issue, the others should in fact be identical.
 force_scaling = 200
-TRAIN_HDF5_FILENAMES = ['/media/data2/nhaber/repeat' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [1, 10, 12, 15]]
-#TEST_HDF5_FILENAMES = ['/media/data2/nhaber/repeat' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [20, 21]]
+TRAIN_HDF5_FILENAMES = ['/media/data2/nhaber/repeat' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [1, 10, 12, 15, 35]]
+TEST_HDF5_FILENAMES = ['/media/data2/nhaber/repeat' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [42]]
 BATCH_SIZE = 32
 #T_PER_STATE = 2
 #NUM_TIMESTEPS = 1
@@ -67,7 +67,7 @@ time_after = {
 #train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths, action_repeat_mod = 4, action_repeat_offset = 3)
 train_objthere_metadata = static_data.get_objthere_metadata_deluxe(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, time_before, time_after, action_repeat_mod = 4, action_repeat_offset = 1)
 #test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths, action_repeat_mod = 4, action_repeat_offset = 3)
-#test_objthere_metadata = static_data.get_objthere_metadata_deluxe(TEST_HDF5_FILENAMES, TEST_OBJTHERE_METADATA_LOC, time_before, time_after, action_repeat_mod = 4, action_repeat_offset = 1)
+test_objthere_metadata = static_data.get_objthere_metadata_deluxe(TEST_HDF5_FILENAMES, TEST_OBJTHERE_METADATA_LOC, time_before, time_after, action_repeat_mod = 4, action_repeat_offset = 1)
 
 '''
 dummy_sess = None

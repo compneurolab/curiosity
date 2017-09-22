@@ -17,7 +17,8 @@ import cPickle
 
 NUM_BATCHES_PER_EPOCH = 1e8
 RENDER1_HOST_ADDRESS = '10.102.2.161'
-
+NODE_5_PORT = 15871
+NODE_3_PORT = 15841
 
 
 def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class = tf.train.AdamOptimizer):
@@ -208,7 +209,7 @@ def generate_batching_data_provider(force_scaling = 80.,
 
 
 
-def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False):
+def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False, portnum = 15841):
         if location == 'freud':
                 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
         elif location == 'cluster':
@@ -244,7 +245,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
 		os.mkdir(CACHE_DIR_LOAD)
 	params = {'save_params' : {     
                 'host' : 'localhost',
-                'port' : 15841,
+                'port' : portnum,
                 'dbname' : 'uncertain_agent',
                 'collname' : 'uniform_action_latent',
                 'exp_id' : exp_id,
