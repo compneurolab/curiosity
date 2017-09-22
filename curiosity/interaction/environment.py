@@ -171,6 +171,11 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	return msg, action_normalized
 
 
+def obj_not_present_termination_condition(env):
+	available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
+	return len(available_objects) == 0
+
+
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
     info = sock.recv()
     data = {'info': info}
@@ -294,9 +299,11 @@ class Environment:
 			rng_source = None,
 			rng_periodicity = None,
 			scene_switch_memory_pad = 2, 
-			other_data_memory_length = 1
+			other_data_memory_length = 1,
+			termination_condition = lambda env : True
 		):
 		#TODO: SCREEN_DIMS does nothing right now
+		self.term_condition = termination_condition
 		self.rng = np.random.RandomState(random_seed)
 		self.SCREEN_HEIGHT, self.SCREEN_WIDTH = SCREEN_DIMS
 		self.RANDOM_SEED = unity_seed
@@ -512,7 +519,9 @@ class Environment:
 		else:
 			self.sock.send_json(msg['msg'])
 		observation = self._observe_world()
-		return self._memory_postprocess(observation, msg, action, action_post, other_data = other_data)
+		mem = self.self._memory_postprocess(observation, msg, action, action_post, other_data = other_data)
+		term_signal = self.term_condition(self)
+		return mem, term_signal
 
 
 

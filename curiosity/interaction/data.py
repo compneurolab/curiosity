@@ -246,16 +246,18 @@ class BSInteractiveDataProvider(threading.Thread):
 		num_this_scene = 0
 		scene_len = -1
 		total_gathered = 0
+		termination_signal = False
 
 		while True:
 			#gather a batch
 			num_this_yield = 0
 			while num_this_yield < self.gather_per_batch or total_gathered < self.gather_at_beginning:
 				#check for scene start condition
-				if num_this_scene >= scene_len:
+				if num_this_scene >= scene_len or termination_signal:
 					obs, msg = self.env.next_config(* self.scene_params.next())
 					num_this_scene = 0
 					scene_len = self.scene_lengths.next()
+					termination_signal = False
 					action = None
 				#select action and act on world
 				if total_gathered % self.action_repeat == 0:
@@ -265,8 +267,9 @@ class BSInteractiveDataProvider(threading.Thread):
 					action, entropy, estimated_world_loss = self.policy.act(self.sess, action_sample, obs_for_actor)
 				else:
 					print('Action repeating')
-				obs, msg, action_hist, action_post, other_mem = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
+				(obs, msg, action_hist, action_post, other_mem), termination_signal = self.env.step(action, other_data = (entropy, estimated_world_loss, action_sample))
 				#update counters
+				num_this_scene += 1
 				num_this_yield += 1
 				total_gathered += 1
 			if action is not None:
