@@ -1368,7 +1368,6 @@ class MSExpectedUncertaintyModel:
 		#this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
 		depths_batch = np.array([state])
 		if self.just_random:
-			print('random action')
 			ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
 			chosen_idx = self.rng.randint(len(action_sample))
 			return action_sample[chosen_idx], -1., ewl

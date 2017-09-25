@@ -254,6 +254,7 @@ class BSInteractiveDataProvider(threading.Thread):
 			while num_this_yield < self.gather_per_batch or total_gathered < self.gather_at_beginning:
 				#check for scene start condition
 				if num_this_scene >= scene_len or termination_signal:
+					print('data call of next config')
 					obs, msg = self.env.next_config(* self.scene_params.next())
 					num_this_scene = 0
 					scene_len = self.scene_lengths.next()

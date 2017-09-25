@@ -123,7 +123,6 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 		proposed_next_position = np.array(env.observation['info']['avatar_position']) + np.array(env.observation['info']['avatar_forward']) * agent_vel
 		if (proposed_next_position[0]  < wall_safety or proposed_next_position[0] > env.ROOM_WIDTH - .5 - wall_safety
 					or proposed_next_position[2] < wall_safety or proposed_next_position[2] > env.ROOM_LENGTH - .5 - wall_safety):
-			print('wall safety!')
 			agent_vel = 0.
 			action_normalized[0] = 0.
 	msg['msg']['vel'] = [0, 0, agent_vel]
@@ -171,16 +170,28 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 	return msg, action_normalized
 
 
-def obj_not_present_termination_condition(env):
+def obj_not_present_agent_oob_termination_condition(env):
 	available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
-	return len(available_objects) == 0
+	not_present = (len(available_objects) == 0)
+	current_position = np.array(env.observation['info']['avatar_position'])
+	wall_safety = .4 #purposely just something smaller than the default, should really be passed in
+	oob = (current_position[0]  < wall_safety or current_position[0] > env.ROOM_WIDTH - .5 - wall_safety
+                                        or current_position[2] < wall_safety or current_position[2] > env.ROOM_LENGTH - .5 - wall_safety)
+	if not_present:
+		print('requesting restart because object dropped out')
+	if oob:
+		print('requesting restart because object not present')
+	return not_present or oob
 
 
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
+    print('starting handle message')
     info = sock.recv()
+    print('got info')
     data = {'info': info}
     # Iterate over all cameras
     for cam in range(len(msg_names)):
+        print('next cam')
         for n in range(len(msg_names[cam])):
             # Handle set of images per camera
             imgstr = sock.recv()
@@ -366,6 +377,7 @@ class Environment:
 		self.action_memory_len = action_memory_len
 		self.rng_source = rng_source
 		if rng_periodicity is not None:
+			print('using rng periodicity ' + str(rng_periodicity))
 			self.rng_source = PeriodicRNGSource(rng_periodicity, seed = 1)
 		self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
 		self.msg_memory = [None for _ in range(self.msg_memory_len)]
@@ -468,6 +480,7 @@ class Environment:
 			else:
 				msg = scene_switch_msg
 				self.sock.send_json(msg)
+		print('first observation of scene')
 		observation = self._observe_world()
 		print('heard back from unity!')
 		self._pad_memory()

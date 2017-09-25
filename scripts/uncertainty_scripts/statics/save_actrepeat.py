@@ -72,7 +72,9 @@ data_params = {
                                         'depths1' : image_shape
                                 },
                         'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS
+                        'host_address' : RENDER1_HOST_ADDRESS,
+			'rng_periodicity' : 1,
+			'termination_condition' : environment.obj_not_present_agent_oob_termination_condition
                 },
 
                 'provider_params' : {
