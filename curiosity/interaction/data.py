@@ -139,13 +139,12 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
 	
 
 
-def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False):
+def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False, allow_repeats = False, which_matters_for_freq = -1):
 	chosen = []
-	print('Remembrance of things past!')
 	#counts from the end
 	while len(chosen) < batch_size:
 		proposed_idx = my_rng.randint(0, history_len)
-		if check_none_are_none(history, - proposed_idx - 1, data_lengths.keys()) and not proposed_idx in chosen:
+		if check_none_are_none(history, - proposed_idx - 1, data_lengths.keys()) and ((not proposed_idx in chosen) or allow_repeats):
 			chosen.append(proposed_idx)
 	batch = {'recent' : {}}
 	for k, v in data_lengths.iteritems():
@@ -173,7 +172,7 @@ def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, rec
 			batch[k] = np.array(collected_dat)
 			batch['recent'][k] = np.array(replace_the_nones(history[k][-recent_history_length : ]))
 	if get_object_there_binary:
-		collected_dat = [1 if history['msg'][-idx - 1]['msg']['action_type'] == 'OBJ_ACT' else 0 for idx in chosen]
+		collected_dat = [1 if history['msg'][-idx + which_matters_for_freq]['msg']['action_type'] == 'OBJ_ACT' else 0 for idx in chosen]
 		batch['obj_there'] = np.array(collected_dat, dtype = np.int32)
 	for desc in ['msg', 'other']:
 		batch['recent'][desc] = copy.copy(history[desc][-recent_history_length : ])
@@ -251,10 +250,12 @@ class BSInteractiveDataProvider(threading.Thread):
 		while True:
 			#gather a batch
 			num_this_yield = 0
-			while num_this_yield < self.gather_per_batch or total_gathered < self.gather_at_beginning:
+			while num_this_yield < self.gather_per_batch or total_gathered < self.gather_at_beginning or action is None:
 				#check for scene start condition
 				if num_this_scene >= scene_len or termination_signal:
-					print('data call of next config')
+					print(scene_len)
+					print(num_this_scene)
+					print(termination_signal)
 					obs, msg = self.env.next_config(* self.scene_params.next())
 					num_this_scene = 0
 					scene_len = self.scene_lengths.next()
@@ -275,7 +276,6 @@ class BSInteractiveDataProvider(threading.Thread):
 				total_gathered += 1
 			if action is not None:
 				yield {'obs' : obs,'msg' : msg, 'action' : action_hist, 'action_post' : action_post, 'other' : other_mem}
-	
 		
 
 

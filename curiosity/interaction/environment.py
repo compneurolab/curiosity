@@ -84,6 +84,7 @@ def init_msg(n_frames):
         msg = {'n': n_frames, 'msg': {"msg_type": "CLIENT_INPUT", "get_obj_data": True, "send_scene_info" : True, "actions": []}}
         msg['msg']['vel'] = [0, 0, 0]
         msg['msg']['ang_vel'] = [0, 0, 0]
+	msg['msg']['action_type'] = 'NO_OBJ_ACT'
         return msg
 
 
@@ -171,27 +172,32 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 
 
 def obj_not_present_agent_oob_termination_condition(env):
+	print('checking oob condition')
 	available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
 	not_present = (len(available_objects) == 0)
 	current_position = np.array(env.observation['info']['avatar_position'])
-	wall_safety = .4 #purposely just something smaller than the default, should really be passed in
+	wall_safety = .1 #purposely just something smaller than the default, should really be passed in
 	oob = (current_position[0]  < wall_safety or current_position[0] > env.ROOM_WIDTH - .5 - wall_safety
                                         or current_position[2] < wall_safety or current_position[2] > env.ROOM_LENGTH - .5 - wall_safety)
 	if not_present:
 		print('requesting restart because object dropped out')
 	if oob:
-		print('requesting restart because object not present')
+		print('requesting restart because oob')
 	return not_present or oob
+
+def obj_not_present_termination_condition(env):
+	available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
+	not_present = (len(available_objects) == 0)
+	if not_present:
+		print('requesting restart because object dropped out')
+	return not_present
 
 
 def handle_message_new(sock, msg_names, write = False, outdir = '', imtype =  'png', prefix = ''):
-    print('starting handle message')
     info = sock.recv()
-    print('got info')
     data = {'info': info}
     # Iterate over all cameras
     for cam in range(len(msg_names)):
-        print('next cam')
         for n in range(len(msg_names[cam])):
             # Handle set of images per camera
             imgstr = sock.recv()
@@ -311,7 +317,7 @@ class Environment:
 			rng_periodicity = None,
 			scene_switch_memory_pad = 2, 
 			other_data_memory_length = 1,
-			termination_condition = lambda env : True
+			termination_condition = lambda env : False
 		):
 		#TODO: SCREEN_DIMS does nothing right now
 		self.term_condition = termination_condition
@@ -459,7 +465,7 @@ class Environment:
 				self.tc.load_config(self.config)
 				self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
 				print('about to hit run')
-				msg = 'tdw_client_init'
+				msg = {'msg' : {}}
 				self.sock = self.tc.run()
 				print('run done')
 			else:
@@ -484,6 +490,7 @@ class Environment:
 		observation = self._observe_world()
 		print('heard back from unity!')
 		self._pad_memory()
+		msg['msg']['action_type'] = 'SCENE_INIT'
 		observation, msg, action, action_post, other_dat  = self._memory_postprocess(observation, msg, None, None)
 		return observation, msg
 
@@ -532,7 +539,7 @@ class Environment:
 		else:
 			self.sock.send_json(msg['msg'])
 		observation = self._observe_world()
-		mem = self.self._memory_postprocess(observation, msg, action, action_post, other_data = other_data)
+		mem = self._memory_postprocess(observation, msg, action, action_post, other_data = other_data)
 		term_signal = self.term_condition(self)
 		return mem, term_signal
 

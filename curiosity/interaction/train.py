@@ -203,7 +203,6 @@ def save_data_without_training(
 	print('About to save ' + str(n_batches) + ' batches')
 
 	for i in tqdm.trange(n_batches):
-		print(i)
 		updater.update()
 
 	updater.close()

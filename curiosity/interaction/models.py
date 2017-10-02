@@ -949,8 +949,10 @@ class MoreInfoActionWorldModel(object):
 					print('Images ' + str([t + s + i + t_back for i in state_steps]))
 					states_collected[t+s] = tf_concat([self.states[:, t + s + i + t_back] for i in state_steps], axis = 3)
 		#a handle for uncertainty modeling. should probably do this in a more general way. might be broken as-is!
-		self.s_i = self.states[:, 1:3]
-
+		um_begin_idx, um_end_idx = cfg.get('um_state_idxs', (1, 3))
+		um_act_idx = cfg.get('um_act_idx', 2)
+		self.s_i = self.states[:, um_begin_idx:um_end_idx]
+		self.action_for_um = self.action[:, um_act_idx]
 
 		#good job. now encode each state
 		reuse_weights = False
@@ -1303,7 +1305,6 @@ class SimpleForceUncertaintyModel:
 
 	def act(self, sess, action_sample, state):
 		chosen_idx = self.rng.randint(len(action_sample))
-		print('random act!')
 		return action_sample[chosen_idx], -1., None
 
 class MSExpectedUncertaintyModel:
@@ -1317,7 +1318,7 @@ class MSExpectedUncertaintyModel:
 			print(n_timesteps) 
 			t_per_state = self.s_i.get_shape().as_list()[1]
 			#the action it decides on is the first action giving a transition from the starting state.
-			self.action_sample = ac = world_model.action[:, t_per_state - 1]
+			self.action_sample = ac = world_model.action_for_um
 			#should also really include some past actions
 			#encoding
 			x = postprocess_depths(x)
@@ -1355,11 +1356,17 @@ class MSExpectedUncertaintyModel:
 			self.var_list = [var for var in tf.global_variables() if 'uncertainty_model' in var.name]
 			
 			#a first stab at a policy based on this uncertainty estimation
-			tot_est = sum(self.estimated_world_loss)
-			tot_est_shape = tot_est.get_shape().as_list()
-			assert len(tot_est_shape) == 2
-			n_classes = tot_est_shape[1]
-			expected_tot_est = sum([tot_est[:, i:i+1] * float(i) for i in range(n_classes)])
+			if cfg.get('weird_old_score', False):
+				tot_est = sum(self.estimated_world_loss)
+				tot_est_shape = tot_est.get_shape().as_list()
+				assert len(tot_est_shape) == 2
+				n_classes = tot_est_shape[1]
+				expected_tot_est = sum([tot_est[:, i:i+1] * float(i) for i in range(n_classes)])
+			else:
+				probs_per_timestep = [tf.nn.softmax(logits) for logits in self.estimated_world_loss]
+				n_classes = probs_per_timestep[0].get_shape().as_list()[-1]
+				expected_class_per_timestep = [sum([probs[:, i:i+1] * float(i) for i in range(n_classes)]) for probs in probs_per_timestep]
+				expected_tot_est = sum(expected_class_per_timestep)
 			heat = cfg.get('heat', 1.)
 			x = tf.transpose(expected_tot_est) / heat
 			self.sample = categorical_sample(x, cfg['n_action_samples'], one_hot = False)
@@ -1368,13 +1375,13 @@ class MSExpectedUncertaintyModel:
 		#this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
 		depths_batch = np.array([state])
 		if self.just_random:
+			print('just random!')
 			ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
 			chosen_idx = self.rng.randint(len(action_sample))
 			return action_sample[chosen_idx], -1., ewl
 		chosen_idx, ewl = sess.run([self.sample, self.estimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
 		chosen_idx = chosen_idx[0]
 		act = action_sample[chosen_idx]
-		print(chosen_idx)
 		return act, -1., ewl
 
 class UncertaintyModel:
@@ -1448,14 +1455,12 @@ class UncertaintyModel:
         if self.just_random and self.insert_obj_there:
             #a bit hackish, hopefully breaks nothing
             chosen_idx = self.rng.randint(len(action_sample))
-            print('random act!')
             return action_sample[chosen_idx], -1., None
         depths_batch = np.array([state])
         chosen_idx, entropy, estimated_world_loss = sess.run([self.sample, self.entropy, self.estimated_world_loss], 
 							feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
         chosen_idx = chosen_idx[0]
         if self.just_random:
-            print('random act!')
             chosen_idx = self.rng.randint(len(action_sample))
         return action_sample[chosen_idx], entropy, estimated_world_loss
 
