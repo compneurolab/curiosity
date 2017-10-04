@@ -1521,6 +1521,24 @@ def binned_softmax_loss_per_example(tv, prediction, cfg):
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
 
+def binned_softmax_loss_per_example_w_weights(tv, prediction, cfg):
+	thresholds = cfg['thresholds']
+	loss_weights = cfg['loss_weights']
+	print('using softmax loss with weights')
+	print(loss_weights)
+	n_classes = len(thresholds) + 1
+	tv_shape = tv.get_shape().as_list()
+	d = tv_shape[1]
+	assert len(tv_shape) == 2
+	tv = bin_values(tv, thresholds)
+	prediction = tf.reshape(prediction, [-1, d, n_classes])
+	loss_per_example_per_dim = [tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv[:, dim_num : dim_num + 1], logits = prediction[:, dim_num : dim_num + 1]) * cfg.get('loss_factor', 1.) * loss_weights[dim_num] for dim_num in range(d)]
+	loss_per_example = sum(loss_per_example_per_dim) / float(d)
+	loss = tf.reduce_mean(loss_per_example)
+	return loss_per_example, loss
+
+
+
 def binned_softmax_loss(tv, prediction, cfg):
 	thresholds = cfg['thresholds']
 	tv = bin_values(tv, thresholds)
