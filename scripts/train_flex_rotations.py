@@ -31,7 +31,7 @@ BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
 N_GPUS = 4
 DATA_BATCH_SIZE = 256
-MODEL_BATCH_SIZE = 50 #64
+MODEL_BATCH_SIZE = 32 #64
 TIME_SEEN = 3 #2
 SHORT_LEN = TIME_SEEN
 LONG_LEN = 3 #3
@@ -43,10 +43,10 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 L2_COEF = 200.
-EXP_ID = ['flexBott2ndR3T1', 
-'flexBott2ndR1T2',
-'flexBott2ndR3T2',
-'flexBott2ndR1T1',
+EXP_ID = ['flexBott2ndR3T1beta', 
+'flexBott2ndR1T2beta',
+'flexBott2ndR3T2beta',
+'flexBott2ndR1T1beta',
 ]
 #EXP_ID = ['res_jerk_eps', 'map_jerk_eps', 'sym_jerk_eps', 'bypass_jerk_eps']
 LRS = [0.0005, 0.0005, 0.0005, 0.0005]
@@ -70,7 +70,7 @@ CFG = [
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 4
+SEED = 14
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -186,7 +186,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'flex',
     'exp_id' : EXP_ID[0],
-    'do_restore': False,
+    'do_restore': True,
     'load_query': None
 }] * N_GPUS
 

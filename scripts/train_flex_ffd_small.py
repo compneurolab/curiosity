@@ -14,7 +14,7 @@ from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvide
 import curiosity.models.jerk_models as modelsource
 import copy
 
-CACHE_NUM = 3
+CACHE_NUM = 0
 LOCAL = False
 if LOCAL:
     DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
@@ -29,6 +29,8 @@ else:
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
 BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
 
+N_TRAIN_FILES = 1 #84
+N_VAL_FILES = 1 #12
 N_GPUS = 1
 DATA_BATCH_SIZE = 256
 MODEL_BATCH_SIZE = 64 #64
@@ -42,15 +44,13 @@ IMG_WIDTH = 170
 SCALE_DOWN_HEIGHT = 64
 SCALE_DOWN_WIDTH = 88
 EXP_ID = [#'flex2dBott_5', 
-'flexBottFFDkNN',
+'flexBottFFDsmall',
 #'flex2d_5', 
 #'flex_5',
 ]
-LRS = [0.001 / 2.0, 0.001, 0.001, 0.001]
+LRS = [0.001, 0.001, 0.001, 0.001]
 n_classes = 3
 min_particle_distance = 0.01
-preserve_distance_radius = 1000000
-alpha = 0.5
 DEPTH_DIM = 32
 CFG = [
         #modelsource.particle_2d_bottleneck_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
@@ -60,7 +60,7 @@ CFG = [
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 2
+SEED = 1
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -71,7 +71,7 @@ def table_norot_grab_func(path):
     rng.shuffle(all_filenames)
     print('got to file grabber!')
     return [os.path.join(path, fn) for fn in all_filenames \
-            if fn.endswith('.tfrecords')] 
+            if fn.endswith('0:0:3.tfrecords')]
             #and fn.startswith('2:')] \
             #and 'FAST_LIFT' in fn]
 
@@ -99,7 +99,7 @@ def just_keep_everything(val_res):
     return dict((k, [d[k] for d in val_res]) for k in keys)
 
 
-SAVE_TO_GFS = ['velocity_loss', 'preserve_distance_loss']
+SAVE_TO_GFS = []
            #[ 'next_vel_loss', 'next_state_loss', 'pos_loss',
            #     'mass_loss', 'vel_loss', 'mask_loss']
            #     'force_torque_loss',
@@ -118,8 +118,7 @@ def grab_all(inputs, outputs, bin_file = BIN_FILE,
     retval = {}
     batch_size = outputs['pred_velocity'].get_shape().as_list()[0]
     retval['loss'] = modelsource.flex_l2_particle_loss( 
-            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance,
-            preserve_distance_radius=preserve_distance_radius, alpha=alpha)
+            outputs, gpu_id=gpu_id, min_particle_distance=min_particle_distance)
     for k in SAVE_TO_GFS:
         if k == 'num_to_save':
             if k in ['pred_vel_1', 'pred_next_vel_1', 'pred_next_img_1',
@@ -163,10 +162,10 @@ save_params = [{
     'dbname' : 'future_prediction',
     'collname' : 'flex',
     'exp_id' : EXP_ID[0],
-    'save_valid_freq' : np.round(256 * 84 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
-    'save_filters_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE * 10).astype(np.int32),
-    'cache_filters_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
-    'save_metrics_freq': np.round(256 * 84 * 4 / MODEL_BATCH_SIZE / 10).astype(np.int32),
+    'save_valid_freq' : np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 100).astype(np.int32),
+    'save_filters_freq': np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 1000).astype(np.int32),
+    'cache_filters_freq': np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 100).astype(np.int32),
+    'save_metrics_freq': np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 10).astype(np.int32),
     'save_initial_filters' : False,
     'cache_dir' : CACHE_DIR,
     'save_to_gfs' : SAVE_TO_GFS
@@ -178,7 +177,7 @@ load_params = [{
     'dbname' : 'future_prediction',
     'collname': 'flex',
     'exp_id' : EXP_ID[0],
-    'do_restore': True,
+    'do_restore': False,
     'load_query': None
 }] * N_GPUS
 
@@ -200,8 +199,7 @@ loss_params = [{
     'agg_func' : modelsource.parallel_reduce_mean,
     'loss_per_case_func' : modelsource.flex_l2_particle_loss,
     'loss_per_case_func_params' : {'_outputs': 'outputs', '_targets_$all': 'inputs'},
-    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance,
-        'preserve_distance_radius': preserve_distance_radius, 'alpha': alpha}, 
+    'loss_func_kwargs' : {'gpu_id': 0, 'min_particle_distance': min_particle_distance}, 
     #{'l2_coef' : L2_COEF}
 }] * N_GPUS
 
@@ -227,7 +225,7 @@ validation_params = [{
     'valid0' : {
         'data_params' : {
             'func' : ShortLongSequenceDataProvider,
-            'data_path' : VALDATA_PATH,
+            'data_path' : DATA_PATH,
             'short_sources' : [], #'depths2', 'normals2', 'images'
             'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
@@ -261,7 +259,7 @@ validation_params = [{
         # 'agg_func' : lambda val_res : mean_losses_subselect_rest(val_res, 1),
         'agg_func' : just_keep_everything,
         'online_agg_func' : append_it,
-        'num_steps' : np.round(256.0 * 12 * 4 / MODEL_BATCH_SIZE).astype(np.int32),
+        'num_steps' : np.round(256.0 * N_VAL_FILES * 4 / MODEL_BATCH_SIZE).astype(np.int32),
     },
 }] * N_GPUS
 

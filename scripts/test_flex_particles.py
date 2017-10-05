@@ -16,7 +16,7 @@ import copy
 from tqdm import trange
 import cPickle
 
-USE_GROUND_TRUTH_FOR_VALIDATION = True
+USE_GROUND_TRUTH_FOR_VALIDATION = False
 CACHE_NUM = 2
 LOCAL = False
 if LOCAL:
@@ -65,7 +65,7 @@ CFG = [
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
 CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
-SEED = 3
+SEED = 4
 
 if not os.path.exists(CACHE_DIR):
     os.mkdir(CACHE_DIR)
@@ -203,7 +203,7 @@ validation_params = [{
             'long_sources' : ['actions', #'depths', 'objects', 
                     'object_data', 'reference_ids', 'max_coordinates', \
                     'min_coordinates', 'full_particles', 'sparse_shape_32', 
-                    'is_moving', 'is_object_in_view'],
+                    'is_moving', 'is_object_in_view', 'kNN'],
             'short_len' : SHORT_LEN,
             'long_len' : LONG_LEN,
             'min_len' : MIN_LEN,
@@ -245,7 +245,7 @@ train_params =  {
         'short_sources' : [], #'depths2', 'normals2', 'images' 
         'long_sources' : ['actions', #'depths', 'objects', 
                 'object_data', 'reference_ids', 'max_coordinates', 'min_coordinates', \
-                'full_particles', 'sparse_shape_32'],
+                'full_particles', 'sparse_shape_32', 'kNN'],
         'short_len' : SHORT_LEN,
         'long_len' : LONG_LEN,
         'min_len' : MIN_LEN,
@@ -631,7 +631,7 @@ if __name__ == '__main__':
         true_particles = [] 
         max_coordinates = []
         min_coordinates = []
-        for frame in range(17, 24): #16, 24, #trange(r[0], r[1]): #trange
+        for frame in range(18, 25): #16, 24, #trange(r[0], r[1]): #trange
             if init:
                 grid = grids[frame]
                 particle = particles[frame].copy()
