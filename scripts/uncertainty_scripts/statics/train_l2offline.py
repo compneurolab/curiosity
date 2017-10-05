@@ -10,7 +10,7 @@ sys.path.append('curiosity')
 sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment, data, cfg_generation, update_step
+from curiosity.interaction import train, environment, static_data, cfg_generation, update_step
 import curiosity.interaction.models as models
 from tfutils import base, optimizer
 import numpy as np
@@ -47,10 +47,11 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
+parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'wfix'
+EXP_ID_PREFIX = 'l2off'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -75,7 +76,7 @@ args = vars(parser.parse_args())
 
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
-um_thresholds = [args['uncertaintythreshold']]
+um_thresholds = [.05, .3, .6]
 n_classes_um = len(um_thresholds) + 1
 
 
@@ -131,37 +132,37 @@ wm_mlp_before_concat_choices = [
 
 wm_mlp_choices = [
         {
-                'num_features' : [256, ACTION_DIM * n_classes_wm],
+                'num_features' : [256, ACTION_DIM],
                 'nonlinearities' : ['relu', 'identity'],
                 'dropout' : [None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
+                'num_features' : [50, 50, ACTION_DIM],
                 'nonlinearities' : ['relu', 'relu', 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
+                'num_features' : [50, 50, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [100, 100, 100, ACTION_DIM * n_classes_wm],
+                'num_features' : [100, 100, 100, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         },
 
         {
-                'num_features' : [500, 500, ACTION_DIM * n_classes_wm],
+                'num_features' : [500, 500, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [1000, 1000, 500, ACTION_DIM * n_classes_wm],
+                'num_features' : [1000, 1000, 500, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         }
@@ -184,9 +185,7 @@ wm_cfg = {
         'act_dim' : ACTION_DIM,
         'encode' : cfg_generation.generate_conv_architecture_cfg(**wm_encoding_choice),
         'action_model' : {
-                'loss_func' : models.binned_softmax_loss_per_example_w_weights,
-                'thresholds': act_thresholds,
-		'loss_weights' : [0., 0., 1., 1., 1.],
+                'loss_func' : models.l2_loss_per_example,
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
         }
@@ -297,8 +296,7 @@ um_cfg = {
 	'thresholds' : um_thresholds,
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
-	'heat' : args['heat'],
-	'just_random' : 1
+	'heat' : args['heat']
 }
 
 model_cfg = {
@@ -433,45 +431,28 @@ data_lengths = {
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
 
+def get_static_data_provider(data_params, model_params, action_model):
+        data_params_copy = copy.copy(data_params)
+        data_params_copy.pop('func')
+        return static_data.OfflineDataProvider(**data_params_copy)
 
+
+
+num_there_per_batch = args['objperbatch']
+assert num_there_per_batch <= 32 and num_there_per_batch >= 0
 
 dp_config = {
-                'func' : train.get_batching_data_provider,
-                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
-                'environment_params' : {
-                        'random_seed' : 1,
-                        'unity_seed' : 1,
-                        'room_dims' : room_dims,
-                        'state_memory_len' : {
-                                        'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS
-                                },
-                        'action_memory_len' : history_len + a_back + a_forward + NUM_TIMESTEPS,
-                        'message_memory_len' : history_len +  a_back + a_forward + NUM_TIMESTEPS,
-                        'other_data_memory_length' : 32,
-                        'rescale_dict' : {
-                                        'depths1' : IMAGE_SCALE
-                                },
-                        'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS,
-                        'rng_periodicity' : 1,
-                        'termination_condition' : environment.obj_not_present_termination_condition
-                },
-
-                'provider_params' : {
-                        'batching_fn' : lambda hist : data.uniform_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size,
-                                        get_object_there_binary = False, data_lengths = data_lengths, which_matters_for_freq = -2),
-                        'capacity' : 5,
-                        'gather_per_batch' : batch_size / 4,
-                        'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
-                },
-
-                'scene_list' : [one_obj_scene_info],
-                'scene_lengths' : [1024 * 32],
-                'do_torque' : False,
-		'use_absolute_coordinates' : False
-
-
-
+                'func' : get_static_data_provider,
+                'batch_size' : args['batchsize'],
+                'batcher_constructor' : static_data.ObjectThereBatcher,
+                'data_lengths' : data_lengths,
+                'capacity' : 5,
+                'metadata_filename' : OBJTHERE_METADATA_LOC,
+                'batcher_kwargs' : {
+                        'seed' : 0,
+                        'num_there_per_batch' : num_there_per_batch,
+                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
+                }
         }
 
 

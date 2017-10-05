@@ -50,7 +50,7 @@ parser.add_argument('--modelseed', default = 0, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'wfix'
+EXP_ID_PREFIX = 'l2rep'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -75,7 +75,7 @@ args = vars(parser.parse_args())
 
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
-um_thresholds = [args['uncertaintythreshold']]
+um_thresholds = [.05, .3, .6]
 n_classes_um = len(um_thresholds) + 1
 
 
@@ -131,37 +131,37 @@ wm_mlp_before_concat_choices = [
 
 wm_mlp_choices = [
         {
-                'num_features' : [256, ACTION_DIM * n_classes_wm],
+                'num_features' : [256, ACTION_DIM],
                 'nonlinearities' : ['relu', 'identity'],
                 'dropout' : [None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
+                'num_features' : [50, 50, ACTION_DIM],
                 'nonlinearities' : ['relu', 'relu', 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
+                'num_features' : [50, 50, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [100, 100, 100, ACTION_DIM * n_classes_wm],
+                'num_features' : [100, 100, 100, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         },
 
         {
-                'num_features' : [500, 500, ACTION_DIM * n_classes_wm],
+                'num_features' : [500, 500, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [1000, 1000, 500, ACTION_DIM * n_classes_wm],
+                'num_features' : [1000, 1000, 500, ACTION_DIM],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         }
@@ -184,9 +184,7 @@ wm_cfg = {
         'act_dim' : ACTION_DIM,
         'encode' : cfg_generation.generate_conv_architecture_cfg(**wm_encoding_choice),
         'action_model' : {
-                'loss_func' : models.binned_softmax_loss_per_example_w_weights,
-                'thresholds': act_thresholds,
-		'loss_weights' : [0., 0., 1., 1., 1.],
+                'loss_func' : models.l2_loss_per_example,
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
         }
@@ -297,8 +295,7 @@ um_cfg = {
 	'thresholds' : um_thresholds,
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
-	'heat' : args['heat'],
-	'just_random' : 1
+	'heat' : args['heat']
 }
 
 model_cfg = {

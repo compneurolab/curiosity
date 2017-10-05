@@ -50,7 +50,7 @@ parser.add_argument('--modelseed', default = 0, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'wfix'
+EXP_ID_PREFIX = 'gfi'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -184,9 +184,8 @@ wm_cfg = {
         'act_dim' : ACTION_DIM,
         'encode' : cfg_generation.generate_conv_architecture_cfg(**wm_encoding_choice),
         'action_model' : {
-                'loss_func' : models.binned_softmax_loss_per_example_w_weights,
+                'loss_func' : models.binned_softmax_loss_per_example,
                 'thresholds': act_thresholds,
-		'loss_weights' : [0., 0., 1., 1., 1.],
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
         }
@@ -297,8 +296,7 @@ um_cfg = {
 	'thresholds' : um_thresholds,
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
-	'heat' : args['heat'],
-	'just_random' : 1
+	'heat' : args['heat']
 }
 
 model_cfg = {
@@ -476,7 +474,7 @@ dp_config = {
 
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT, load_and_save_same = True)
 
 postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor

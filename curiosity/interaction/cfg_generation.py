@@ -209,7 +209,7 @@ def generate_batching_data_provider(force_scaling = 80.,
 
 
 
-def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False, portnum = 15841):
+def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc = 'depths1', load_and_save_elsewhere = False, load_and_save_same = False, portnum = 15841):
         if location == 'freud':
                 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
         elif location == 'cluster':
@@ -226,7 +226,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
 	while exp_id is None:
 		proposed = raw_input('Please enter expid: ')
 		proposed = proposed if prefix is None else prefix + '_' + proposed
-		if proposed not in expids_used:
+		if proposed not in expids_used or (load_and_save_same and proposed in expids_used):
 			expids_used.append(proposed)
 			exp_id = proposed
 	if load_and_save_elsewhere:
