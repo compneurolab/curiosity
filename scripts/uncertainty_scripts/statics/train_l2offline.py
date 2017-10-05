@@ -16,6 +16,7 @@ from tfutils import base, optimizer
 import numpy as np
 import os
 import argparse
+import copy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-g', '--gpu', default = '0', type = str)

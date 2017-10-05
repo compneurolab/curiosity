@@ -137,11 +137,6 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
 
 		
 
-def noreplacement_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False, allow_repeats = False, which_matters_for_freq = -1):
-	
-
-
-
 def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False, allow_repeats = False, which_matters_for_freq = -1):
 	chosen = []
 	#counts from the end
