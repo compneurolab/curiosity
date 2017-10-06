@@ -273,7 +273,9 @@ def train_from_params(
             save_valid_freq = validate_params['save_valid_freq']
             validation_data_provider.start_runner(sess)
 
-	train(sess, updater, dbinterface, validater, valid_steps, save_valid_freq)
+	    train(sess, updater, dbinterface, validater, valid_steps, save_valid_freq)
+        else:
+            train(sess, updater, dbinterface)
 
 
 
