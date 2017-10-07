@@ -4,13 +4,13 @@ Random actions, after index mismatch bug.
 
 
 
-
+import copy
 import sys
 sys.path.append('curiosity')
 sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment, data, cfg_generation, update_step
+from curiosity.interaction import train, environment, static_data, data, cfg_generation, update_step
 import curiosity.interaction.models as models
 from tfutils import base, optimizer
 import numpy as np
@@ -47,7 +47,7 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
-
+parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'l2rep'
@@ -56,11 +56,22 @@ IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
-RENDER1_HOST_ADDRESS = '10.102.2.161'
+try:
+    USER = os.environ['CURIOSITY_USER']
+except KeyError:
+    USER = 'nick'
+if USER == 'nick':
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.149' #'10.102.2.161'
+SELECTED_BUILD = 'three_world_locked_rot.x86'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-
+if USER == 'nick':
+    OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_rel200.pkl'
+else:
+    OBJTHERE_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -68,10 +79,22 @@ a_back = - min(ACTIONS_GIVEN)
 a_forward = max(ACTIONS_GIVEN)
 
 
+def get_static_data_provider(data_params, model_params, action_model):
+        data_params_copy = copy.copy(data_params)
+        data_params_copy.pop('func')
+        return static_data.OfflineDataProvider(**data_params_copy)
 
-
+data_lengths = {
+    'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
+    'action' : a_back + a_forward + NUM_TIMESTEPS,
+    'action_post' : a_back + a_forward + NUM_TIMESTEPS
+    }
 
 args = vars(parser.parse_args())
+
+num_there_per_batch = args['objperbatch']
+assert num_there_per_batch <= 32 and num_there_per_batch >= 0
+
 
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
@@ -383,12 +406,45 @@ elif args['optimizer'] == 'momentum':
 
         }
 
-validate_params = {
+validate_params = {'valid0': 
+    {
         'func' : update_step.ActionUncertaintyValidator,
         'kwargs' : {},
-        'num_steps' : args['numsteps'],
-        'save_valid_freq': 10000,
+        'num_steps' : 50, #args['num_steps'],
+        'data_params': {
+                'func' : get_static_data_provider,
+                'batch_size' : args['batchsize'],
+                'batcher_constructor' : static_data.ObjectThereBatcher,
+                'data_lengths' : data_lengths,
+                'capacity' : 5,
+                'metadata_filename' : OBJTHERE_METADATA_LOC,
+                'batcher_kwargs' : {
+                        'seed' : 0,
+                        'num_there_per_batch' : num_there_per_batch,
+                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
+                }
         }
+    },
+    'valid1': {
+        'func' : update_step.ActionUncertaintyValidator,
+        'kwargs' : {},
+        'num_steps' : 10, #args['num_steps'],
+        'data_params': {
+                'func' : get_static_data_provider,
+                'batch_size' : args['batchsize'],
+                'batcher_constructor' : static_data.ObjectThereBatcher,
+                'data_lengths' : data_lengths,
+                'capacity' : 5,
+                'metadata_filename' : OBJTHERE_METADATA_LOC,
+                'batcher_kwargs' : {
+                        'seed' : 0,
+                        'num_there_per_batch' : num_there_per_batch,
+                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
+                }
+        }
+    }
+
+}
 
 train_params = {
 	'updater_func' : update_step.ActionUncertaintyUpdater,
@@ -430,25 +486,6 @@ history_len = args['historylen']
 batch_size = args['batchsize']
 
 
-data_lengths = {
-                        'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
-                        'action' : a_back + a_forward + NUM_TIMESTEPS,
-                        'action_post' : a_back + a_forward + NUM_TIMESTEPS}
-
-validation_dp_config = {
-                'func' : get_static_data_provider,
-                'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereBatcher,
-                'data_lengths' : data_lengths,
-                'capacity' : 5,
-                'metadata_filename' : OBJTHERE_METADATA_LOC,
-                'batcher_kwargs' : {
-                        'seed' : 0,
-                        'num_there_per_batch' : num_there_per_batch,
-                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
-                }
-        }
-
 dp_config = {
                 'func' : train.get_batching_data_provider,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
@@ -467,6 +504,7 @@ dp_config = {
                                 },
                         'USE_TDW' : True,
                         'host_address' : RENDER1_HOST_ADDRESS,
+                        'selected_build' : SELECTED_BUILD,
                         'rng_periodicity' : 1,
                         'termination_condition' : environment.obj_not_present_termination_condition
                 },
@@ -490,7 +528,8 @@ dp_config = {
 
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'damian', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.DAMIAN_PORT) 
+#cfg_generation.NODE_5_PORT
 
 postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
@@ -506,13 +545,12 @@ params = {
 	'optimizer_params' : optimizer_params,
 	'learning_rate_params' : lr_params,
 	'train_params' : train_params,
-	'validation_data_params' : validation_dp_config,
 	'validate_params' : validate_params,
 }
 
 params.update(load_and_save_params)
 
-
+params['save_params']['save_validation_freq'] = 5
 params['allow_growth'] = True
 
 

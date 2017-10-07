@@ -221,7 +221,6 @@ def train_from_params(
 		load_params = None,
 		data_params = None,
                 validate_params = None,
-                validation_data_params = None,
 		inter_op_parallelism_threads = 40,
 		allow_growth = False,
 		per_process_gpu_memory_fraction = None,
@@ -265,43 +264,50 @@ def train_from_params(
 	dbinterface.initialize()
 	data_provider.start_runner(sess)
 
-        if validate_params is not None and validation_data_params is not None:
-            validation_data_provider = validation_data_params['func'](
-                    validation_data_params, model_params, action_model)
-            validater = validate_params['func'](models, data_provider, ** validate_params['kwargs'])
-            valid_steps = validate_params['num_steps']
-            save_valid_freq = validate_params['save_valid_freq']
-            validation_data_provider.start_runner(sess)
+        validaters = {}
+        valid_steps = {}
+        if validate_params is not None:
+            for k in validate_params:
+                validation_data_provider = validate_params[k]['data_params']['func'](
+                    validate_params[k]['data_params'], model_params, action_model)
+                validaters[k] = validate_params[k]['func'](models, validation_data_provider, ** validate_params[k]['kwargs'])
+                valid_steps[k] = validate_params[k]['num_steps']
+                validation_data_provider.start_runner(sess)
 
-	    train(sess, updater, dbinterface, validater, valid_steps, save_valid_freq)
+	    train(sess, updater, dbinterface, validaters, valid_steps,\
+                    save_params['save_validation_freq'])
         else:
             train(sess, updater, dbinterface)
 
 
 
 
-def train(sess, updater, dbinterface, 
-        validater=None, valid_steps=None, save_valid_freq=None):
+def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_valid_freq=None):
 	#big_save_keys = what_to_save_params['big_save_keys']
 	#little_save_keys = what_to_save_params['little_save_keys']
 	#big_save_len = what_to_save_params['big_save_len']
 	#big_save_freq = what_to_save_params['big_save_freq']
 	#print('big save stuff: ' + str((big_save_len, big_save_freq)))
-	while True:
+
+        while True:
 		dbinterface.start_time_step = time.time()
-		train_res = updater.update(sess)
+		train_res, global_step = updater.update(sess)
 
                 if save_valid_freq is not None and \
-                        updater.global_step % save_valid_freq == 0:
+                        global_step % save_valid_freq == 0:
+                    assert validaters is not None, 'validaters is not defined'
                     assert valid_steps is not None, 'valid_steps is not defined'
-                    assert validater is not None, 'validater is not defined'
 
-                    valid_res = []
-                    for _step in tqdm.trange(valid_steps):
-                        valid_res.append(validater.run(sess))
-                    valid_res = {'valid': valid_res}
+                    valid_all = {}
+                    for k in validaters:
+                        valid_res = []
+                        for _step in tqdm.trange(valid_steps[k], desc=k):
+                            valid_res.append(validaters[k].run(sess))
+                        valid_all[k] =  valid_res
+                    valid_all = {'validation_results': valid_all}
                     dbinterface.save(train_res = train_res, 
-                            valid_res = valid_res, validation_only = False)
+                            valid_res = valid_all, validation_only = False)
+                    print('Validation data saved in database')
                 else:
 		    dbinterface.save(train_res = train_res, validation_only = False)
 
