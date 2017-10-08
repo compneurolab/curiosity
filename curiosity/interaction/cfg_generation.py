@@ -14,12 +14,18 @@ from curiosity.interaction import train, environment, data
 import tensorflow as tf
 import cPickle
 
-
+try:
+    USER = os.environ['CURIOSITY_USER']
+except KeyError:
+    USER = 'nick'
+if USER == 'nick':
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.149'
 NUM_BATCHES_PER_EPOCH = 1e8
-RENDER1_HOST_ADDRESS = '10.102.2.161'
 NODE_5_PORT = 15871
 NODE_3_PORT = 15841
-
+DAMIAN_PORT = 24444
 
 def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class = tf.train.AdamOptimizer):
 	'''
@@ -85,7 +91,7 @@ def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class =
 
 def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
 	image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
-	history_len = 1000, do_torque = True, get_object_there_binary = False):
+	history_len = 1000, do_torque = True, get_object_there_binary = False, render_host_ip=RENDER1_HOST_ADDRESS):
 	my_rng = np.random.RandomState(0)
 	act_dim = 8 if do_torque else 5
 	return {
@@ -105,7 +111,7 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
                                         'depths1' : image_scale
                                 },
                         'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS
+                        'host_address' : render_host_ip
                 },
 
                 'provider_params' : {
@@ -128,7 +134,7 @@ def generate_experience_replay_data_provider(force_scaling = 80., room_dims = (5
 
 def generate_object_there_experience_replay_provider(force_scaling = 80., room_dims = (5., 5.), batch_size = 32, state_time_length = 2,
         image_scale = (64,64), scene_info = environment.example_scene_info, scene_len = 1024 * 32,
-        history_len = 1000, do_torque = True, ratio = 1. / .17, num_gathered_per_batch = None, get_object_there_binary = False):
+        history_len = 1000, do_torque = True, ratio = 1. / .17, num_gathered_per_batch = None, get_object_there_binary = False, render_host_ip=RENDER1_HOST_ADDRESS):
         my_rng = np.random.RandomState(0)
 	act_dim = 8 if do_torque else 5
 	if num_gathered_per_batch is None:
@@ -150,7 +156,7 @@ def generate_object_there_experience_replay_provider(force_scaling = 80., room_d
                                         'depths1' : image_scale
                                 },
                         'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS
+                        'host_address' : render_host_ip
                 },
 
                 'provider_params' : {
@@ -174,7 +180,8 @@ def generate_batching_data_provider(force_scaling = 80.,
 					image_scale = (64, 64), 
 					scene_info = environment.example_scene_info, 
 					scene_len = 1024 * 32, 
-					do_torque = True):
+					do_torque = True,
+                                        render_host_ip=RENDER1_HOST_ADDRESS):
 	act_dim = 8 if do_torque else 5
 	return {
 		'func' : train.get_batching_data_provider,
@@ -192,7 +199,7 @@ def generate_batching_data_provider(force_scaling = 80.,
 					'depths1' : image_scale
 				},
 			'USE_TDW' : True,
-			'host_address' : RENDER1_HOST_ADDRESS
+			'host_address' : render_host_ip,
 		},
 		
 		'provider_params' : { 
@@ -214,6 +221,8 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
                 CACHE_ID_PREFIX = '/media/data4/nhaber/cache'
         elif location == 'cluster':
                 CACHE_ID_PREFIX = '/mnt/fs0/nhaber/cache'
+        elif location == 'damian':
+                CACHE_ID_PREFIX = '/data/mrowca/cache'
         else:
                 raise Exception('Where are we, again?')
 	exps_there_fn = os.path.join(CACHE_ID_PREFIX, 'exps_used.pkl')

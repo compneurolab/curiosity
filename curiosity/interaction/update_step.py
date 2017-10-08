@@ -419,9 +419,11 @@ class ActionUncertaintyUpdater:
                         self.wm.action : batch['action'],
                         self.wm.action_post : batch['action_post']
                 }
+                self.targets['global_step'] = self.global_step
                 res = sess.run(self.targets, feed_dict = feed_dict)
+                glstep = res['global_step']
                 res = self.postprocessor.postprocess(res, batch)
-                return res
+                return res, glstep
 
 
 

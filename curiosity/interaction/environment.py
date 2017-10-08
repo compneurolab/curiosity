@@ -317,6 +317,7 @@ class Environment:
 			rng_periodicity = None,
 			scene_switch_memory_pad = 2, 
 			other_data_memory_length = 1,
+                        selected_build = SELECTED_BUILD,
 			termination_condition = lambda env : False
 		):
 		#TODO: SCREEN_DIMS does nothing right now
@@ -355,7 +356,7 @@ class Environment:
 			self.tc = TDW_Client(self.host_address,
                         initial_command='request_create_environment',
                         description="test script",
-                        selected_build=SELECTED_BUILD,  # or skip to select from UI
+                        selected_build=selected_build,  # or skip to select from UI
                         #queue_port_num="23402",
                         get_obj_data=True,
                         send_scene_info=True,
