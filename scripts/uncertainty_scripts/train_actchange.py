@@ -10,13 +10,12 @@ sys.path.append('curiosity')
 sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment, static_data, cfg_generation, update_step
+from curiosity.interaction import train, environment, data, cfg_generation, update_step
 import curiosity.interaction.models as models
 from tfutils import base, optimizer
 import numpy as np
 import os
 import argparse
-import copy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-g', '--gpu', default = '0', type = str)
@@ -48,12 +47,11 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
-parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
-parser.add_argument('-ds', '--dataseed', default = 0, type = int)
+parser.add_argument('--gather', default = 32, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'l2off'
+EXP_ID_PREFIX = 'ac1'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -63,7 +61,6 @@ RENDER1_HOST_ADDRESS = '10.102.2.161'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_ts3_objthere_rel200.pkl'
 
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
@@ -191,7 +188,8 @@ wm_cfg = {
                 'loss_func' : models.l2_loss_per_example,
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
-        }
+        },
+        'norepeat' : True
 }
 
 
@@ -434,28 +432,45 @@ data_lengths = {
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
 
-def get_static_data_provider(data_params, model_params, action_model):
-        data_params_copy = copy.copy(data_params)
-        data_params_copy.pop('func')
-        return static_data.OfflineDataProvider(**data_params_copy)
 
-
-
-num_there_per_batch = args['objperbatch']
-assert num_there_per_batch <= 32 and num_there_per_batch >= 0
 
 dp_config = {
-                'func' : get_static_data_provider,
-                'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereBatcher,
-                'data_lengths' : data_lengths,
-                'capacity' : 5,
-                'metadata_filename' : OBJTHERE_METADATA_LOC,
-                'batcher_kwargs' : {
-                        'seed' : args['dataseed'],
-                        'num_there_per_batch' : num_there_per_batch,
-                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
-                }
+                'func' : train.get_batching_data_provider,
+                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
+                'environment_params' : {
+                        'random_seed' : 1,
+                        'unity_seed' : 1,
+                        'room_dims' : room_dims,
+                        'state_memory_len' : {
+                                        'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS
+                                },
+                        'action_memory_len' : history_len + a_back + a_forward + NUM_TIMESTEPS,
+                        'message_memory_len' : history_len +  a_back + a_forward + NUM_TIMESTEPS,
+                        'other_data_memory_length' : 32,
+                        'rescale_dict' : {
+                                        'depths1' : IMAGE_SCALE
+                                },
+                        'USE_TDW' : True,
+                        'host_address' : RENDER1_HOST_ADDRESS,
+                        'rng_periodicity' : 1,
+                        'termination_condition' : environment.obj_not_present_termination_condition
+                },
+
+                'provider_params' : {
+                        'batching_fn' : lambda hist : data.uniform_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size,
+                                        get_object_there_binary = False, data_lengths = data_lengths, which_matters_for_freq = -2),
+                        'capacity' : 5,
+                        'gather_per_batch' : args['gather'],
+                        'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
+                },
+
+                'scene_list' : [one_obj_scene_info],
+                'scene_lengths' : [1024 * 32],
+                'do_torque' : False,
+		'use_absolute_coordinates' : False
+
+
+
         }
 
 

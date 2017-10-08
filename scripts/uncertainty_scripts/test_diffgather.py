@@ -48,12 +48,12 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
+parser.add_argument('--numsteps', default = 20, type = int)
 parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
-parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'l2off'
+EXP_ID_PREFIX = 'gthr'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -63,7 +63,7 @@ RENDER1_HOST_ADDRESS = '10.102.2.161'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_ts3_objthere_rel200.pkl'
+OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_rel200.pkl'
 
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
@@ -411,6 +411,9 @@ model_params = {
 
 
 
+
+
+
 one_obj_scene_info = [
         {
         'type' : 'SHAPENET',
@@ -422,17 +425,12 @@ one_obj_scene_info = [
         ]
 
 
-force_scaling = 200.
-room_dims = (5, 5)
-my_rng = np.random.RandomState(0)
-history_len = args['historylen']
-batch_size = args['batchsize']
-
-
 data_lengths = {
                         'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
+
+
 
 def get_static_data_provider(data_params, model_params, action_model):
         data_params_copy = copy.copy(data_params)
@@ -444,6 +442,7 @@ def get_static_data_provider(data_params, model_params, action_model):
 num_there_per_batch = args['objperbatch']
 assert num_there_per_batch <= 32 and num_there_per_batch >= 0
 
+
 dp_config = {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
@@ -452,7 +451,7 @@ dp_config = {
                 'capacity' : 5,
                 'metadata_filename' : OBJTHERE_METADATA_LOC,
                 'batcher_kwargs' : {
-                        'seed' : args['dataseed'],
+                        'seed' : 0,
                         'num_there_per_batch' : num_there_per_batch,
                         'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
                 }
@@ -460,7 +459,12 @@ dp_config = {
 
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', load_and_save_elsewhere = True, portnum = cfg_generation.NODE_5_PORT)
+
+
+load_and_save_params.pop('what_to_save_params')
+
+
 
 postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
@@ -469,19 +473,24 @@ postprocessor_params = {
 
 
 
-params = {
-	'model_params' : model_params,
-	'data_params' : dp_config,
-	'postprocessor_params' : postprocessor_params,
-	'optimizer_params' : optimizer_params,
-	'learning_rate_params' : lr_params,
-	'train_params' : train_params
+validate_params = {
+        'func' : update_step.ActionUncertaintyValidator,
+        'kwargs' : {},
+        'num_steps' : args['numsteps']
 }
+
+
+params = {
+        'model_params' : model_params,
+        'data_params' : dp_config,
+        'validate_params' : validate_params
+}
+
+
 
 params.update(load_and_save_params)
 
 
-params['allow_growth'] = True
 
 
 
@@ -491,7 +500,7 @@ params['allow_growth'] = True
 
 if __name__ == '__main__':
 	os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
-	train.train_from_params(**params)
+	train.test_from_params(**params)
 
 
 

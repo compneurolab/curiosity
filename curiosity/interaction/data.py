@@ -137,6 +137,72 @@ def obj_there_experience_replay(history, history_len, my_rng, batch_size = 32, r
 
 		
 
+class SimpleNoRepeatTracker:
+    def __init__(self, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, gathered_per_batch = 48):
+        assert gathered_per_batch > batch_size
+        self.gpb = gathered_per_batch
+        self.bs = batch_size
+        self.history_len = history_len
+        self.my_rng = my_rng
+        self.rhl = recent_history_length
+        self.data_lengths = data_lengths
+        self.replace_pos = None
+        self.data_lengths_max = max(max(data_lengths['obs']['depths1'], data_lengths['action']), data_lengths['action_post'])
+
+    def init_history(self, history):
+        self.my_img = dict((i, history['obs']['depths1'][i]) for i in range(self.history_len))
+        self.my_action = dict((i, history['action'][i]) for i in range(self.history_len))
+        self.my_action_post = dict((i, history['action_post'][i]) for i in range(self.history_len))
+        self.ok = dict((i, True) for i in range(self.history_len))
+        self.replace_pos = 0
+
+    def replace_oldest(self, history):
+        for i in range(0, self.gpb):
+            self.my_img[self.replace_pos] = history['obs']['depths1'][- self.gpb + i]
+            self.my_action[self.replace_pos] = history['action'][- self.gpb + i]
+            self.my_action_post[self.replace_pos] = history['action_post'][- self.gpb + i]
+            self.ok[self.replace_pos] = True
+            self.replace_pos = (self.replace_pos + 1) % self.history_len
+
+
+    def get_batch(self, history):
+        if self.replace_pos == None:
+            self.init_history(history)
+        else:
+            self.replace_oldest(history)
+        chosen = []
+        while len(chosen) < self.bs:
+            proposed_idx = self.my_rng.randint(self.replace_pos + self.data_lengths_max - 1, self.replace_pos + self.history_len - 1)
+            proposed_idx = proposed_idx % self.history_len
+            if self.my_img[proposed_idx] is not None and self.my_action[proposed_idx] is not None and self.my_action_post[proposed_idx] is not None and self.ok[proposed_idx] and proposed_idx not in chosen:
+                chosen.append(proposed_idx)
+                self.ok[proposed_idx] = False
+        batch_imgs = []
+        batch_actions = []
+        batch_actions_post = []
+        for idx in chosen:
+            imgs = [self.my_img[(idx + i) % self.history_len] for i in range(-self.data_lengths['obs']['depths1'] + 1, 1)]
+            actions = [self.my_action[(idx + i) % self.history_len] for i in range(-self.data_lengths['action'] + 1, 1)]
+            actions_post = [self.my_action_post[(idx + i) % self.history_len] for i in range(-self.data_lengths['action_post'] + 1, 1)]
+            imgs = replace_the_nones(imgs)
+            actions = replace_the_nones(actions)
+            actions_post = replace_the_nones(actions_post)
+            batch_imgs.append(imgs)
+            batch_actions.append(actions)
+            batch_actions_post.append(actions_post)
+        batch = {}
+        batch['depths1'] = np.array(batch_imgs)
+        batch['action'] = np.array(batch_actions)
+        batch['action_post'] = np.array(batch_actions_post)
+        batch['recent'] = {}
+        batch['recent']['depths1'] = np.array(replace_the_nones(history['obs']['depths1'][-self.rhl : ]))
+        batch['recent']['action'] = np.array(replace_the_nones(history['action'][-self.rhl : ]))
+        batch['recent']['action_post'] = np.array(replace_the_nones(history['action_post'][- self.rhl :]))
+        for desc in ['msg', 'other']:
+            batch['recent'][desc] = copy.copy(history[desc][-self.rhl : ])
+        return batch
+
+
 def uniform_experience_replay(history, history_len, my_rng, batch_size = 32, recent_history_length = 32, data_lengths = {'obs' : {'depths1' : 3}, 'action' : 2, 'action_post' : 2}, get_object_there_binary = False, allow_repeats = False, which_matters_for_freq = -1):
 	chosen = []
 	#counts from the end

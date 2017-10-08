@@ -986,7 +986,10 @@ class MoreInfoActionWorldModel(object):
 			self.act_loss_per_example.append(lpe)
 			self.act_pred.append(pred)
 			act_loss_list.append(loss)
-		self.act_loss = tf.reduce_mean(act_loss_list)
+                if cfg.get('norepeat', False):
+                    self.act_loss = act_loss_list[0]
+                else:
+		    self.act_loss = tf.reduce_mean(act_loss_list)
 		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
 		self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
 			
