@@ -417,7 +417,7 @@ train_params = {
                 'map_draw_mode' : 'specified_indices',
                 'map_draw_example_indices' : [0, batch_size - 1],
                 'map_draw_timestep_indices' : [1, 2],
-                'map_draw_freq' : 10
+                'map_draw_freq' : 100
 	},
         'post_init_transform' : mode_switching.post_init_reinit_uncertainty_model 
 }
@@ -477,7 +477,7 @@ load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'f
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
 load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
 load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
-load_and_save_params['save_params']['save_metrics_freq'] = 20
+load_and_save_params['save_params']['save_metrics_freq'] = 1000
 
 
 postprocessor_params = {

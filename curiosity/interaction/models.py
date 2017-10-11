@@ -920,7 +920,8 @@ class MoreInfoActionWorldModel(object):
 		t_back = - (min(state_steps) + min(states_given))
 		t_forward = max(state_steps) + max(states_given)
 		states_shape = [num_timesteps + t_back + t_forward] + image_shape
-		self.states = tf.placeholder(tf.float32, [None] + states_shape)
+		self.states = tf.placeholder(tf.uint8, [None] + states_shape)
+                states_cast = tf.cast(self.states, tf.float32)
 		acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
 		print(acts_shape)
 		self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
@@ -942,12 +943,14 @@ class MoreInfoActionWorldModel(object):
 				if t + s not in states_collected:
 					print('State ' + str(s))
 					print('Images ' + str([t + s + i + t_back for i in state_steps]))
-					states_collected[t+s] = tf_concat([self.states[:, t + s + i + t_back] for i in state_steps], axis = 3)
+					states_collected[t+s] = tf_concat([states_cast[:, t + s + i + t_back] for i in state_steps], axis = 3)
 		#a handle for uncertainty modeling. should probably do this in a more general way. might be broken as-is!
 		um_begin_idx, um_end_idx = cfg.get('um_state_idxs', (1, 3))
 		um_act_idx = cfg.get('um_act_idx', 2)
 		self.s_i = self.states[:, um_begin_idx:um_end_idx]
-		self.action_for_um = self.action[:, um_act_idx]
+		print('dtype inside wm')
+                print(self.s_i.dtype)
+                self.action_for_um = self.action[:, um_act_idx]
 
 		#good job. now encode each state
 		reuse_weights = False
@@ -1334,6 +1337,8 @@ class MSExpectedUncertaintyModel:
 		with tf.variable_scope('uncertainty_model'):
 			m = ConvNetwithBypasses()
 			self.s_i = x = world_model.s_i
+                        print('dtype beginning um')
+                        print(self.s_i.dtype)
 			self.true_loss = world_model.act_loss_per_example
 			n_timesteps = len(world_model.act_loss_per_example)
 			print('n timesteps!')
@@ -1343,6 +1348,7 @@ class MSExpectedUncertaintyModel:
 			self.action_sample = ac = world_model.action_for_um
 			#should also really include some past actions
 			#encoding
+                        x = tf.cast(x, tf.float32)
 			x = postprocess_depths(x)
 			x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
 			self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
@@ -1399,8 +1405,8 @@ class MSExpectedUncertaintyModel:
                         #only care about if object is there the first time
                         obj_there = tf.tile(world_model.object_there[0], [1, n_classes])
                         for t in range(n_timesteps):
-                            self.obj_there_avg_pred.append(tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
-                            self.obj_not_there_avg_pred.append(tf.reduce_sum((1. - obj_there) * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+                            self.obj_there_avg_pred.append(float(n_classes) * tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
+                            self.obj_not_there_avg_pred.append(float(n_classes) * tf.reduce_sum((1. - obj_there) * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
                         
                         
                         
@@ -1410,7 +1416,8 @@ class MSExpectedUncertaintyModel:
                         for j, l in enumerate(self.loss_per_step):
                             self.readouts['um_loss' + str(j)] = l
                         self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 's_i', 'um_action_given']
-
+                        print('dtype ending um')
+                        print(self.s_i.dtype)
 
 
 

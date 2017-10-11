@@ -410,9 +410,6 @@ class JustUncertaintyUpdater:
 
     def update(self, sess, visualize = False):
         batch = self.dp.dequeue_batch()
-        print('in update step')
-        print(batch['depths1'].dtype)
-        print(batch['depths1'].shape)
         feed_dict = {
                 self.wm.states : batch[self.state_desc],
                 self.wm.action : batch['action'],

@@ -403,8 +403,7 @@ def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_va
         while True:
 		dbinterface.start_time_step = time.time()
 		train_res, global_step = updater.update(sess)
-                print('global step')
-                print(global_step)
+              
 
                 if save_valid_freq is not None and \
                         global_step % save_valid_freq == 0:

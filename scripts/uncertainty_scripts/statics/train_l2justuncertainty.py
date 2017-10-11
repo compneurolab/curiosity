@@ -476,6 +476,7 @@ load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'f
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
 load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
 load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+load_and_save_params['save_params']['save_metrics_freq'] =1000
 
 
 postprocessor_params = {
