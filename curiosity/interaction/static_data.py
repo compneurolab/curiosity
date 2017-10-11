@@ -258,7 +258,8 @@ class OfflineDataProvider(threading.Thread):
 			data_lengths, 
 			capacity, 
 			metadata_filename,
-			batcher_kwargs = None):
+			batcher_kwargs = None
+                ):
 		threading.Thread.__init__(self)
 		with open(metadata_filename) as stream:
 			metadata = cPickle.load(stream)

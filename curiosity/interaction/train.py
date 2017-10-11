@@ -209,6 +209,98 @@ def save_data_without_training(
 
 
 
+def train_online_offline_from_params(
+            save_params,
+            load_params,
+            model_params,
+            data_params,
+            train_params,
+            learning_rate_params,
+            optimizer_params,
+            validate_params = {'online' : {}, 'offline' : {}},
+            gpu_params = {},
+        ):
+    #set up models, providers, updaters, session
+    model_cfg = model_params['cfg']
+    online_model_constructor = model_params['online_func']
+    online_model = offline_model_constructor(model_cfg)
+    action_model = models[model_params['action_model_desc']]
+    online_data_provider = data_params['online']['func'](data_params, model_params, action_model)
+    online_updater = train_params['online']['func'](online_model, online_data_provider, optimizer_params['online'], learning_rate_params['online'], **train_params['online']['updater_kwargs'])
+    offline_model_constructor = model_params['online_func']
+    offline_models = offline_model_constructor(model_cfg)
+    offline_data_provider = data_params['offline']['func'](data_params, model_params)
+    offline_updater = train_params['offline']['func'](offline_model, offline_data_provider, optimizer_params['offline'], learning_rate_params['offline'], **train_params['offline']['updater_kwargs'])
+    sess = get_session(gpu_params)
+
+    #set up database interfaces
+    params = {'save_params' : save_params, 'load_params' : load_params, 'model_params' : model_params, 'data_params' : data_params, 'train_params' : train_params,\
+            'learning_rate_params' : learning_rate_params, 'validate_params' : validate_params, 'gpu_params' : gpu_params}
+    online_dbi = base.DBInterface(sess = sess, global_step = online_updater.global_step, params = params, save_params = save_params['online'], load_params = load_params['online'])
+    offline_dbi = base.DBInterface(sess = sess, global_step = offline_updater.global_step, params = params, save_params = save_params['offline'], load_params = load_params['offline'])
+    online_dbi.initialize()
+
+    #set up validation
+    online_validaters = {}
+    online_valid_steps = {}
+    for k in validate_params['online']:
+        validation_data_provider = validate_params['online'][k]['data_params']['func'](
+                                            validate_params['online'][k]['data_params'], model_params, action_model)
+        online_validaters[k] = validate_params['online'][k]['func'](models, validation_data_provider, ** validate_params['online'][k]['kwargs'])
+        online_valid_steps[k] = validate_params['online'][k]['num_steps']
+    offline_validaters = {}
+    offline_valid_steps = {}
+    for k in validate_params['offline']:
+        validation_data_provider = validate_params['offline'][k]['data_params']['func'](
+                                                            validate_params['offline'][k]['data_params'], model_params, action_model)
+        offline_validaters[k] = validate_params['offline'][k]['func'](models, validation_data_provider, ** validate_params['offline'][k]['kwargs'])
+        offline_valid_steps[k] = validate_params['offline'][k]['num_steps']
+
+    offline_handoff = train_params['offline_handoff']
+    online_handoff = train_params['online_handoff']
+    offline_length = train_params['offline_length']
+    offline_freq = train_params['online_length']
+    online_valid_freq = save_params['online']['save_valid_freq']
+    offline_valid_freq = save_params['offline']['save_valid_freq']
+
+    train_online_offline(sess, online_updater, offline_updater, online_dbi, offline_dbi, online_validaters, offline_validaters, offline_handoff, online_handoff, online_valid_freq, offline_length, offline_freq, offline_valid_freq)
+    
+
+def train_online_offline(sess, online_updater, offline_updater, online_dbi, offline_dbi, online_validaters, offline_validaters, offline_handoff, online_handoff, online_valid_freq, 
+        offline_length, offline_freq, offline_valid_freq):
+    online_updater.db.start_runner()
+    while True:
+        online_dbi.start_time_step = time.time()
+        train_res, global_step = online_updater.update(sess)
+        
+        #if online_valid_freq is not None and global_step % online_valid_freq == 0:
+            #TODO write valid stuff here
+        online_dbi.save(train_res = train_res, validate_only = False)
+        online_dbi.sync_with_host()
+
+        if global_step % offline_freq == 0:
+            offline_updater, offline_dbi, offline_validater = offline_handoff(online_updater, offline_updater, online_dbi, offline_dbi, offline_validater)
+            offline_step = -1
+            while offline_step < offline_length:
+                offline_train_res, offline_step = offline_updater.step()
+                
+                #valid stuff
+
+                offline_dbi.save(train_res = train_res, validate_only = False)
+                offline_dbi.sync_with_host()
+            online_updater, online_dbi, online_validater = online_handoff(online_updater, offline_updater, online_dbi, offline_dbi, online_validater)
+
+
+def manage_saving(save_params, what_to_save_params, model):
+    '''A helper to make sure all readouts are saved somewhere.
+
+    Should systemetize this better.'''
+    big_save_from_models = model['world_model'].save_to_gfs + model['uncertainty_model'].save_to_gfs
+    all_readouts = model['world_model'].readouts.keys() + model['uncertainty_model'].readouts.keys()
+    small_save_from_models = [k for k in all_readouts if k not in big_save_from_models]
+    what_to_save_params['little_save_keys'].extend(small_save_from_models)
+    what_to_save_params['big_save_keys'].extend(big_save_from_models + small_save_from_models)
+    save_params['save_to_gfs'].extend(big_save_from_models)
 
 def train_from_params(
 		save_params,
@@ -230,10 +322,13 @@ def train_from_params(
 	models_constructor = model_params['func']
 	models = models_constructor(model_cfg)
 
-	action_model = models[model_params['action_model_desc']]
+        action_model = models[model_params['action_model_desc']]
+
 
 	data_provider = data_params['func'](data_params, model_params, action_model)
-        
+        manage_saving(save_params, what_to_save_params, models)
+
+
 	if postprocessor_params is None:
 		postprocessor = get_default_postprocessor(what_to_save_params)
 	else:
@@ -259,9 +354,13 @@ def train_from_params(
 		print('limiting mem fraction')
 		config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
 	sess = tf.Session(config = config)
-	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
+       
+        dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
 	dbinterface.initialize()
+        post_init_transform = train_params.get('post_init_transform')
+        if post_init_transform:
+            updater = post_init_transform(sess, updater)
 	data_provider.start_runner(sess)
 
         validaters = {}
@@ -275,9 +374,21 @@ def train_from_params(
                 validation_data_provider.start_runner(sess)
 
 	    train(sess, updater, dbinterface, validaters, valid_steps,\
-                    save_params['save_validation_freq'])
+                    save_params['save_valid_freq'])
         else:
             train(sess, updater, dbinterface)
+
+
+
+def list_dict_swapper(list_of_dicts):
+    '''Assumes we have been handed a list of dicts, each of which have the same keys.
+
+    gives you back one dict of lists.'''
+    my_keys = list_of_dicts[0].keys()
+    print('in swapper')
+    print(len(list_of_dicts))
+    print(my_keys)
+    return {k : [d[k] for d in list_of_dicts] for k in my_keys}
 
 
 
@@ -292,6 +403,8 @@ def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_va
         while True:
 		dbinterface.start_time_step = time.time()
 		train_res, global_step = updater.update(sess)
+                print('global step')
+                print(global_step)
 
                 if save_valid_freq is not None and \
                         global_step % save_valid_freq == 0:
@@ -303,8 +416,7 @@ def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_va
                         valid_res = []
                         for _step in tqdm.trange(valid_steps[k], desc=k):
                             valid_res.append(validaters[k].run(sess))
-                        valid_all[k] =  valid_res
-                    valid_all = {'validation_results': valid_all}
+                        valid_all[k] =  list_dict_swapper(valid_res)
                     dbinterface.save(train_res = train_res, 
                             valid_res = valid_all, validation_only = False)
                     print('Validation data saved in database')

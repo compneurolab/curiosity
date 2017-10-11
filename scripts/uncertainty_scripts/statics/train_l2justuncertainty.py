@@ -4,18 +4,19 @@ Random actions, after index mismatch bug.
 
 
 
-import copy
+
 import sys
 sys.path.append('curiosity')
 sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment, static_data, data, cfg_generation, update_step
+from curiosity.interaction import train, environment, static_data, cfg_generation, update_step, mode_switching
 import curiosity.interaction.models as models
 from tfutils import base, optimizer
 import numpy as np
 import os
 import argparse
+import copy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-g', '--gpu', default = '0', type = str)
@@ -48,30 +49,22 @@ parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
 parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
+parser.add_argument('-ds', '--dataseed', default = 0, type = int)
+
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'trainval'
+EXP_ID_PREFIX = 'l2off'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
-try:
-    USER = os.environ['CURIOSITY_USER']
-except KeyError:
-    USER = 'nick'
-if USER == 'nick':
-    RENDER1_HOST_ADDRESS = '10.102.2.161'
-else:
-    RENDER1_HOST_ADDRESS = '10.102.2.149' #'10.102.2.161'
-SELECTED_BUILD = 'three_world_locked_rot.x86'
+RENDER1_HOST_ADDRESS = '10.102.2.161'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-if USER == 'nick':
-    OBJTHERE_METADATA_LOC = '/media/data2/nhaber/test_objthere_rel200.pkl'
-else:
-    OBJTHERE_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
+OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_ts3_objthere_rel200.pkl'
+
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -79,27 +72,17 @@ a_back = - min(ACTIONS_GIVEN)
 a_forward = max(ACTIONS_GIVEN)
 
 
-def get_static_data_provider(data_params, model_params, action_model):
-        data_params_copy = copy.copy(data_params)
-        data_params_copy.pop('func')
-        return static_data.OfflineDataProvider(**data_params_copy)
 
-data_lengths = {
-    'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
-    'action' : a_back + a_forward + NUM_TIMESTEPS,
-    'action_post' : a_back + a_forward + NUM_TIMESTEPS
-    }
+
 
 args = vars(parser.parse_args())
-
-num_there_per_batch = args['objperbatch']
-assert num_there_per_batch <= 32 and num_there_per_batch >= 0
-
 
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
 um_thresholds = [.05, .3, .6]
 n_classes_um = len(um_thresholds) + 1
+batch_size = args['batchsize']
+
 
 
 
@@ -406,53 +389,6 @@ elif args['optimizer'] == 'momentum':
 
         }
 
-validate_params = {'valid0': 
-    {
-        'func' : update_step.ActionUncertaintyValidator,
-        'kwargs' : {},
-        'num_steps' : 1, #args['num_steps'],
-        'data_params': {
-                'func' : get_static_data_provider,
-                'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereBatcher,
-                'data_lengths' : data_lengths,
-                'capacity' : 5,
-                'metadata_filename' : OBJTHERE_METADATA_LOC,
-                'batcher_kwargs' : {
-                        'seed' : 0,
-                        'num_there_per_batch' : num_there_per_batch,
-                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
-                }
-        }
-    },
-    'valid1': {
-        'func' : update_step.ActionUncertaintyValidator,
-        'kwargs' : {},
-        'num_steps' : 1, #args['num_steps'],
-        'data_params': {
-                'func' : get_static_data_provider,
-                'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereBatcher,
-                'data_lengths' : data_lengths,
-                'capacity' : 5,
-                'metadata_filename' : OBJTHERE_METADATA_LOC,
-                'batcher_kwargs' : {
-                        'seed' : 0,
-                        'num_there_per_batch' : num_there_per_batch,
-                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
-                }
-        }
-    }
-
-}
-
-train_params = {
-	'updater_func' : update_step.ActionUncertaintyUpdater,
-	'updater_kwargs' : {
-		'state_desc' : 'depths1'
-
-	}
-}
 
 
 def get_ms_models(cfg):
@@ -460,11 +396,30 @@ def get_ms_models(cfg):
 	uncertainty_model = models.MSExpectedUncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
+
+
 model_params = {
                 'func' : get_ms_models,
                 'cfg' : model_cfg,
                 'action_model_desc' : 'uncertainty_model'
         }
+
+#sonify hack
+def construct_just_uncertainty_updater(model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+    action_sampler = models.UniformActionSampler(model_params['cfg'])
+    return update_step.JustUncertaintyUpdater(model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params, action_sampler = action_sampler)
+
+train_params = {
+	'updater_func' : construct_just_uncertainty_updater,
+	'updater_kwargs' : {
+		'state_desc' : 'depths1',
+                'map_draw_mode' : 'specified_indices',
+                'map_draw_example_indices' : [0, batch_size - 1],
+                'map_draw_timestep_indices' : [1, 2],
+                'map_draw_freq' : 100
+	},
+        'post_init_transform' : mode_switching.post_init_reinit_uncertainty_model 
+}
 
 
 
@@ -483,53 +438,45 @@ force_scaling = 200.
 room_dims = (5, 5)
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']
-batch_size = args['batchsize']
 
+data_lengths = {
+                        'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
+                        'action' : a_back + a_forward + NUM_TIMESTEPS,
+                        'action_post' : a_back + a_forward + NUM_TIMESTEPS}
+
+def get_static_data_provider(data_params, model_params, action_model):
+        data_params_copy = copy.copy(data_params)
+        data_params_copy.pop('func')
+        return static_data.OfflineDataProvider(**data_params_copy)
+
+
+
+num_there_per_batch = args['objperbatch']
+assert num_there_per_batch <= 32 and num_there_per_batch >= 0
 
 dp_config = {
-                'func' : train.get_batching_data_provider,
-                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
-                'environment_params' : {
-                        'random_seed' : 1,
-                        'unity_seed' : 1,
-                        'room_dims' : room_dims,
-                        'state_memory_len' : {
-                                        'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS
-                                },
-                        'action_memory_len' : history_len + a_back + a_forward + NUM_TIMESTEPS,
-                        'message_memory_len' : history_len +  a_back + a_forward + NUM_TIMESTEPS,
-                        'other_data_memory_length' : 32,
-                        'rescale_dict' : {
-                                        'depths1' : IMAGE_SCALE
-                                },
-                        'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS,
-                        'selected_build' : SELECTED_BUILD,
-                        'rng_periodicity' : 1,
-                        'termination_condition' : environment.obj_not_present_termination_condition
-                },
-
-                'provider_params' : {
-                        'batching_fn' : lambda hist : data.uniform_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size,
-                                        get_object_there_binary = False, data_lengths = data_lengths, which_matters_for_freq = -2),
-                        'capacity' : 5,
-                        'gather_per_batch' : batch_size / 4,
-                        'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
-                },
-
-                'scene_list' : [one_obj_scene_info],
-                'scene_lengths' : [1024 * 32],
-                'do_torque' : False,
-		'use_absolute_coordinates' : False
-
-
-
+                'func' : get_static_data_provider,
+                'batch_size' : args['batchsize'],
+                'batcher_constructor' : static_data.ObjectThereBatcher,
+                'data_lengths' : data_lengths,
+                'capacity' : 5,
+                'metadata_filename' : OBJTHERE_METADATA_LOC,
+                'batcher_kwargs' : {
+                        'seed' : args['dataseed'],
+                        'num_there_per_batch' : num_there_per_batch,
+                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
+                }
         }
 
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT) 
-#cfg_generation.NODE_5_PORT
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT, 
+        load_and_save_elsewhere = True)
+
+load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
+load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+
 
 postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
@@ -544,13 +491,12 @@ params = {
 	'postprocessor_params' : postprocessor_params,
 	'optimizer_params' : optimizer_params,
 	'learning_rate_params' : lr_params,
-	'train_params' : train_params,
-	'validate_params' : validate_params,
+	'train_params' : train_params
 }
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5
+
 params['allow_growth'] = True
 
 

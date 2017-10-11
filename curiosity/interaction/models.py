@@ -920,11 +920,6 @@ class MoreInfoActionWorldModel(object):
 		t_back = - (min(state_steps) + min(states_given))
 		t_forward = max(state_steps) + max(states_given)
 		states_shape = [num_timesteps + t_back + t_forward] + image_shape
-		print('debugging state shape')
-		print(states_given)
-		print(state_steps)
-		print(num_timesteps)
-		print(states_shape)
 		self.states = tf.placeholder(tf.float32, [None] + states_shape)
 		acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
 		print(acts_shape)
@@ -972,16 +967,15 @@ class MoreInfoActionWorldModel(object):
 		act_loss_list = []
 		reuse_weights = False
 		for t in range(num_timesteps):
-			print('timestep ' + str(t))
 			encoded_states_given = [flat_encodings[t + s] for s in states_given]
 			act_given = [self.action[:, t + a + act_back] for a in actions_given]
-			print('act given ' + str([t + a + act_back for a in actions_given]))
 			act_tv = self.action_post[:, t + act_back]
-			print('act tv ' + str(t + act_back))
 			x = tf_concat(encoded_states_given + act_given, axis = 1)
 			with tf.variable_scope('action_model'):
 				pred = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
 			lpe, loss = cfg['action_model']['loss_func'](act_tv, pred, cfg['action_model'])
+                        print('what what')
+                        print(lpe.get_shape().as_list())
 			reuse_weights = True
 			self.act_loss_per_example.append(lpe)
 			self.act_pred.append(pred)
@@ -992,8 +986,33 @@ class MoreInfoActionWorldModel(object):
 		    self.act_loss = tf.reduce_mean(act_loss_list)
 		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
 		self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
-			
-
+                #adding on readouts
+                self.obj_there_loss = []
+                self.num_obj_there = []
+                self.obj_not_there_loss = []
+                self.object_there = []
+                for t in range(num_timesteps):
+                    act_tv = self.action_post[:, t + act_back]
+                    force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
+                    obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
+                    print('debug readout stuff')
+                    print(obj_there.get_shape().as_list())
+                    print(self.act_loss_per_example[t].get_shape().as_list())
+                    self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
+                    self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+                    self.num_obj_there.append(tf.reduce_sum(obj_there)) 
+                    self.object_there.append(obj_there)
+                
+                print('what is going on with loss per example?')
+                print([l.get_shape().as_list() for l in self.act_loss_per_example])
+                
+                
+                
+                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
+                        'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
+                        'num_obj_there_noprint' : self.num_obj_there}
+                self.save_to_gfs = ['act_pred']
+                
 
 
 
@@ -1373,6 +1392,29 @@ class MSExpectedUncertaintyModel:
 			heat = cfg.get('heat', 1.)
 			x = tf.transpose(expected_tot_est) / heat
 			self.sample = categorical_sample(x, cfg['n_action_samples'], one_hot = False)
+                        
+                        #add readouts
+                        self.obj_there_avg_pred = []
+                        self.obj_not_there_avg_pred = []
+                        #only care about if object is there the first time
+                        obj_there = tf.tile(world_model.object_there[0], [1, n_classes])
+                        for t in range(n_timesteps):
+                            self.obj_there_avg_pred.append(tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
+                            self.obj_not_there_avg_pred.append(tf.reduce_sum((1. - obj_there) * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+                        
+                        
+                        
+                        self.readouts = {'estimated_world_loss' : self.estimated_world_loss, 'um_loss' : self.uncertainty_loss,
+                                'loss_per_example' : self.true_loss, 'obj_not_there_avg_pred_noprint' : self.obj_not_there_avg_pred,
+                                'obj_there_avg_pred_noprint' : self.obj_there_avg_pred, 's_i' : self.s_i, 'um_action_given' : self.action_sample}
+                        for j, l in enumerate(self.loss_per_step):
+                            self.readouts['um_loss' + str(j)] = l
+                        self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 's_i', 'um_action_given']
+
+
+
+
+
 
 	def act(self, sess, action_sample, state):
 		#this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
