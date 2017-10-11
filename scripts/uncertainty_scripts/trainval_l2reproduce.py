@@ -79,6 +79,24 @@ a_back = - min(ACTIONS_GIVEN)
 a_forward = max(ACTIONS_GIVEN)
 
 
+def online_agg_func(agg_res, res, step):
+    for k in ['act_pred', 'loss_per_example', 'estimated_world_loss']:
+        for i, r in enumerate(res[k]):
+            res[k][i] = r[0]
+    res['batch']['action'] = res['batch']['action'][0]
+    res['batch']['action_post'] = res['batch']['action_post'][0]
+    res['batch']['depths1'] = res['batch']['depths1'][0]
+    res['batch'].pop('recent')
+
+    if agg_res is None:
+        agg_res = {k: [] for k in res}
+    for k, v in res.items():
+        agg_res[k].append(v)
+    return agg_res
+
+def agg_func(res):
+    return res
+
 def get_static_data_provider(data_params, model_params, action_model):
         data_params_copy = copy.copy(data_params)
         data_params_copy.pop('func')
@@ -410,7 +428,9 @@ validate_params = {'valid0':
     {
         'func' : update_step.ActionUncertaintyValidator,
         'kwargs' : {},
-        'num_steps' : 50, #args['num_steps'],
+        'num_steps' : 5, #args['num_steps'],
+        'online_agg_func' : online_agg_func,
+        'agg_func': agg_func,
         'data_params': {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
@@ -429,6 +449,8 @@ validate_params = {'valid0':
         'func' : update_step.ActionUncertaintyValidator,
         'kwargs' : {},
         'num_steps' : 10, #args['num_steps'],
+        'online_agg_func' : online_agg_func,
+        'agg_func': agg_func,
         'data_params': {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
@@ -550,13 +572,8 @@ params = {
 
 params.update(load_and_save_params)
 
-params['save_params']['save_validation_freq'] = 5
+params['save_params']['save_valid_freq'] = 5
 params['allow_growth'] = True
-
-
-
-
-
 
 
 if __name__ == '__main__':

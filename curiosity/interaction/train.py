@@ -208,6 +208,39 @@ def save_data_without_training(
 	updater.close()
 
 
+def run_targets(sess,
+                dbinterface,
+                target_name,
+                target,
+                num_steps,
+                online_agg_func,
+                agg_func,
+                save_intermediate_freq=None,
+                validation_only=False):
+    """TODO:  this code resembles train() function, possible want to unify
+    """
+    agg_res = None
+
+    if save_intermediate_freq is not None:
+        n0 = len(dbinterface.outrecs)
+
+    for _step in tqdm.trange(num_steps, desc=target_name):
+        res = target.run(sess)
+        assert hasattr(res, 'keys'), 'result must be a dictionary'
+        if save_intermediate_freq is not None and _step % save_intermediate_freq == 0:
+            dbinterface.save(valid_res={target_name: res},
+                             step=_step,
+                             validation_only=validation_only)
+        agg_res = online_agg_func(agg_res, res, _step)
+
+    result = agg_func(agg_res)
+
+    if save_intermediate_freq is not None:
+        dbinterface.sync_with_host()
+        n1 = len(dbinterface.outrecs)
+        result['intermediate_steps'] = dbinterface.outrecs[n0: n1]
+
+    return result
 
 
 def train_from_params(
@@ -264,25 +297,21 @@ def train_from_params(
 	dbinterface.initialize()
 	data_provider.start_runner(sess)
 
-        validaters = {}
-        valid_steps = {}
         if validate_params is not None:
             for k in validate_params:
                 validation_data_provider = validate_params[k]['data_params']['func'](
                     validate_params[k]['data_params'], model_params, action_model)
-                validaters[k] = validate_params[k]['func'](models, validation_data_provider, ** validate_params[k]['kwargs'])
-                valid_steps[k] = validate_params[k]['num_steps']
+                validate_params[k]['target'] = validate_params[k]['func'](
+                        models, validation_data_provider, 
+                        **validate_params[k]['kwargs'])
                 validation_data_provider.start_runner(sess)
 
-	    train(sess, updater, dbinterface, validaters, valid_steps,\
-                    save_params['save_validation_freq'])
+	    train(sess, updater, dbinterface, validate_params, \
+                    save_params['save_valid_freq'])
         else:
             train(sess, updater, dbinterface)
 
-
-
-
-def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_valid_freq=None):
+def train(sess, updater, dbinterface, validation_targets=None, save_valid_freq=None):
 	#big_save_keys = what_to_save_params['big_save_keys']
 	#little_save_keys = what_to_save_params['little_save_keys']
 	#big_save_len = what_to_save_params['big_save_len']
@@ -293,25 +322,28 @@ def train(sess, updater, dbinterface, validaters=None, valid_steps=None, save_va
 		dbinterface.start_time_step = time.time()
 		train_res, global_step = updater.update(sess)
 
+                valid_res = {}
                 if save_valid_freq is not None and \
                         global_step % save_valid_freq == 0:
-                    assert validaters is not None, 'validaters is not defined'
-                    assert valid_steps is not None, 'valid_steps is not defined'
 
-                    valid_all = {}
-                    for k in validaters:
-                        valid_res = []
-                        for _step in tqdm.trange(valid_steps[k], desc=k):
-                            valid_res.append(validaters[k].run(sess))
-                        valid_all[k] =  valid_res
-                    valid_all = {'validation_results': valid_all}
-                    dbinterface.save(train_res = train_res, 
-                            valid_res = valid_all, validation_only = False)
-                    print('Validation data saved in database')
-                else:
-		    dbinterface.save(train_res = train_res, validation_only = False)
-
-                dbinterface.sync_with_host()
+                    for target_name in validation_targets:
+                        num_steps = validation_targets[target_name]['num_steps']
+                        target = validation_targets[target_name]['target']
+                        agg_func = validation_targets[target_name]['agg_func']
+                        online_agg_func = \
+                                validation_targets[target_name]['online_agg_func']
+			valid_res[target_name] = run_targets(sess=sess,
+                                           dbinterface=None,
+                                           target_name=target_name,
+                                           target=target,
+                                           num_steps=num_steps,
+                                           online_agg_func=online_agg_func,
+                                           agg_func=agg_func,
+                                           save_intermediate_freq=None,
+                                           validation_only=False)
+                dbinterface.save(train_res = train_res, valid_res = valid_res, 
+                        validation_only = False, step=global_step)
+        dbinterface.sync_with_host()
 
 		#dividing by 2 since there are two global steps per update, as currently defined
 		#global_step = res['um_global_step'] / 2
