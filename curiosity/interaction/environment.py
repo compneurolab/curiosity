@@ -303,10 +303,12 @@ class Environment:
                         other_data_memory_length = 1,
                         selected_build = SELECTED_BUILD,
                         termination_condition = lambda env : False,
-                        timeout=60
+                        environment_timeout=60,
+                        client_timeout=None,
                 ):
                 #TODO: SCREEN_DIMS does nothing right now
-                self.timeout = timeout
+                self.timeout = environment_timeout
+                self.client_timeout = client_timeout
                 self.selected_build = selected_build
                 self.term_condition = termination_condition
                 self.rng = np.random.RandomState(random_seed)
@@ -584,6 +586,8 @@ class Environment:
                 #other data is included so that we can manage a cache of data all in one place, but the environment otherwise does not interact with it
                 msg, action_post = self.action_to_message_fn(action, self)
                 if self.USE_TDW:
+                        if self.client_timeout is not None:
+                            msg['client_timeout'] = self.client_timeout
                         self.sock.send_json(msg)
                 else:
                         self.sock.send_json(msg['msg'])
