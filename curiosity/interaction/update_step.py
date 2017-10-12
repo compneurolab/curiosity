@@ -125,10 +125,10 @@ class ExperienceReplayPostprocessor:
 			save_keys = self.big_save_keys
 			#est_losses = [other[1] for other in batch['other']]
 			#action_sample = [other[2] for other in batch['other']]
-			res['batch'] = {}
-			for desc, val in batch.iteritems():
-				if desc != 'recent':
-					res['batch'][desc] = val
+			#res['batch'] = {}
+			#for desc, val in batch.iteritems():
+			#	if desc != 'recent':
+			#		res['batch'][desc] = val
 			res['recent'] = batch['recent']
 		else:
 			save_keys = self.little_save_keys
