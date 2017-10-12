@@ -1374,7 +1374,7 @@ class MSExpectedUncertaintyModel:
 			for t in range(n_timesteps):
 				with tf.variable_scope('split_mlp' + str(t)):
 					self.estimated_world_loss.append(hidden_loop_with_bypasses(x, m, cfg['mlp'][t], reuse_weights = False, train = True))
-			self.loss_per_step, self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
+			self.loss_per_example, self.loss_per_step, self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
 			
 			#for now, just implementing a random policy
 			self.just_random = False
@@ -1402,20 +1402,28 @@ class MSExpectedUncertaintyModel:
                         #add readouts
                         self.obj_there_avg_pred = []
                         self.obj_not_there_avg_pred = []
+                        self.obj_there_loss = []
+                        self.obj_not_there_loss = []
                         #only care about if object is there the first time
                         obj_there = tf.tile(world_model.object_there[0], [1, n_classes])
+                        obj_there_for_per_example_case = tf.squeeze(world_model.object_there[0])
                         for t in range(n_timesteps):
                             self.obj_there_avg_pred.append(float(n_classes) * tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
-                            self.obj_not_there_avg_pred.append(float(n_classes) * tf.reduce_sum((1. - obj_there) * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+                            self.obj_not_there_avg_pred.append(float(n_classes) * tf.reduce_sum((1. - obj_there)\
+                                    * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+                            self.obj_there_loss.append(tf.reduce_sum(obj_there_for_per_example_case * self.loss_per_example[t]) / tf.reduce_sum(obj_there_for_per_example_case))
+                            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there_for_per_example_case)\
+                                    * self.loss_per_example[t]) / tf.reduce_sum(1. - obj_there_for_per_example_case))
                         
                         
                         
                         self.readouts = {'estimated_world_loss' : self.estimated_world_loss, 'um_loss' : self.uncertainty_loss,
                                 'loss_per_example' : self.true_loss, 'obj_not_there_avg_pred_noprint' : self.obj_not_there_avg_pred,
-                                'obj_there_avg_pred_noprint' : self.obj_there_avg_pred, 's_i' : self.s_i, 'um_action_given' : self.action_sample}
+                                'obj_there_avg_pred_noprint' : self.obj_there_avg_pred, 'um_action_given' : self.action_sample,
+                                'um_obj_there_loss_noprint' : self.obj_there_loss, 'um_obj_not_there_loss_noprint' : self.obj_not_there_loss}
                         for j, l in enumerate(self.loss_per_step):
                             self.readouts['um_loss' + str(j)] = l
-                        self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 's_i', 'um_action_given']
+                        self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 'um_action_given']
                         print('dtype ending um')
                         print(self.s_i.dtype)
 
@@ -1597,19 +1605,15 @@ def binned_softmax_loss(tv, prediction, cfg):
 	tv = tf.squeeze(tv)
 	loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv, logits = prediction)
 	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
-	return loss
+	return loss_per_example, loss
 
 def ms_sum_binned_softmax_loss(tv, prediction, cfg):
 	assert len(tv) == len(prediction)
-	print('arrived')
-	print(tv)
-	print(prediction)
-	for y, p in zip(tv, prediction):
-		print(y)
-		print(p)
-	loss_per_step = [binned_softmax_loss(y, p, cfg) for y, p in zip(tv, prediction)]
+	loss_per_example_and_step = [binned_softmax_loss(y, p, cfg) for y, p in zip(tv, prediction)]
+        loss_per_example = [lpe for lpe, lps in loss_per_example_and_step]
+        loss_per_step = [lps for lpe, lps in loss_per_example_and_step]
 	loss = tf.reduce_mean(loss_per_step)
-	return loss_per_step, loss
+	return loss_per_example, loss_per_step, loss
 
 	
 def equal_spacing_softmax_loss(tv, prediction, cfg):

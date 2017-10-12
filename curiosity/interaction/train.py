@@ -425,20 +425,20 @@ def list_dict_swapper(list_of_dicts):
 def train(sess, updater, dbinterface, validation_targets=None, save_valid_freq=None):
 
     while True:
-		dbinterface.start_time_step = time.time()
-		train_res, global_step = updater.update(sess)
+        dbinterface.start_time_step = time.time()
+        train_res, global_step = updater.update(sess)
               
 
-                valid_res = {}
-                if save_valid_freq is not None and \
-                        global_step % save_valid_freq == 0:
-                    for target_name in validation_targets:
-                        num_steps = validation_targets[target_name]['num_steps']
-                        target = validation_targets[target_name]['target']
-                        agg_func = validation_targets[target_name]['agg_func']
-                        online_agg_func = \
-                                validation_targets[target_name]['online_agg_func']
-			valid_res[target_name] = run_targets(sess=sess,
+        valid_res = {}
+        if save_valid_freq is not None and \
+            global_step % save_valid_freq == 0:
+            for target_name in validation_targets:
+                num_steps = validation_targets[target_name]['num_steps']
+                target = validation_targets[target_name]['target']
+                agg_func = validation_targets[target_name]['agg_func']
+                online_agg_func = \
+                        validation_targets[target_name]['online_agg_func']
+		valid_res[target_name] = run_targets(sess=sess,
                                            dbinterface=None,
                                            target_name=target_name,
                                            target=target,
@@ -447,7 +447,7 @@ def train(sess, updater, dbinterface, validation_targets=None, save_valid_freq=N
                                            agg_func=agg_func,
                                            save_intermediate_freq=None,
                                            validation_only=False)
-                dbinterface.save(train_res = train_res, valid_res = valid_res, 
+        dbinterface.save(train_res = train_res, valid_res = valid_res, 
                         validation_only = False, step=global_step)
         dbinterface.sync_with_host()
 
