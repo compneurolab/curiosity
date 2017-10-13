@@ -265,7 +265,16 @@ def train_from_params(
 
 	action_model = models[model_params['action_model_desc']]
 
-	data_provider = data_params['func'](data_params, model_params, action_model)
+        if 'n_environments' in data_params:
+            data_provider = []
+            for itr in range(data_params['n_environments']):
+                data_params['environment_params']['unity_seed'] += 1
+                model_params['cfg']['seed'] += 1
+                data_provider.append(data_params['func'](
+                        data_params, model_params, action_model))
+        else:
+	    data_provider = data_params['func'](
+                data_params, model_params, action_model)
         
 	if postprocessor_params is None:
 		postprocessor = get_default_postprocessor(what_to_save_params)
@@ -295,7 +304,11 @@ def train_from_params(
 	dbinterface = base.DBInterface(sess = sess, global_step = updater.global_step, params = params, save_params = save_params, load_params = load_params)
 	
 	dbinterface.initialize()
-	data_provider.start_runner(sess)
+        if isinstance(data_provider, list):
+            for dp in data_provider:
+                dp.start_runner(sess)
+        else:
+	    data_provider.start_runner(sess)
 
         if validate_params is not None:
             for k in validate_params:
