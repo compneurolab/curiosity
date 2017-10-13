@@ -49,6 +49,7 @@ parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
 parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
+parser.add_argument('-nenv', '--numberofenvironments', default=8, type = int)
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'trainval'
@@ -506,11 +507,12 @@ force_scaling = 200.
 room_dims = (5, 5)
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']
-batch_size = args['batchsize']
+batch_size = args['batchsize'] / args['numberofenvironments']
 
 
 dp_config = {
                 'func' : train.get_batching_data_provider,
+                'n_environments': args['numberofenvironments'],
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
                         'random_seed' : 1,
@@ -536,7 +538,7 @@ dp_config = {
                         'batching_fn' : lambda hist : data.uniform_experience_replay(hist, history_len, my_rng = my_rng, batch_size = batch_size,
                                         get_object_there_binary = False, data_lengths = data_lengths, which_matters_for_freq = -2),
                         'capacity' : 5,
-                        'gather_per_batch' : batch_size / 4,
+                        'gather_per_batch' : batch_size,
                         'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
                 },
 

@@ -572,7 +572,8 @@ class JustUncertaintyUpdater:
 
 class ActionUncertaintyUpdater:
 	def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
-                self.data_provider = data_provider
+                self.data_provider = data_provider \
+                        if isinstance(data_provider, list) else [data_provider]
                 self.wm = models['world_model']
                 self.um = models['uncertainty_model']
                 self.postprocessor = postprocessor
@@ -591,7 +592,16 @@ class ActionUncertaintyUpdater:
 				'global_step' : self.global_step}
 
         def update(self, sess, visualize = False):
-                batch = self.data_provider.dequeue_batch()
+                batch = {}
+                for i, dp in enumerate(self.data_provider):
+                    provider_batch = dp.dequeue_batch()
+                    for k in provider_batch:
+                        if k in batch:
+                            batch[k].append(provider_batch[k])
+                        else:
+                            batch[k] = [provider_batch[k]]
+                for k in ['action', 'action_post', 'depths1']:
+                    batch[k] = np.concatenate(batch[k], axis=0)
                 state_desc = 'depths1'
                 #depths, actions, actions_post, next_depth = postprocess_batch_depth(batch, state_desc)
                 feed_dict = {
