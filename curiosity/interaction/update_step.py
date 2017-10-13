@@ -424,7 +424,8 @@ class DebuggingForceMagUpdater:
 
 class FreezeUpdater:
     def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
-        self.dp = data_provider
+        self.data_provider = data_provider \
+                if isinstance(data_provider, list) else [data_provider]
         self.wm = models['world_model']
         self.um = models['uncertainty_model']
         freeze_wm = updater_params['freeze_wm']
@@ -472,7 +473,16 @@ class FreezeUpdater:
         
 
     def update(self, sess, visualize = False):
-        batch = self.dp.dequeue_batch()
+        batch = {}
+        for i, dp in enumerate(self.data_provider):
+            provider_batch = dp.dequeue_batch()
+            for k in provider_batch:
+                if k in batch:
+                    batch[k].append(provider_batch[k])
+                else:
+                    batch[k] = [provider_batch[k]]
+        for k in ['action', 'action_post', 'depths1']:
+            batch[k] = np.concatenate(batch[k], axis=0)
         feed_dict = {
                 self.wm.states : batch[self.state_desc],
                 self.wm.action : batch['action'],
@@ -504,7 +514,8 @@ class FreezeUpdater:
 
 class JustUncertaintyUpdater:
     def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params, action_sampler = None):
-        self.dp = data_provider
+        self.data_provider = data_provider \
+                if isinstance(data_provider, list) else [data_provider]
         self.wm = models['world_model']
         self.um = models['uncertainty_model']
         self.postprocessor = postprocessor
@@ -538,7 +549,16 @@ class JustUncertaintyUpdater:
         
 
     def update(self, sess, visualize = False):
-        batch = self.dp.dequeue_batch()
+        batch = {}
+        for i, dp in enumerate(self.data_provider):
+            provider_batch = dp.dequeue_batch()
+            for k in provider_batch:
+                if k in batch:
+                    batch[k].append(provider_batch[k])
+                else:
+                    batch[k] = [provider_batch[k]]
+        for k in ['action', 'action_post', 'depths1']:
+            batch[k] = np.concatenate(batch[k], axis=0)
         feed_dict = {
                 self.wm.states : batch[self.state_desc],
                 self.wm.action : batch['action'],
