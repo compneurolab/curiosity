@@ -545,8 +545,61 @@ def train_local(
 
 
 
+def grab_weights_from_params(
+		save_params,
+		model_params,
+		train_params,
+                sv_loc,
+		learning_rate_params = None,
+		optimizer_params = None,
+		what_to_save_params = None,
+		log_device_placement = False,
+		load_params = None,
+		data_params = None,
+                validate_params = None,
+		inter_op_parallelism_threads = 40,
+		allow_growth = False,
+		per_process_gpu_memory_fraction = None,
+		postprocessor_params = None,
+	):
+	model_cfg = model_params['cfg']
+	models_constructor = model_params['func']
+	models = models_constructor(model_cfg)
+
+        action_model = models[model_params['action_model_desc']]
+
+	params = {'save_params' : save_params, 'model_params' : model_params, 'train_params' : train_params, 
+		'optimizer_params' : optimizer_params, 'learning_rate_params' : learning_rate_params, 
+		'what_to_save_params' : what_to_save_params, 'load_params' : load_params,
+		'data_params' : data_params, 'inter_op_parallelism_threads' : inter_op_parallelism_threads,
+		'allow_growth' : allow_growth, 'per_process_gpu_memory_fraction' : per_process_gpu_memory_fraction,
+		'postprocessor_params' : postprocessor_params
+		}
 
 
+	config = tf.ConfigProto(allow_soft_placement = True,
+                log_device_placement = log_device_placement, inter_op_parallelism_threads = inter_op_parallelism_threads)
+	if allow_growth:
+		#including this weird conditional because I'm running into a weird bug
+		config.gpu_options.allow_growth = allow_growth
+	if per_process_gpu_memory_fraction is not None:
+		print('limiting mem fraction')
+		config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
+	sess = tf.Session(config = config)
+        global_step = tf.constant(0)
+
+        dbinterface = base.DBInterface(sess = sess, global_step = global_step, params = params, save_params = save_params, load_params = load_params)
+	
+	dbinterface.initialize()
+        grab_weights(sess, models, dbinterface, sv_loc)
+
+
+
+def grab_weights(sess, models, dbinterface, sv_loc):
+    global_vars = {var.name : var for var in tf.global_variables()}
+    res = sess.run(global_vars)
+    with open(sv_loc, 'w') as stream:
+        cPickle.dump(res, stream)
 
 
 

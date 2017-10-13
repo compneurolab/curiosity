@@ -6,16 +6,17 @@ Random actions, after index mismatch bug.
 
 
 import sys
-sys.path.append('/home/nhaber/projects/curiosity')
-sys.path.append('/home/nhaber/projects/tfutils')
+sys.path.append('curiosity')
+sys.path.append('tfutils')
 import tensorflow as tf
 
-from curiosity.interaction import train, environment, data, cfg_generation, update_step
+from curiosity.interaction import train, environment, static_data, cfg_generation, update_step, mode_switching
 import curiosity.interaction.models as models
 from tfutils import base, optimizer
 import numpy as np
 import os
 import argparse
+import copy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-g', '--gpu', default = '0', type = str)
@@ -47,11 +48,13 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
-parser.add_argument('--gather', default = 32, type = int)
+parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
+parser.add_argument('-ds', '--dataseed', default = 0, type = int)
+parser.add_argument('--testmode', default = False, type = bool)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'snr'
+EXP_ID_PREFIX = 'dr'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -61,7 +64,8 @@ RENDER1_HOST_ADDRESS = '10.102.2.161'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-
+OBJTHERE_METADATA_LOC = '/media/data2/nhaber/train_ts3_objthere_rel200.pkl'
+OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -74,11 +78,25 @@ a_forward = max(ACTIONS_GIVEN)
 
 args = vars(parser.parse_args())
 
+test_mode = args['testmode']
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
-um_thresholds = [.05, .3, .6]
+um_thresholds = [args['uncertaintythreshold']]
 n_classes_um = len(um_thresholds) + 1
+batch_size = args['batchsize']
 
+
+def online_agg_func(agg_res, res, step):
+    res.pop('recent')
+    if agg_res is None:
+        agg_res = {k : [] for k in res}
+    for k, v in res.items():
+        agg_res[k].append(v)
+    return agg_res
+
+
+def agg_func(res):
+    return res
 
 
 wm_encoding_choices = [
@@ -132,37 +150,37 @@ wm_mlp_before_concat_choices = [
 
 wm_mlp_choices = [
         {
-                'num_features' : [256, ACTION_DIM],
+                'num_features' : [256, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : ['relu', 'identity'],
                 'dropout' : [None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM],
+                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : ['relu', 'relu', 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [50, 50, ACTION_DIM],
+                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [100, 100, 100, ACTION_DIM],
+                'num_features' : [100, 100, 100, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         },
 
         {
-                'num_features' : [500, 500, ACTION_DIM],
+                'num_features' : [500, 500, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None]
         },
 
         {
-                'num_features' : [1000, 1000, 500, ACTION_DIM],
+                'num_features' : [1000, 1000, 500, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
                 'dropout' : [None, None, None, None]
         }
@@ -185,11 +203,11 @@ wm_cfg = {
         'act_dim' : ACTION_DIM,
         'encode' : cfg_generation.generate_conv_architecture_cfg(**wm_encoding_choice),
         'action_model' : {
-                'loss_func' : models.l2_loss_per_example,
+                'loss_func' : models.binned_softmax_loss_per_example,
+                'thresholds': act_thresholds,
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
-        },
-        'norepeat' : True
+        }
 }
 
 
@@ -387,25 +405,35 @@ elif args['optimizer'] == 'momentum':
 
 
 
-train_params = {
-	'updater_func' : update_step.ActionUncertaintyUpdater,
-	'updater_kwargs' : {
-		'state_desc' : 'depths1'
-
-	}
-}
-
-
 def get_ms_models(cfg):
 	world_model = models.MoreInfoActionWorldModel(cfg['world_model'])
 	uncertainty_model = models.MSExpectedUncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
+
+
 
 model_params = {
                 'func' : get_ms_models,
                 'cfg' : model_cfg,
                 'action_model_desc' : 'uncertainty_model'
         }
+
+#sonify hack
+def construct_just_uncertainty_updater(model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+    action_sampler = models.UniformActionSampler(model_params['cfg'])
+    return update_step.JustUncertaintyUpdater(model, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params, action_sampler = action_sampler)
+
+train_params = {
+	'updater_func' : construct_just_uncertainty_updater,
+	'updater_kwargs' : {
+		'state_desc' : 'depths1',
+                'map_draw_mode' : 'specified_indices',
+                'map_draw_example_indices' : [0, batch_size - 1],
+                'map_draw_timestep_indices' : [1, 2],
+                'map_draw_freq' : 10 if test_mode else 100
+	},
+        #'post_init_transform' : mode_switching.post_init_reinit_uncertainty_model 
+}
 
 
 
@@ -424,61 +452,74 @@ force_scaling = 200.
 room_dims = (5, 5)
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']
-batch_size = args['batchsize']
-
 
 data_lengths = {
                         'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
 
+def get_static_data_provider(data_params, model_params, action_model):
+        data_params_copy = copy.copy(data_params)
+        data_params_copy.pop('func')
+        return static_data.OfflineDataProvider(**data_params_copy)
 
 
-batcher = data.SimpleNoRepeatTracker(history_len, my_rng, batch_size = batch_size, recent_history_length = 32, data_lengths = data_lengths, gathered_per_batch = args['gather'])
 
+num_there_per_batch = args['objperbatch']
+assert num_there_per_batch <= 32 and num_there_per_batch >= 0
 
 dp_config = {
-                'func' : train.get_batching_data_provider,
-                'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
-                'environment_params' : {
-                        'random_seed' : 1,
-                        'unity_seed' : 1,
-                        'room_dims' : room_dims,
-                        'state_memory_len' : {
-                                        'depths1' : history_len
-                                },
-                        'action_memory_len' : history_len,
-                        'message_memory_len' : history_len,
-                        'other_data_memory_length' : 32,
-                        'rescale_dict' : {
-                                        'depths1' : IMAGE_SCALE
-                                },
-                        'USE_TDW' : True,
-                        'host_address' : RENDER1_HOST_ADDRESS,
-                        'rng_periodicity' : 1,
-                        'termination_condition' : environment.obj_not_present_termination_condition,
-                        'selected_build' : 'three_world_locked_rot.x86_64',
-                },
-
-                'provider_params' : {
-                        'batching_fn' : batcher.get_batch,
-                        'capacity' : 5,
-                        'gather_per_batch' : args['gather'],
-                        'gather_at_beginning' : history_len
-                },
-
-                'scene_list' : [one_obj_scene_info],
-                'scene_lengths' : [1024 * 32],
-                'do_torque' : False,
-		'use_absolute_coordinates' : False
-
-
-
+                'func' : get_static_data_provider,
+                'batch_size' : args['batchsize'],
+                'batcher_constructor' : static_data.ObjectThereBatcher,
+                'data_lengths' : data_lengths,
+                'capacity' : 5,
+                'metadata_filename' : OBJTHERE_METADATA_LOC,
+                'batcher_kwargs' : {
+                        'seed' : args['dataseed'],
+                        'num_there_per_batch' : num_there_per_batch,
+                        'num_not_there_per_batch' : args['batchsize'] - num_there_per_batch
+                }
         }
 
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+
+
+
+validate_params = {
+                    'valid0': {
+                        'func' : update_step.ActionUncertaintyValidatorWithReadouts,
+                        'kwargs' : {},
+                        'num_steps' : 10,
+                        'online_agg_func' : online_agg_func,
+                        'agg_func' : agg_func,
+                        'data_params' : {
+                                'func' : get_static_data_provider,
+                                'batch_size' : args['batchsize'],
+                                'batcher_constructor' : static_data.ObjectThereBatcher,
+                                'data_lengths' : data_lengths,
+                                'capacity' : 5,
+                                'metadata_filename' : OBJTHERE_TEST_METADATA_LOC,
+                                'batcher_kwargs' : {
+                                    'seed' : 0,
+                                    'num_there_per_batch' : 16,
+                                    'num_not_there_per_batch' : 16,
+                                    }
+                             }
+                        }
+}
+
+
+
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT, 
+        load_and_save_elsewhere = True)
+
+load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
+load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+load_and_save_params['save_params']['save_metrics_freq'] = 20 if test_mode else 1000
+
 
 postprocessor_params = {
         'func' : train.get_experience_replay_postprocessor
@@ -493,12 +534,15 @@ params = {
 	'postprocessor_params' : postprocessor_params,
 	'optimizer_params' : optimizer_params,
 	'learning_rate_params' : lr_params,
-	'train_params' : train_params
+	'train_params' : train_params,
+        'validate_params' : validate_params,
+        'sv_loc' : '/media/data4/nhaber/pkl_models/dr_fzl3o6t5.pkl'
 }
 
 params.update(load_and_save_params)
 
 
+params['save_params']['save_valid_freq'] = 5 if test_mode else 2000 
 params['allow_growth'] = True
 
 
@@ -509,7 +553,7 @@ params['allow_growth'] = True
 
 if __name__ == '__main__':
 	os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
-	train.train_from_params(**params)
+	train.grab_weights_from_params(**params)
 
 
 
