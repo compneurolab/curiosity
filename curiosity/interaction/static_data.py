@@ -304,10 +304,10 @@ class OfflineDataProvider(threading.Thread):
 		yielded = self.run_env()
 		while True:
 			batch = next(yielded)
-			self.queue.put(batch, timeout = 5000.0)
+			self.queue.put(batch, timeout = 50000.0)
 
 	def dequeue_batch(self):
-		return self.queue.get(timeout = 5000.0)
+		return self.queue.get(timeout = 50000.0)
 
 	def close(self):
 		for f in self.hdf5s:

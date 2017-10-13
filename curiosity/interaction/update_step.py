@@ -116,6 +116,8 @@ class ExperienceReplayPostprocessor:
 		self.state_descriptor = state_descriptor
                 self.big_save_keys.append('map_draw')
                 self.little_save_keys.append('map_draw')
+                self.big_save_keys.extend(['act_lr', 'um_lr'])
+                self.little_save_keys.extend(['act_lr', 'um_lr'])
 
 
 	def postprocess(self, training_results, batch):
@@ -125,10 +127,10 @@ class ExperienceReplayPostprocessor:
 			save_keys = self.big_save_keys
 			#est_losses = [other[1] for other in batch['other']]
 			#action_sample = [other[2] for other in batch['other']]
-			#res['batch'] = {}
-			#for desc, val in batch.iteritems():
-			#	if desc != 'recent':
-			#		res['batch'][desc] = val
+			res['batch'] = {}
+			for desc, val in batch.iteritems():
+			    if desc not in  ['recent', 'depths1']:
+			        res['batch'][desc] = val
 			res['recent'] = batch['recent']
 		else:
 			save_keys = self.little_save_keys
@@ -415,6 +417,90 @@ class DebuggingForceMagUpdater:
 		res = sess.run(self.targets, feed_dict = feed_dict)
 		res = self.postprocessor.postprocess(res, batch)
 		return res
+
+
+
+
+
+class FreezeUpdater:
+    def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+        self.dp = data_provider
+        self.wm = models['world_model']
+        self.um = models['uncertainty_model']
+        freeze_wm = updater_params['freeze_wm']
+        freeze_um = updater_params['freeze_um']
+        self.postprocessor = postprocessor
+        self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+        self.act_lr_params, act_lr = get_learning_rate(self.global_step, ** learning_rate_params['world_model']['act_model'])
+        self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
+        num_not_frozen = 0
+        self.targets = {}
+        self.state_desc = 'depths1'
+        if not freeze_wm:
+            num_not_frozen += 1
+            act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+            self.targets['act_opt'] = act_opt
+        if not freeze_um:
+            num_not_frozen += 1
+            um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.global_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
+            self.targets['um_opt'] = um_opt
+        if num_not_frozen == 0:
+            self.targets['global_step'] = self.global_step
+            self.targets['increment'] = tf.assign_add(self.global_step, 1)
+        else:
+            self.global_step = self.global_step / num_not_frozen
+            self.targets['global_step'] = self.global_step
+            self.targets.update({'act_lr' : act_lr, 'um_lr' : um_lr})
+
+
+        assert set(self.wm.readouts.keys()) != set(self.um.readouts.keys())
+        self.targets.update(self.wm.readouts)
+        self.targets.update(self.um.readouts)
+        
+        #self.map_draw_mode = None
+        #Map drawing. Meant to have options, but for now just assuming one sort of specification
+        #self.state_desc = updater_params.get('state_desc', 'depths1')
+        #self.map_draw_mode = updater_params['map_draw_mode']
+        #this specification specifices batch example indices for which we do a forward pass.
+        #need to do one forward pass each index because action sampling is the 'batch.'
+        #self.action_sampler = action_sampler
+        #assert self.map_draw_mode == 'specified_indices' and self.action_sampler is not None, (self.map_draw_mode, action_sampler)
+        #self.map_draw_example_indices = updater_params['map_draw_example_indices']
+        #self.map_draw_timestep_indices = updater_params['map_draw_timestep_indices']
+        #self.map_draw_freq = updater_params['map_draw_freq']
+
+        
+
+    def update(self, sess, visualize = False):
+        batch = self.dp.dequeue_batch()
+        feed_dict = {
+                self.wm.states : batch[self.state_desc],
+                self.wm.action : batch['action'],
+                self.wm.action_post : batch['action_post']
+            }
+        res = sess.run(self.targets, feed_dict = feed_dict)
+        global_step = res['global_step']
+        #if self.map_draw_mode is not None and global_step % self.map_draw_freq == 0:
+        #    if self.map_draw_mode == 'specified_indices':
+        #        map_draw_res = []
+        #        for idx in self.map_draw_example_indices:
+        #            obs_for_actor = [batch[self.state_desc][idx][t] for t in self.map_draw_timestep_indices]
+        #            action_samples = self.action_sampler.sample_actions()
+        #            action, entropy, estimated_world_loss = self.um.act(sess, action_samples, obs_for_actor)
+        #            to_add = {'example_id' : idx, 'action_sample' : action, 'estimated_world_loss' : estimated_world_loss, 
+        #                    'action_samples' : action_samples, 'depths1' : batch[self.state_desc][idx], 
+        #                    'action' : batch['action'][idx], 'action_post' : batch['action_post'][idx]}
+        #            map_draw_res.append(to_add)
+        #    res['map_draw'] = map_draw_res
+        res = self.postprocessor.postprocess(res, batch)
+        return res, global_step
+
+
+
+
+
+
+
 
 class JustUncertaintyUpdater:
     def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params, action_sampler = None):

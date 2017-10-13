@@ -424,6 +424,7 @@ def list_dict_swapper(list_of_dicts):
 
 def train(sess, updater, dbinterface, validation_targets=None, save_valid_freq=None):
 
+
     while True:
         dbinterface.start_time_step = time.time()
         train_res, global_step = updater.update(sess)
