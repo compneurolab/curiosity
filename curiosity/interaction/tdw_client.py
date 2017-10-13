@@ -571,3 +571,7 @@ class TDW_Client(object):
                                          "get_obj_data": self.get_obj_data}})
             if (self.debug):
                 print("...sent without config\n")
+
+    def close(self):
+        self.sock.close()
+        self.ctx.term()

@@ -3,11 +3,12 @@ Random actions, after index mismatch bug.
 '''
 
 
-
 import copy
 import sys
-sys.path.append('curiosity')
-sys.path.append('tfutils')
+sys.path.append('/home/mrowca/workspace/curiosity')
+sys.path.append('/home/mrowca/workspace/tfutils')
+#sys.path.append('curiosity')
+#sys.path.append('tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment, static_data, data, cfg_generation, update_step
@@ -64,7 +65,7 @@ if USER == 'nick':
     RENDER1_HOST_ADDRESS = '10.102.2.161'
 else:
     RENDER1_HOST_ADDRESS = '10.102.2.149' #'10.102.2.161'
-SELECTED_BUILD = 'three_world_locked_rot.x86'
+SELECTED_BUILD = 'three_world_locked_rot.x86_64'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
@@ -95,7 +96,7 @@ def online_agg_func(agg_res, res, step):
     return agg_res
 
 def agg_func(res):
-    return res
+    return {}
 
 def get_static_data_provider(data_params, model_params, action_model):
         data_params_copy = copy.copy(data_params)
@@ -248,75 +249,75 @@ um_encoding_choices = [
                 'bypass' : [0, 0, 0, 0]
         },
 
-	{
-		'sizes' : [7, 3],
-		'strides' : [3, 2],
-		'num_filters' : [16, 2],
-		'bypass' : [0, 0]
-	},
+        {
+                'sizes' : [7, 3],
+                'strides' : [3, 2],
+                'num_filters' : [16, 2],
+                'bypass' : [0, 0]
+        },
 
-	{
-		'sizes' : [7, 3, 3, 3, 3],
-		'strides' : [3, 2, 2, 2, 2],
-		'num_filters' : [32, 32, 32, 32, 32],
-		'bypass' : [0, 0, 0, 0, 0]
-	}
+        {
+                'sizes' : [7, 3, 3, 3, 3],
+                'strides' : [3, 2, 2, 2, 2],
+                'num_filters' : [32, 32, 32, 32, 32],
+                'bypass' : [0, 0, 0, 0, 0]
+        }
 
 ]
 
 
 
 shared_mlp_choices = [
-	{
-		'num_features' : [100, 100],
-		'nonlinearities' : ['relu', 'relu'],
-		'dropout' : [None, None]
-	},
+        {
+                'num_features' : [100, 100],
+                'nonlinearities' : ['relu', 'relu'],
+                'dropout' : [None, None]
+        },
 
-	{
-		'num_features' : [50, 50],
-		'nonlinearities' : ['relu', 'relu'],
-		'dropout' : [None, None]
-	},
+        {
+                'num_features' : [50, 50],
+                'nonlinearities' : ['relu', 'relu'],
+                'dropout' : [None, None]
+        },
 
-	{
-		'num_features' : [500],
-		'nonlinearities' : ['relu'],
-		'dropout' : [None]
-	},
+        {
+                'num_features' : [500],
+                'nonlinearities' : ['relu'],
+                'dropout' : [None]
+        },
 
-	{
-		'num_features' : [50, 50],
-		'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu']],
-		'dropout' : [None, None]
-	}
+        {
+                'num_features' : [50, 50],
+                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu']],
+                'dropout' : [None, None]
+        }
 ]
 
 
 
 separate_mlp_choices_proto = {
-		'num_features' : [n_classes_um],
-		'nonlinearities' : ['identity'],
-		'dropout' : [None]
-	}
+                'num_features' : [n_classes_um],
+                'nonlinearities' : ['identity'],
+                'dropout' : [None]
+        }
 
 separate_mlp_choice = dict((t, separate_mlp_choices_proto) for t in range(NUM_TIMESTEPS))
 
 
 
 mlp_before_action_choices = [
-	{
-		'num_features' : [500, 10],
-		'nonlinearities' : ['relu', 'relu']
-	},
-	{
-		'num_features' : [500, 50],
-		'nonlinearities' : ['relu', 'relu']
-	},
-	{
-		'num_features' : [300, 100],
-		'nonlinearities' : ['relu', 'relu']
-	}
+        {
+                'num_features' : [500, 10],
+                'nonlinearities' : ['relu', 'relu']
+        },
+        {
+                'num_features' : [500, 50],
+                'nonlinearities' : ['relu', 'relu']
+        },
+        {
+                'num_features' : [300, 100],
+                'nonlinearities' : ['relu', 'relu']
+        }
 ]
 
 
@@ -328,28 +329,28 @@ um_mlp_args = shared_mlp_choices[args['umfcarchitecture']]
 
 
 um_cfg = {
-	'shared_encode' : cfg_generation.generate_conv_architecture_cfg(desc = 'encode', **um_encoding_args),
-	'shared_mlp_before_action' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_before_act_args),
-	'shared_mlp' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_args),
-	'mlp' : dict((t, cfg_generation.generate_mlp_architecture_cfg(**choice_args)) for t, choice_args in separate_mlp_choice.iteritems()),
-	'loss_func' : models.ms_sum_binned_softmax_loss,
-	'thresholds' : um_thresholds,
-	'loss_factor' : args['lossfac'],
-	'n_action_samples' : N_ACTION_SAMPLES,
-	'heat' : args['heat']
+        'shared_encode' : cfg_generation.generate_conv_architecture_cfg(desc = 'encode', **um_encoding_args),
+        'shared_mlp_before_action' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_before_act_args),
+        'shared_mlp' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_args),
+        'mlp' : dict((t, cfg_generation.generate_mlp_architecture_cfg(**choice_args)) for t, choice_args in separate_mlp_choice.iteritems()),
+        'loss_func' : models.ms_sum_binned_softmax_loss,
+        'thresholds' : um_thresholds,
+        'loss_factor' : args['lossfac'],
+        'n_action_samples' : N_ACTION_SAMPLES,
+        'heat' : args['heat']
 }
 
 model_cfg = {
-	'world_model' : wm_cfg,
-	'uncertainty_model' : um_cfg,
-	'seed' : args['modelseed']
+        'world_model' : wm_cfg,
+        'uncertainty_model' : um_cfg,
+        'seed' : args['modelseed']
 
 
 }
 
 
 lr_params = {              
-		'world_model' : {
+                'world_model' : {
                         'act_model' : {
                         'func': tf.train.exponential_decay,
                         'learning_rate': args['actlr'],
@@ -377,8 +378,8 @@ lr_params = {
 
 
 if args['optimizer'] == 'adam':
-	optimizer_class = tf.train.AdamOptimizer
-	optimizer_params = {
+        optimizer_class = tf.train.AdamOptimizer
+        optimizer_params = {
                 'world_model' : {
                         'act_model' : {
                                 'func': optimizer.ClipOptimizer,
@@ -399,8 +400,8 @@ if args['optimizer'] == 'adam':
 
         }
 elif args['optimizer'] == 'momentum':
-	optimizer_class = tf.train.MomentumOptimizer
-	optimizer_params = {
+        optimizer_class = tf.train.MomentumOptimizer
+        optimizer_params = {
                 'world_model' : {
                         'act_model' : {
                                 'func': optimizer.ClipOptimizer,
@@ -469,18 +470,18 @@ validate_params = {'valid0':
 }
 
 train_params = {
-	'updater_func' : update_step.ActionUncertaintyUpdater,
-	'updater_kwargs' : {
-		'state_desc' : 'depths1'
+        'updater_func' : update_step.ActionUncertaintyUpdater,
+        'updater_kwargs' : {
+                'state_desc' : 'depths1'
 
-	}
+        }
 }
 
 
 def get_ms_models(cfg):
-	world_model = models.MoreInfoActionWorldModel(cfg['world_model'])
-	uncertainty_model = models.MSExpectedUncertaintyModel(cfg['uncertainty_model'], world_model)
-	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
+        world_model = models.MoreInfoActionWorldModel(cfg['world_model'])
+        uncertainty_model = models.MSExpectedUncertaintyModel(cfg['uncertainty_model'], world_model)
+        return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
 model_params = {
                 'func' : get_ms_models,
@@ -542,7 +543,7 @@ dp_config = {
                 'scene_list' : [one_obj_scene_info],
                 'scene_lengths' : [1024 * 32],
                 'do_torque' : False,
-		'use_absolute_coordinates' : False
+                'use_absolute_coordinates' : False
 
 
 
@@ -561,24 +562,24 @@ postprocessor_params = {
 
 
 params = {
-	'model_params' : model_params,
-	'data_params' : dp_config,
-	'postprocessor_params' : postprocessor_params,
-	'optimizer_params' : optimizer_params,
-	'learning_rate_params' : lr_params,
-	'train_params' : train_params,
-	'validate_params' : validate_params,
+        'model_params' : model_params,
+        'data_params' : dp_config,
+        'postprocessor_params' : postprocessor_params,
+        'optimizer_params' : optimizer_params,
+        'learning_rate_params' : lr_params,
+        'train_params' : train_params,
+        'validate_params' : validate_params,
 }
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5
+params['save_params']['save_valid_freq'] = 1000
 params['allow_growth'] = True
 
 
 if __name__ == '__main__':
-	os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
-	train.train_from_params(**params)
+        os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
+        train.train_from_params(**params)
 
 
 
