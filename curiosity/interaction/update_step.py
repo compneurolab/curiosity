@@ -142,6 +142,12 @@ class ExperienceReplayPostprocessor:
 		if 'msg' in batch['recent']:
 			looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
                 	res['obj_freq'] = np.mean(looking_at_obj)
+                elif type(batch['recent']) == list:
+                    mean_per_provider = []
+                    for provider_recent in batch['recent']:
+                        looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in provider_recent['msg']]
+                        mean_per_provider.append(np.mean(looking_at_obj))
+                    res['obj_freq'] = np.mean(looking_at_obj)
                 return res
 
 class UncertaintyPostprocessor:
