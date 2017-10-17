@@ -376,10 +376,11 @@ elif args['optimizer'] == 'momentum':
 
 
 train_params = {
-	'updater_func' : update_step.ActionUncertaintyUpdater,
+	'updater_func' : update_step.FreezeUpdater,
 	'updater_kwargs' : {
-		'state_desc' : 'depths1'
-
+		'state_desc' : 'depths1',
+                'freeze_wm' : False,
+                'freeze_um' : False
 	}
 }
 
