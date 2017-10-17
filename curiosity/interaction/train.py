@@ -362,7 +362,7 @@ def train_from_params(
         if 'n_environments' in data_params:
             data_provider = []
             for itr in range(data_params['n_environments']):
-                data_params['environment_params']['unity_seed'] += 1
+                #data_params['environment_params']['unity_seed'] += 1
                 model_params['cfg']['seed'] += 1
                 data_provider.append(data_params['func'](
                         data_params, model_params, action_model))

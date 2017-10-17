@@ -43,6 +43,8 @@ parser.add_argument('--lossfac', default = 1., type = float)
 parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-opb', '--objperbatch', default = 16, type = int)
 parser.add_argument('--numsteps', default = 20, type = int)
+parser.add_argument('--loadstep', default = -1, type = int)
+
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'dr'
@@ -358,6 +360,10 @@ dp_config = {
 
 load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', load_and_save_elsewhere = True, portnum = cfg_generation.NODE_5_PORT)
 
+
+load_step = args['loadstep']
+if load_step > 0:
+    load_and_save_params['load_params']['query'] = {'saved_filters' : True, 'step' : load_step}
 
 load_and_save_params.pop('what_to_save_params')
 
