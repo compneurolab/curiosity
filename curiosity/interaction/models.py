@@ -1433,7 +1433,7 @@ class MSExpectedUncertaintyModel:
             self.readouts = {'estimated_world_loss' : self.estimated_world_loss, 'um_loss' : self.uncertainty_loss,
                                 'loss_per_example' : self.true_loss, 'obj_not_there_avg_pred_noprint' : self.obj_not_there_avg_pred,
                                 'obj_there_avg_pred_noprint' : self.obj_there_avg_pred, 'um_action_given' : self.action_sample,
-                                'um_obj_there_loss_noprint' : self.obj_there_loss, 'um_obj_not_there_loss_noprint' : self.obj_not_there_loss}
+                                'um_obj_there_loss_noprint' : self.obj_there_loss, 'um_obj_not_there_loss_noprint' : self.obj_not_there_loss, 'heat' : heat}
             for j, l in enumerate(self.loss_per_step):
                 self.readouts['um_loss' + str(j)] = l
             self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 'um_action_given']
