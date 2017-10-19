@@ -73,6 +73,7 @@ def query_results_to_unity_data(query_results, scale, mass, var = .01, seed = 0)
                 item['boundb_pos'] = res['boundb_pos']
                 item['isLight'] = res['isLight']
                 item['anchor_type'] = res['anchor_type']
+                #print(res['aws_address'])
                 item['aws_address'] = res['aws_address']
                 item['mass'] = mass
                 item['scale'] = {"option": "Absol_size", "scale": scale, "var": var, "seed": seed, 'apply_to_inst' : True}
