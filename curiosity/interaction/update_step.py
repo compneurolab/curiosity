@@ -463,7 +463,10 @@ class FreezeUpdater:
         assert set(self.wm.readouts.keys()) != set(self.um.readouts.keys())
         self.targets.update(self.wm.readouts)
         self.targets.update(self.um.readouts)
-        
+        um_increment = tf.assign_add(um.step, 1)
+        assert 'um_increment' not in self.targets
+        self.targets['um_increment'] = um_incrememt
+
         #self.map_draw_mode = None
         #Map drawing. Meant to have options, but for now just assuming one sort of specification
         #self.state_desc = updater_params.get('state_desc', 'depths1')
@@ -495,6 +498,7 @@ class FreezeUpdater:
                 self.wm.action_post : batch['action_post']
             }
         res = sess.run(self.targets, feed_dict = feed_dict)
+        res.pop('um_increment')
         global_step = res['global_step']
         #if self.map_draw_mode is not None and global_step % self.map_draw_freq == 0:
         #    if self.map_draw_mode == 'specified_indices':
