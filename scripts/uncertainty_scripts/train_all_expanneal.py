@@ -30,7 +30,7 @@ parser.add_argument('--umlr', default = 1e-3, type = float)
 parser.add_argument('--actlr', default = 1e-4, type = float)
 #parser.add_argument('--loss', default = 0, type = int)
 parser.add_argument('--tiedencoding', default = False, type = bool)
-parser.add_argument('--heat', default = 1., type = float)
+#parser.add_argument('--heat', default = 1., type = float)
 parser.add_argument('--egoonly', default = False, type = bool)
 parser.add_argument('--zeroedforce', default = False, type = bool)
 parser.add_argument('--optimizer', default = 'adam', type = str)
@@ -53,12 +53,13 @@ parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
+parser.add_argument('--startheat', default = 1000., type = float)
+parser.add_argument('--endheat', default = 5e-1, type = float)
+parser.add_argument('--annealtime', default = 100000, type = int)
 parser.add_argument('--rendernode', default = -1, type = int)
 
-
-
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'ann'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -76,9 +77,6 @@ elif render_node == 5:
     RENDER1_HOST_ADDRESS = '10.102.2.153'
 else:
     RENDER1_HOST_ADDRESS = '10.102.2.161'
-
-
-
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
@@ -326,8 +324,12 @@ um_cfg = {
 	'thresholds' : um_thresholds,
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
-	'heat' : args['heat'],
-        'just_random' : 1
+        'heat_func' : models.stopping_exponential_decay,
+        'heat_params' : {
+            'start_value' : args['startheat'],
+            'end_value' : args['endheat'],
+            'time_to_get_there' : args['annealtime'] if not test_mode else 15
+            }
 }
 
 model_cfg = {
@@ -476,7 +478,7 @@ data_lengths = {
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
 
-n_env = args['numberofenvironments']
+n_env = args['numberofenvironments'] if not test_mode else 1
 
 dp_config = {
                 'func' : train.get_batching_data_provider,
@@ -524,7 +526,7 @@ validate_params = {
         'valid0': {
             'func' : update_step.ActionUncertaintyValidatorWithReadouts,
             'kwargs' : {},
-            'num_steps' : 50,
+            'num_steps' : 50 if not test_mode else 2,
             'online_agg_func' : online_agg_func,
             'agg_func' : agg_func,
             'data_params' : {

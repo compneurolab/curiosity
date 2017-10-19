@@ -53,6 +53,7 @@ parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
+parser.add_argument('--rendernode', default = -1, type = int)
 
 
 
@@ -63,7 +64,25 @@ IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
-RENDER1_HOST_ADDRESS = '10.102.2.161'
+
+
+
+args = vars(parser.parse_args())
+
+
+
+render_node = args['rendernode']
+if render_node == 1:
+    RENDER1_HOST_ADDRESS = '10.102.2.149'
+elif render_node == 5:
+    RENDER1_HOST_ADDRESS = '10.102.2.153'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+
+
+
+
+
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
@@ -84,8 +103,6 @@ def online_agg_func(agg_res, res, step):
 
 def agg_func(res):
     return res
-
-args = vars(parser.parse_args())
 
 test_mode = args['testmode']
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
@@ -510,7 +527,7 @@ validate_params = {
         'valid0': {
             'func' : update_step.ActionUncertaintyValidatorWithReadouts,
             'kwargs' : {},
-            'num_steps' : 10,
+            'num_steps' : 50,
             'online_agg_func' : online_agg_func,
             'agg_func' : agg_func,
             'data_params' : {

@@ -1404,7 +1404,7 @@ class MSExpectedUncertaintyModel:
                 assert 'heat' not in cfg
                 heat = cfg['heat_func'](self.step, ** cfg['heat_params'])
             else:
-                heat = cfg.get('heat', 1.)
+                heat = tf.constant(cfg.get('heat', 1.), dtype = tf.float32)
             
             
             
@@ -1437,28 +1437,27 @@ class MSExpectedUncertaintyModel:
             for j, l in enumerate(self.loss_per_step):
                 self.readouts['um_loss' + str(j)] = l
             self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 'um_action_given']
+            
+            
+            
+            
+    def act(self, sess, action_sample, state):
+        #this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
+        depths_batch = np.array([state])
+        if self.just_random:
+            print('just random!')
+            ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+            chosen_idx = self.rng.randint(len(action_sample))
+            return action_sample[chosen_idx], -1., ewl
+        chosen_idx, ewl = sess.run([self.sample, self.estimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+        chosen_idx = chosen_idx[0]
+        act = action_sample[chosen_idx]
+        return act, -1., ewl
 
 
 
 
-
-	def act(self, sess, action_sample, state):
-		#this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
-		depths_batch = np.array([state])
-		if self.just_random:
-			print('just random!')
-			ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
-			chosen_idx = self.rng.randint(len(action_sample))
-			return action_sample[chosen_idx], -1., ewl
-		chosen_idx, ewl = sess.run([self.sample, self.estimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
-		chosen_idx = chosen_idx[0]
-		act = action_sample[chosen_idx]
-		return act, -1., ewl
-
-
-
-
-def stopping_exponential_decay(step, start_value = 1000., end_value = 5e-1, time_to_get_there):
+def stopping_exponential_decay(step, start_value = 1000., end_value = 5e-1, time_to_get_there = 100000):
     step_flt = tf.cast(step, tf.float32)
     frac_there = step_flt / float(time_to_get_there)
     raw_decay = tf.exp(np.log(start_value) * (1. - frac_there) + np.log(end_value) * frac_there)
