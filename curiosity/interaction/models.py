@@ -1333,116 +1333,140 @@ class SimpleForceUncertaintyModel:
 		return action_sample[chosen_idx], -1., None
 
 class MSExpectedUncertaintyModel:
-	def __init__(self, cfg, world_model):
-		with tf.variable_scope('uncertainty_model'):
-			m = ConvNetwithBypasses()
-			self.s_i = x = world_model.s_i
-                        print('dtype beginning um')
-                        print(self.s_i.dtype)
-			self.true_loss = world_model.act_loss_per_example
-			n_timesteps = len(world_model.act_loss_per_example)
-			print('n timesteps!')
-			print(n_timesteps) 
-			t_per_state = self.s_i.get_shape().as_list()[1]
-			#the action it decides on is the first action giving a transition from the starting state.
-			self.action_sample = ac = world_model.action_for_um
-			#should also really include some past actions
-			#encoding
-                        x = tf.cast(x, tf.float32)
-			x = postprocess_depths(x)
-			x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
-			self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
-
-			#choke down
-			x = flatten(x)
-			with tf.variable_scope('before_action'):
-				x = hidden_loop_with_bypasses(x, m, cfg['shared_mlp_before_action'], reuse_weights = False, train = True)
+    def __init__(self, cfg, world_model):
+	with tf.variable_scope('uncertainty_model'):
+            self.step = tf.get_variable('um_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+            m = ConvNetwithBypasses()
+            self.s_i = x = world_model.s_i
+            print(self.s_i.dtype)
+            self.true_loss = world_model.act_loss_per_example
+            n_timesteps = len(world_model.act_loss_per_example)
+            t_per_state = self.s_i.get_shape().as_list()[1]
+            #the action it decides on is the first action giving a transition from the starting state.
+            self.action_sample = ac = world_model.action_for_um
+            #should also really include some past actions
+            #encoding
+            x = tf.cast(x, tf.float32)
+            x = postprocess_depths(x)
+            x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
+            self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            
+            #choke down
+            x = flatten(x)
+            with tf.variable_scope('before_action'):
+                x = hidden_loop_with_bypasses(x, m, cfg['shared_mlp_before_action'], reuse_weights = False, train = True)
+                
+            #if we are computing the uncertainty map for many action samples, tile to use the same encoding for each action
+            x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
+            
+            #concatenate action
+            x = tf_concat([x, ac], 1)
+                
+            #shared mlp after action
+            if 'shared_mlp' in cfg:
+                with tf.variable_scope('shared_mlp'):
+                    x = hidden_loop_with_bypasses(x, m, cfg['shared_mlp'], reuse_weights = False, train = True)
 			
-			#if we are computing the uncertainty map for many action samples, tile to use the same encoding for each action
-			x = tf.cond(tf.equal(tf.shape(self.action_sample)[0], cfg['n_action_samples']), lambda : tf.tile(x, [cfg['n_action_samples'], 1]), lambda : x)
-
-			#concatenate action
-			x = tf_concat([x, ac], 1)
-			
-			#shared mlp after action
-			if 'shared_mlp' in cfg:
-				with tf.variable_scope('shared_mlp'):
-					x = hidden_loop_with_bypasses(x, m, cfg['shared_mlp'], reuse_weights = False, train = True)
-			
-			#split mlp per prediction
-			self.estimated_world_loss = []
-			for t in range(n_timesteps):
-				with tf.variable_scope('split_mlp' + str(t)):
-					self.estimated_world_loss.append(hidden_loop_with_bypasses(x, m, cfg['mlp'][t], reuse_weights = False, train = True))
-			self.loss_per_example, self.loss_per_step, self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
-			
-			#for now, just implementing a random policy
-			self.just_random = False
-			if 'just_random' in cfg:
-				self.just_random = True
-				self.rng = np.random.RandomState(cfg['just_random'])
-			self.var_list = [var for var in tf.global_variables() if 'uncertainty_model' in var.name]
-			
-			#a first stab at a policy based on this uncertainty estimation
-			if cfg.get('weird_old_score', False):
-				tot_est = sum(self.estimated_world_loss)
-				tot_est_shape = tot_est.get_shape().as_list()
-				assert len(tot_est_shape) == 2
-				n_classes = tot_est_shape[1]
-				expected_tot_est = sum([tot_est[:, i:i+1] * float(i) for i in range(n_classes)])
-			else:
-				probs_per_timestep = [tf.nn.softmax(logits) for logits in self.estimated_world_loss]
-				n_classes = probs_per_timestep[0].get_shape().as_list()[-1]
-				expected_class_per_timestep = [sum([probs[:, i:i+1] * float(i) for i in range(n_classes)]) for probs in probs_per_timestep]
-				expected_tot_est = sum(expected_class_per_timestep)
-			heat = cfg.get('heat', 1.)
-			x = tf.transpose(expected_tot_est) / heat
-			self.sample = categorical_sample(x, cfg['n_action_samples'], one_hot = False)
                         
-                        #add readouts
-                        self.obj_there_avg_pred = []
-                        self.obj_not_there_avg_pred = []
-                        self.obj_there_loss = []
-                        self.obj_not_there_loss = []
-                        #only care about if object is there the first time
-                        obj_there = tf.tile(world_model.object_there[0], [1, n_classes])
-                        obj_there_for_per_example_case = tf.squeeze(world_model.object_there[0])
-                        for t in range(n_timesteps):
-                            self.obj_there_avg_pred.append(float(n_classes) * tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
-                            self.obj_not_there_avg_pred.append(float(n_classes) * tf.reduce_sum((1. - obj_there)\
+            #split mlp per prediction
+            self.estimated_world_loss = []
+            for t in range(n_timesteps):
+                with tf.variable_scope('split_mlp' + str(t)):
+                    self.estimated_world_loss.append(hidden_loop_with_bypasses(x, m, cfg['mlp'][t], reuse_weights = False, train = True))
+	    self.loss_per_example, self.loss_per_step, self.uncertainty_loss = cfg['loss_func'](self.true_loss, self.estimated_world_loss, cfg)
+			
+                        
+            #for now, just implementing a random policy
+            self.just_random = False
+            if 'just_random' in cfg:
+                self.just_random = True
+                self.rng = np.random.RandomState(cfg['just_random'])
+                
+                
+            self.var_list = [var for var in tf.global_variables() if 'uncertainty_model' in var.name]
+			
+                        
+            #a first stab at a policy based on this uncertainty estimation
+            if cfg.get('weird_old_score', False):
+                tot_est = sum(self.estimated_world_loss)
+                tot_est_shape = tot_est.get_shape().as_list()
+                assert len(tot_est_shape) == 2
+                n_classes = tot_est_shape[1]
+                expected_tot_est = sum([tot_est[:, i:i+1] * float(i) for i in range(n_classes)])
+            else:
+                probs_per_timestep = [tf.nn.softmax(logits) for logits in self.estimated_world_loss]
+                n_classes = probs_per_timestep[0].get_shape().as_list()[-1]
+                expected_class_per_timestep = [sum([probs[:, i:i+1] * float(i) for i in range(n_classes)]) for probs in probs_per_timestep]
+                expected_tot_est = sum(expected_class_per_timestep)
+
+            #heat setup
+            if 'heat_func' in cfg:
+                assert 'heat' not in cfg
+                heat = cfg['heat_func'](self.step, ** cfg['heat_params'])
+            else:
+                heat = tf.constant(cfg.get('heat', 1.), dtype = tf.float32)
+            
+            
+            
+            
+            x = tf.transpose(expected_tot_est) / heat
+            self.sample = categorical_sample(x, cfg['n_action_samples'], one_hot = False)
+                        
+            #add readouts
+            self.obj_there_avg_pred = []
+            self.obj_not_there_avg_pred = []
+            self.obj_there_loss = []
+            self.obj_not_there_loss = []
+            #only care about if object is there the first time
+            obj_there = tf.tile(world_model.object_there[0], [1, n_classes])
+            obj_there_for_per_example_case = tf.squeeze(world_model.object_there[0])
+            for t in range(n_timesteps):
+                self.obj_there_avg_pred.append(float(n_classes) * tf.reduce_sum(obj_there * probs_per_timestep[t], axis = 0) / tf.reduce_sum(obj_there))
+                self.obj_not_there_avg_pred.append(float(n_classes) * tf.reduce_sum((1. - obj_there)\
                                     * probs_per_timestep[t], axis = 0) / tf.reduce_sum(1. - obj_there))
-                            self.obj_there_loss.append(tf.reduce_sum(obj_there_for_per_example_case * self.loss_per_example[t]) / tf.reduce_sum(obj_there_for_per_example_case))
-                            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there_for_per_example_case)\
+                self.obj_there_loss.append(tf.reduce_sum(obj_there_for_per_example_case * self.loss_per_example[t]) / tf.reduce_sum(obj_there_for_per_example_case))
+                self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there_for_per_example_case)\
                                     * self.loss_per_example[t]) / tf.reduce_sum(1. - obj_there_for_per_example_case))
                         
                         
                         
-                        self.readouts = {'estimated_world_loss' : self.estimated_world_loss, 'um_loss' : self.uncertainty_loss,
+            self.readouts = {'estimated_world_loss' : self.estimated_world_loss, 'um_loss' : self.uncertainty_loss,
                                 'loss_per_example' : self.true_loss, 'obj_not_there_avg_pred_noprint' : self.obj_not_there_avg_pred,
                                 'obj_there_avg_pred_noprint' : self.obj_there_avg_pred, 'um_action_given' : self.action_sample,
-                                'um_obj_there_loss_noprint' : self.obj_there_loss, 'um_obj_not_there_loss_noprint' : self.obj_not_there_loss}
-                        for j, l in enumerate(self.loss_per_step):
-                            self.readouts['um_loss' + str(j)] = l
-                        self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 'um_action_given']
-                        print('dtype ending um')
-                        print(self.s_i.dtype)
+                                'um_obj_there_loss_noprint' : self.obj_there_loss, 'um_obj_not_there_loss_noprint' : self.obj_not_there_loss, 'heat' : heat}
+            for j, l in enumerate(self.loss_per_step):
+                self.readouts['um_loss' + str(j)] = l
+            self.save_to_gfs = ['estimated_world_loss', 'loss_per_example', 'um_action_given']
+            
+            
+            
+            
+    def act(self, sess, action_sample, state):
+        #this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
+        depths_batch = np.array([state])
+        if self.just_random:
+            print('just random!')
+            ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+            chosen_idx = self.rng.randint(len(action_sample))
+            return action_sample[chosen_idx], -1., ewl
+        chosen_idx, ewl = sess.run([self.sample, self.estimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
+        chosen_idx = chosen_idx[0]
+        act = action_sample[chosen_idx]
+        return act, -1., ewl
+
+
+
+
+def stopping_exponential_decay(step, start_value = 1000., end_value = 5e-1, time_to_get_there = 100000):
+    step_flt = tf.cast(step, tf.float32)
+    frac_there = step_flt / float(time_to_get_there)
+    raw_decay = tf.exp(np.log(start_value) * (1. - frac_there) + np.log(end_value) * frac_there)
+    return tf.maximum(raw_decay, end_value)
 
 
 
 
 
-	def act(self, sess, action_sample, state):
-		#this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
-		depths_batch = np.array([state])
-		if self.just_random:
-			print('just random!')
-			ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
-			chosen_idx = self.rng.randint(len(action_sample))
-			return action_sample[chosen_idx], -1., ewl
-		chosen_idx, ewl = sess.run([self.sample, self.estimated_world_loss], feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
-		chosen_idx = chosen_idx[0]
-		act = action_sample[chosen_idx]
-		return act, -1., ewl
 
 class UncertaintyModel:
     def __init__(self, cfg, world_model):

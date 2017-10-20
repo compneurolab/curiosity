@@ -142,6 +142,12 @@ class ExperienceReplayPostprocessor:
 		if 'msg' in batch['recent']:
 			looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
                 	res['obj_freq'] = np.mean(looking_at_obj)
+                elif type(batch['recent']) == list:
+                    mean_per_provider = []
+                    for provider_recent in batch['recent']:
+                        looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in provider_recent['msg']]
+                        mean_per_provider.append(np.mean(looking_at_obj))
+                    res['obj_freq'] = np.mean(looking_at_obj)
                 return res
 
 class UncertaintyPostprocessor:
@@ -459,7 +465,10 @@ class FreezeUpdater:
         assert set(self.wm.readouts.keys()) != set(self.um.readouts.keys())
         self.targets.update(self.wm.readouts)
         self.targets.update(self.um.readouts)
-        
+        um_increment = tf.assign_add(self.um.step, 1)
+        assert 'um_increment' not in self.targets
+        self.targets['um_increment'] = um_increment
+
         #self.map_draw_mode = None
         #Map drawing. Meant to have options, but for now just assuming one sort of specification
         #self.state_desc = updater_params.get('state_desc', 'depths1')
@@ -491,6 +500,7 @@ class FreezeUpdater:
                 self.wm.action_post : batch['action_post']
             }
         res = sess.run(self.targets, feed_dict = feed_dict)
+        res.pop('um_increment')
         global_step = res['global_step']
         #if self.map_draw_mode is not None and global_step % self.map_draw_freq == 0:
         #    if self.map_draw_mode == 'specified_indices':
