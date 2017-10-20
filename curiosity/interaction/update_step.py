@@ -425,6 +425,79 @@ class DebuggingForceMagUpdater:
 		return res
 
 
+class LatentFreezeUpdater:
+    def __init__(self, models, data_provider, optimizer_params, learning_rate_params, postprocessor, updater_params):
+        self.data_provider = data_provider\
+                if isinstance(data_provider, list) else [data_provider]
+        self.wm = models['world_model']
+        self.um = models['um']
+        freeze_wm = updater_params['freeze_wm']
+        freeze_um = updater_params['freeze_um']
+        self.postprocessor = postprocessor
+        self.global_step = tf.get_variable('global_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+        self.act_step = tf.get_variable('act_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+        self.fut_step = tf.get_variable('fut_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+        self.um_step = tf.get_variable('ext_uncertainty_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
+        self.targets = {}
+        self.state_desc = 'depths1'
+        if not freeze_wm:
+            act_lr_params, act_lr = get_learning_rate(self.act_step, **learning_rate_params['world_model']['act_model'])
+            fut_lr_params, fut_lr = get_learning_rate(self.fut_step, **learning_rate_params['world_model']['fut_model'])
+            act_opt = get_optimizer(act_lr, self.wm.act_loss, self.act_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+            fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.fut_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
+            self.targets['act_opt'] = act_opt
+            self.targets['fut_opt'] = fut_opt
+            self.targets['act_lr'] = act_lr
+            self.targets['fut_lr'] = fut_lr
+        if not freeze_um:
+            um_lr_params, um_lr = get_learning_rate(self.um_step, **learning_rate_params['uncertainty_model'])
+            um_opt_params, um_opt = get_optimizer(um_lr, self.um.uncertainty_loss, self.um_step, optimizer_params['uncertainty_model'], var_list = self.um.var_list)
+            self.targets['um_opt'] = um_opt
+            self.targets['um_lr'] = um_lr
+        self.targets['global_step'] = self.global_step
+        global_increment = tf.assign_add(self.global_step, 1)
+        um_increment = tf.assign_add(self.um.step, 1)
+        self.targets.update({'global_increment' : global_increment, 'um_increment' : um_increment})
+        self.targets.update(self.wm.readouts)
+        self.targets.update(self.um.readouts)
+        assert set(self.wm.readouts.keys()) != set(self.um.readouts.keys())
+
+
+    def update(self, sess, visualize = False):
+        batch = {}
+        for i, dp in enumerate(self.data_provider):
+            provider_batch = dp.dequeue_batch()
+            for k in provider_batch:
+                if k in batch:
+                    batch[k].append(provider_batch[k])
+                else:
+                    batch[k] = [provider_batch[k]]
+        for k in ['action', 'action_post', 'depths1']:
+            batch[k] = np.concatenate(batch[k], axis=0)
+        feed_dict = {
+                self.wm.states : batch[self.state_desc],
+                self.wm.action : batch['action'],
+                self.wm.action_post : batch['action_post']
+            }
+        res = sess.run(self.targets, feed_dict = feed_dict)
+        res.pop('um_increment')
+        res.pop('global_increment')
+        global_step = res['global_step']
+        #if self.map_draw_mode is not None and global_step % self.map_draw_freq == 0:
+        #    if self.map_draw_mode == 'specified_indices':
+        #        map_draw_res = []
+        #        for idx in self.map_draw_example_indices:
+        #            obs_for_actor = [batch[self.state_desc][idx][t] for t in self.map_draw_timestep_indices]
+        #            action_samples = self.action_sampler.sample_actions()
+        #            action, entropy, estimated_world_loss = self.um.act(sess, action_samples, obs_for_actor)
+        #            to_add = {'example_id' : idx, 'action_sample' : action, 'estimated_world_loss' : estimated_world_loss, 
+        #                    'action_samples' : action_samples, 'depths1' : batch[self.state_desc][idx], 
+        #                    'action' : batch['action'][idx], 'action_post' : batch['action_post'][idx]}
+        #            map_draw_res.append(to_add)
+        #    res['map_draw'] = map_draw_res
+        res = self.postprocessor.postprocess(res, batch)
+        return res, global_step
+
 
 
 
