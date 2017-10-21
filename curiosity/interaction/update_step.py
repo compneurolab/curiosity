@@ -319,17 +319,17 @@ class ActionUncertaintyValidatorWithReadouts:
         res = sess.run(self.targets, feed_dict = feed_dict)
         #TODO case it for online
         res['recent'] = {}
-        if self.map_draw_mode == 'specified_indices':
-            map_draw_res = []
-            for idx in self.map_draw_example_indices:
-                obs_for_actor = [batch[self.state_desc][idx][t] for t in self.map_draw_timestep_indices]
-                action_samples = self.action_sampler.sample_actions()
-                action, entropy, estimated_world_loss = self.um.act(sess, action_samples, obs_for_actor)
-                to_add = {'example_id' : idx, 'action_sample' : action, 'estimated_world_loss' : estimated_world_loss,
-                        'action_samples' : action_samples, 'depths1' : batch[self.state_desc][idx],
-                        'action' : batch['action'][idx], 'action_post' : batch['action_post'][idx]}
-                map_draw_res.append(to_add)
-        res['map_draw'] = map_draw_res
+        #if self.map_draw_mode == 'specified_indices':
+        #    map_draw_res = []
+        #    for idx in self.map_draw_example_indices:
+        #        obs_for_actor = [batch[self.state_desc][idx][t] for t in self.map_draw_timestep_indices]
+        #        action_samples = self.action_sampler.sample_actions()
+        #        action, entropy, estimated_world_loss = self.um.act(sess, action_samples, obs_for_actor)
+        #        to_add = {'example_id' : idx, 'action_sample' : action, 'estimated_world_loss' : estimated_world_loss,
+        #                'action_samples' : action_samples, 'depths1' : batch[self.state_desc][idx],
+        #                'action' : batch['action'][idx], 'action_post' : batch['action_post'][idx]}
+        #        map_draw_res.append(to_add)
+        #res['map_draw'] = map_draw_res
         return res
 
 

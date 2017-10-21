@@ -298,7 +298,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
         params['what_to_save_params'] = {
                 'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example', 'estimated_world_loss', 'loss_per_step'],
                 'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'loss_per_step'],
-                'big_save_len' : 2,
+                'big_save_len' : 5,
                 'big_save_freq' : 1000,
                 'state_descriptor' : state_desc
         }

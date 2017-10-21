@@ -158,6 +158,8 @@ class ObjectThereFixedPermutationBatcher:
         assert len(self.obj_there_idxs) / num_there_per_batch > reset_batch_num and len(self.obj_not_there_idxs) / num_not_there_per_batch > reset_batch_num
         self.there_schedule = self.rng.permutation(self.obj_there_idxs)
         self.not_there_schedule = self.rng.permutation(self.obj_not_there_idxs)
+        self.num_there_per_batch = num_there_per_batch
+        self.num_not_there_per_batch = num_not_there_per_batch
         self.batch_count = 0
         self.reset_batch_num = reset_batch_num
         print('Initialization complete')
