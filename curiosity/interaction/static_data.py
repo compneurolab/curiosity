@@ -9,6 +9,8 @@ import numpy as np
 import json
 import six.moves.queue as queue
 import cPickle
+import os
+from PIL import Image
 
 def check_obj_there(hdf5_filenames):
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
@@ -36,6 +38,27 @@ def check_obj_there(hdf5_filenames):
 				break
 		good_until[filename] = idx
 	return good_until
+
+def save_some_objthere_images(metadata, save_path, how_many = 100):
+    filenames = metadata['filenames']
+    hdf5s = [h5py.File(fn, mode = 'r') for fn in filenames]
+    rng = np.random.RandomState(0)
+    for fn, f, there_idxs in zip(filenames, hdf5s, metadata['obj_there_idxs']):
+        fn_end = fn.split('/')[-1]
+        fn_end = fn.split('.')[0]
+        idxs_to_save = rng.permutation(there_idxs)[:how_many]
+        print(idxs_to_save)
+        imgs = [f['depths1'][idx] for idx in idxs_to_save]
+        imgs = [Image.fromarray(img) for img in imgs]
+        my_save_path = os.path.join(save_path, fn_end)
+        #assert not os.path.exists(my_save_path)
+        #os.mkdir(my_save_path)
+        for img, idx in zip(imgs, idxs_to_save):
+            img_fn = os.path.join(my_save_path, str(idx) + '.png')
+            #img.save(img_fn)
+            print(img_fn)
+
+
 
 def print_some_actions(hdf5_filenames, batches_to_print = 2):
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
@@ -146,7 +169,32 @@ def get_objthere_metadata_deluxe(hdf5_filenames, save_loc, timesteps_before, tim
 	return metadata
 
 
+class ObjectThereFixedPermutationBatcher:
+    def __init__(self, batch_size, metadata, seed, num_there_per_batch, num_not_there_per_batch, reset_batch_num):
+        self.batch_size = batch_size
+        self.rng = np.random.RandomState(seed)
+        self.obj_there_idxs = metadata['obj_there_idxs']
+        self.obj_not_there_idxs = metadata['obj_not_there_idxs']
+        self.there_start = 0
+        self.not_there_start = 0
+        assert len(self.obj_there_idxs) / num_there_per_batch > reset_batch_num and len(self.obj_not_there_idxs) / num_not_there_per_batch > reset_batch_num
+        self.there_schedule = self.rng.permutation(self.obj_there_idxs)
+        self.not_there_schedule = self.rng.permutation(self.obj_not_there_idxs)
+        print('Initialization complete')
+        self.batch_count = 0
+        self.reset_batch_num = reset_batch_num
 
+    def get_batch_indices(self):
+        if self.batch_count > self.reset_batch_num:
+            self.there_start = 0
+            self.not_there_start = 0
+            self.batch_count = 0
+        obj_not_there_batch = self.not_there_schedule[self.not_there_start : self.not_there_start + self.num_not_there_per_batch]
+        obj_there_batch = self.there_schedule[self.there_start : self.there_start + self.num_there_per_batch]
+        self.there_start += self.num_there_per_batch
+        self.not_there_start += self.num_not_there_per_batch
+        self.batch_count += 1
+        return list(obj_there_batch) + list(obj_not_there_batch)
 
 
 
@@ -168,6 +216,7 @@ class ObjectThereBatcher:
 
 
 	def check_init(self):
+            
 		if self.there_start == -1 or self.there_start + self.num_there_per_batch > len(self.obj_there_idxs):
 			self.there_start = 0
 			self.there_schedule = self.rng.permutation(self.obj_there_idxs)
@@ -306,7 +355,7 @@ class OfflineDataProvider(threading.Thread):
 			batch = next(yielded)
 			self.queue.put(batch, timeout = 50000.0)
 
-	def dequeue_batch(self):
+        def dequeue_batch(self):
 		return self.queue.get(timeout = 50000.0)
 
 	def close(self):
