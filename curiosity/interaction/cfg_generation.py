@@ -18,10 +18,6 @@ try:
     USER = os.environ['CURIOSITY_USER']
 except KeyError:
     USER = 'nick'
-if USER == 'nick':
-    RENDER1_HOST_ADDRESS = '10.102.2.161'
-else:
-    RENDER1_HOST_ADDRESS = '10.102.2.149'
 NUM_BATCHES_PER_EPOCH = 1e8
 NODE_5_PORT = 15871
 NODE_3_PORT = 15841
@@ -46,6 +42,11 @@ def get_ip(node_name):
         return node2ip[node_name]
     else:
         raise KeyError("node_name unknown")
+
+if USER == 'nick':
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+else:
+    RENDER1_HOST_ADDRESS = get_ip('node4')
 
 
 def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class = tf.train.AdamOptimizer):

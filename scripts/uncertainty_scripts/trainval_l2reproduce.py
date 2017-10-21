@@ -65,7 +65,7 @@ except KeyError:
 if USER == 'nick':
     RENDER1_HOST_ADDRESS = '10.102.2.161'
 else:
-    RENDER1_HOST_ADDRESS = '10.102.2.149' #'10.102.2.161'
+    RENDER1_HOST_ADDRESS = cfg_generation.get_ip('node4') #'10.102.2.161'
 SELECTED_BUILD = 'three_world_locked_rot.x86_64'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
