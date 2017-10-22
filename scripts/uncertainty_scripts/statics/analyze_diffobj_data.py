@@ -30,7 +30,7 @@ force_scaling = 200
 
 
 #SMALLER_TEST_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2000, 2001, 2002]]
-SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/diffobj' + str(i) + '.hdf5' for i in range(1, 17)]
+SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/diffobj' + str(i) + '.hdf5' for i in range(1, 23)]
 
 
 BATCH_SIZE = 32
@@ -56,10 +56,10 @@ print('done checking')
 #train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths)
 #train_objthere_metadata = static_data.get_objthere_metadata(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, data_lengths)
 #test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths)
-test_objthere_metadata = static_data.get_objthere_metadata(SMALLER_TEST_FILENAMES, TEST_OBJTHERE_METADATA_LOC, data_lengths)
+test_objthere_metadatas = [static_data.get_objthere_metadata([fn], TEST_OBJTHERE_METADATA_LOC, data_lengths) for fn in SMALLER_TEST_FILENAMES]
 
 
-static_data.save_some_objthere_images(test_objthere_metadata, '/media/data4/nhaber/one_room_dataset/try1_images', how_many = 20)
+static_data.save_some_objthere_images(test_objthere_metadatas, '/media/data4/nhaber/one_room_dataset/try1_images', how_many = 20)
 '''
 dummy_sess = None
 #rand_dp = static_data.OfflineDataProvider(BATCH_SIZE, static_data.UniformRandomBatcher, data_lengths, 5, UNIFORM_METADATA_LOC, batcher_kwargs = {'seed' : 0})

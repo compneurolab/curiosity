@@ -372,7 +372,7 @@ class Environment:
                 self.rng_source = rng_source
                 if rng_periodicity is not None:
                         print('using rng periodicity ' + str(rng_periodicity))
-                        self.rng_source = PeriodicRNGSource(rng_periodicity, seed = 1)
+                        self.rng_source = PeriodicRNGSource(rng_periodicity, seed = random_seed)
                 self.state_memory = dict((k, [None for _ in range(mem_len)]) for k, mem_len in self.state_memory_len.iteritems())
                 self.msg_memory = [None for _ in range(self.msg_memory_len)]
                 self.action_memory = [None for _ in range(self.action_memory_len)]

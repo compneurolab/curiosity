@@ -39,24 +39,38 @@ def check_obj_there(hdf5_filenames):
 		good_until[filename] = idx
 	return good_until
 
-def save_some_objthere_images(metadata, save_path, how_many = 100):
-    filenames = metadata['filenames']
-    hdf5s = [h5py.File(fn, mode = 'r') for fn in filenames]
+def save_some_objthere_images(metadatas, save_path, how_many = 100):
     rng = np.random.RandomState(0)
-    for fn, f, there_idxs in zip(filenames, hdf5s, metadata['obj_there_idxs']):
+    print(save_path)
+    for md in metadatas:
+        assert len(md['filenames']) == 1
+        fn = md['filenames'][0]
+        f = h5py.File(fn, mode = 'r')
+        there_idxs = md['obj_there_idxs']
+        print(fn)
+        print(len(there_idxs))
         fn_end = fn.split('/')[-1]
-        fn_end = fn.split('.')[0]
+        fn_end = fn_end.split('.')[0]
         idxs_to_save = rng.permutation(there_idxs)[:how_many]
-        print(idxs_to_save)
-        imgs = [f['depths1'][idx] for idx in idxs_to_save]
+        idxs_to_save = [idx for fnn, idx in idxs_to_save]
+        imgs = [f['depths1'][idx - 1] for idx in idxs_to_save]
         imgs = [Image.fromarray(img) for img in imgs]
+        obj_images = [f['objects1'][idx - 1] for idx in idxs_to_save]
+        obj_images = [Image.fromarray(img) for img in obj_images]
+       #print('joining')
+        #print(save_path)
+        #print(fn_end)
         my_save_path = os.path.join(save_path, fn_end)
-        #assert not os.path.exists(my_save_path)
-        #os.mkdir(my_save_path)
-        for img, idx in zip(imgs, idxs_to_save):
+        assert not os.path.exists(my_save_path)
+        os.mkdir(my_save_path)
+        print(my_save_path)
+        for img, idx, oi in zip(imgs, idxs_to_save, obj_images):
             img_fn = os.path.join(my_save_path, str(idx) + '.png')
-            #img.save(img_fn)
-            print(img_fn)
+            #oi_fn = os.path.join(my_save_path, str(idx) + 'oi.png')
+            #print(img_fn)
+            img.save(img_fn)
+            #oi.save(oi_fn)
+            #print(img_fn)
 
 
 
