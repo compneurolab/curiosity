@@ -430,7 +430,7 @@ class LatentFreezeUpdater:
         self.data_provider = data_provider\
                 if isinstance(data_provider, list) else [data_provider]
         self.wm = models['world_model']
-        self.um = models['um']
+        self.um = models['uncertainty_model']
         freeze_wm = updater_params['freeze_wm']
         freeze_um = updater_params['freeze_um']
         self.postprocessor = postprocessor
@@ -443,8 +443,8 @@ class LatentFreezeUpdater:
         if not freeze_wm:
             act_lr_params, act_lr = get_learning_rate(self.act_step, **learning_rate_params['world_model']['act_model'])
             fut_lr_params, fut_lr = get_learning_rate(self.fut_step, **learning_rate_params['world_model']['fut_model'])
-            act_opt = get_optimizer(act_lr, self.wm.act_loss, self.act_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
-            fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.fut_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
+            act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.act_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
+            fut_opt_params, fut_opt = get_optimizer(fut_lr, self.wm.fut_loss, self.fut_step, optimizer_params['world_model']['fut_model'], var_list = self.wm.fut_var_list)
             self.targets['act_opt'] = act_opt
             self.targets['fut_opt'] = fut_opt
             self.targets['act_lr'] = act_lr

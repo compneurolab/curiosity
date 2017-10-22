@@ -1116,11 +1116,14 @@ class LatentMoreInfoActionWorldModel(object):
                 for t in range(num_timesteps):
                     encoded_states_given = [flat_encodings_pre_mlp[t + s] for s in fm_states_given]
                     act_given = [self.action[:, t + a + act_back] for a in fm_actions_given]
-                    fut_tv = flat_encodings[t]
+                    fut_tv = flat_encodings_pre_mlp[t]
                     x = tf_concat(encoded_states_given + act_given, axis = 1)
                     with tf.variable_scope('future_model'):
                         pred = hidden_loop_with_bypasses(x, m, cfg['future_model']['mlp'], reuse_weights = reuse_weights, train = True)
+                    print('sizes')
+                    print(pred)
                     lpe, loss = cfg['future_model']['loss_func'](fut_tv, pred, cfg['future_model'])
+                    
                     reuse_weights = True
                     self.fut_loss_per_example.append(lpe)
                     self.fut_pred.append(pred)
@@ -1418,12 +1421,15 @@ class MixedUncertaintyModel:
 			#TODO FINISH
 
 
-def get_mixed_loss(world_model, weighting):
+def get_mixed_loss(world_model, weighting, multistep = False):
 	print(weighting.keys())
 	print('in the loss maker!')
 	print(world_model.act_loss_per_example)
 	print(world_model.fut_loss_per_example)
+	if multistep:
+		return [weighting['action'] * l_a + weighting['future'] * l_f for l_a, l_f in zip(world_model.act_loss_per_example, world_model.fut_loss_per_example)]
 	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
+
 
 def get_obj_there(world_model):
 	return world_model.obj_there
