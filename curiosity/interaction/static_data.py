@@ -153,8 +153,8 @@ def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_
 					obj_there_idxs.append((file_num, idx + k))
 				else:
 					obj_not_there_idxs.append((file_num, idx + k))
+        print(len(obj_there_idxs))
 	metadata = {'filenames' : hdf5_filenames, 'obj_there_idxs' : obj_there_idxs, 'obj_not_there_idxs' : obj_not_there_idxs, 'data_lengths' : data_lengths}
-	print('got here')
 	with open(save_loc, 'w') as stream:
 		cPickle.dump(metadata, stream)
 	return metadata
