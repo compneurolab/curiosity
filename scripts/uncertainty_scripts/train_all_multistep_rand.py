@@ -320,6 +320,7 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
+        'just_random' : 1
 }
 
 model_cfg = {

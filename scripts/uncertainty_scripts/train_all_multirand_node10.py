@@ -6,8 +6,8 @@ Random actions, after index mismatch bug.
 
 
 import sys
-sys.path.append('/home/nhaber/projects/curiosity')
-sys.path.append('/home/nhaber/projects/tfutils')
+sys.path.append('/home/nhaber/local_copy/curiosity')
+sys.path.append('/home/nhaber/local_copy/tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment, data, static_data, cfg_generation, update_step, mode_switching
@@ -58,7 +58,7 @@ parser.add_argument('--rendernode', default = 'render1', type = str)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'mo'
+EXP_ID_PREFIX = 'mor'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -75,7 +75,7 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/diffobj_all_meta.pkl'
+OBJTHERE_TEST_METADATA_LOC = '/data/nhaber/one_room_dataset/diffobj_all_meta.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -320,6 +320,7 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
+        'just_random' : 1
 }
 
 model_cfg = {
@@ -537,7 +538,7 @@ validate_params = {
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'damian', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
 
 
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
