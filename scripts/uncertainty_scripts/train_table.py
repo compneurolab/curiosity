@@ -6,8 +6,10 @@ Random actions, after index mismatch bug.
 
 
 import sys
-sys.path.append('/home/nhaber/projects/curiosity')
-sys.path.append('/home/nhaber/projects/tfutils')
+#sys.path.append('/home/nhaber/projects/curiosity')
+#sys.path.append('/home/nhaber/projects/tfutils')
+sys.path.append('/home/mrowca/workspace/curiosity')
+sys.path.append('/home/mrowca/workspace/tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment, data, static_data, cfg_generation, update_step, mode_switching
@@ -40,6 +42,7 @@ parser.add_argument('--numperbatch', default = 8, type = int)
 parser.add_argument('--historylen', default = 1000, type = int)
 parser.add_argument('--ratio', default = 2 / .17, type = float)
 parser.add_argument('--objsize', default = .4, type = float)
+parser.add_argument('--tablesize', default = 2., type = float)
 parser.add_argument('--lossfac', default = 1., type = float)
 parser.add_argument('--nclasses', default = 4, type = int)
 #parser.add_argument('--t1', default = .05, type = float)
@@ -53,30 +56,47 @@ parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
-parser.add_argument('--rendernode', default = 'render1', type = str)
+parser.add_argument('--rendernode', default = -1, type = int)
 
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'a'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
 
+
+
 args = vars(parser.parse_args())
 
 
 
-render_node = args['rendernode']
-RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
+try:
+    USER = os.environ['CURIOSITY_USER']
+except KeyError:
+    USER = 'nick'
 
+render_node = args['rendernode']
+if render_node == 1:
+    RENDER1_HOST_ADDRESS = '10.102.2.149'
+elif render_node == 5:
+    RENDER1_HOST_ADDRESS = '10.102.2.153'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+
+
+SELECTED_BUILD = 'three_world_locked_rot.x86_64'
 
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl' 
+if USER == 'nick':
+    OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl' 
+else:
+    OBJTHERE_TEST_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -93,6 +113,7 @@ def online_agg_func(agg_res, res, step):
 
 def agg_func(res):
     return res
+
 
 test_mode = args['testmode']
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
@@ -321,7 +342,6 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
 }
 
 model_cfg = {
@@ -444,6 +464,22 @@ model_params = {
         }
 
 
+one_obj_plus_table_scene_info = [
+        {
+        'type' : 'SHAPENET',
+        'scale' : args['objsize'],
+        'mass' : 1.,
+        'scale_var' : .01,
+        'num_items' : 1,
+        },
+        {
+        'type' : 'TABLE',
+        'scale' : args['tablesize'],
+        'mass' : 50.,
+        'scale_var' : .01,
+        'num_items' : 1,
+        }
+]
 
 one_obj_scene_info = [
         {
@@ -504,7 +540,7 @@ dp_config = {
                         'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
                 },
 
-                'scene_list' : [one_obj_scene_info],
+                'scene_list' : [one_obj_plus_table_scene_info],
                 'scene_lengths' : [1024 * 32],
                 'do_torque' : False,
 		'use_absolute_coordinates' : False
@@ -518,13 +554,13 @@ validate_params = {
         'valid0': {
             'func' : update_step.ActionUncertaintyValidatorWithReadouts,
             'kwargs' : {},
-            'num_steps' : 500,
+            'num_steps' : 50,
             'online_agg_func' : online_agg_func,
             'agg_func' : agg_func,
             'data_params' : {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereFixedPermutationBatcher,
+                'batcher_constructor' : static_data.ObjectThereBatcher,
                 'data_lengths' : data_lengths,
                 'capacity' : 5,
                 'metadata_filename' : OBJTHERE_TEST_METADATA_LOC,
@@ -532,14 +568,16 @@ validate_params = {
                     'seed' : 0,
                     'num_there_per_batch' : 16,
                     'num_not_there_per_batch' : 16,
-                    'reset_batch_num' : 500
                 }
             }
         }
 }
 
+if USER == 'nick':
+    load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+else:
+    load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'damian', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.DAMIAN_PORT)
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
 
 
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
@@ -568,7 +606,7 @@ params = {
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5 if test_mode else 10000
+params['save_params']['save_valid_freq'] = 5 if test_mode else 2000
 params['allow_growth'] = True
 
 

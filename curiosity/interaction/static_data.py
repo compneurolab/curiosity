@@ -147,7 +147,34 @@ def get_objthere_metadata_deluxe(hdf5_filenames, save_loc, timesteps_before, tim
 
 
 
+class ObjectThereFixedPermutationBatcher:
+    def __init__(self, batch_size, metadata, seed, num_there_per_batch, num_not_there_per_batch, reset_batch_num):
+        self.batch_size = batch_size
+        self.rng = np.random.RandomState(seed)
+        self.obj_there_idxs = metadata['obj_there_idxs']
+        self.obj_not_there_idxs = metadata['obj_not_there_idxs']
+        self.there_start = 0
+        self.not_there_start = 0
+        assert len(self.obj_there_idxs) / num_there_per_batch > reset_batch_num and len(self.obj_not_there_idxs) / num_not_there_per_batch > reset_batch_num
+        self.there_schedule = self.rng.permutation(self.obj_there_idxs)
+        self.not_there_schedule = self.rng.permutation(self.obj_not_there_idxs)
+        self.num_there_per_batch = num_there_per_batch
+        self.num_not_there_per_batch = num_not_there_per_batch
+        self.batch_count = 0
+        self.reset_batch_num = reset_batch_num
+        print('Initialization complete')
 
+    def get_batch_indices(self):
+        if self.batch_count > self.reset_batch_num:
+            self.there_start = 0
+            self.not_there_start = 0
+            self.batch_count = 0
+        obj_not_there_batch = self.not_there_schedule[self.not_there_start : self.not_there_start + self.num_not_there_per_batch]
+        obj_there_batch = self.there_schedule[self.there_start : self.there_start + self.num_there_per_batch]
+        self.there_start += self.num_there_per_batch
+        self.not_there_start += self.num_not_there_per_batch
+        self.batch_count += 1
+        return list(obj_there_batch) + list(obj_not_there_batch)
 
 
 class ObjectThereBatcher:

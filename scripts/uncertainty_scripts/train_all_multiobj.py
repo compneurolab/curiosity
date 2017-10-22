@@ -51,14 +51,14 @@ parser.add_argument('--modelseed', default = 0, type = int)
 parser.add_argument('--gather', default = 48, type = int)
 parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
-parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
+parser.add_argument('-nenv', '--numberofenvironments', default=16, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
-
+#parser.add_argument('--objseed', default = 1, type = int)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'mo'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -68,7 +68,6 @@ T_PER_STATE = 2
 args = vars(parser.parse_args())
 
 
-
 render_node = args['rendernode']
 RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 
@@ -76,7 +75,7 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl' 
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/diffobj_all_meta.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -321,7 +320,6 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
 }
 
 model_cfg = {
@@ -477,7 +475,7 @@ dp_config = {
                 'n_environments': n_env,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
-                        'random_seed' : 1,
+                        'random_seed' : range(1, 13) + [14, 17, 19, 22],
                         'unity_seed' : 1,
                         'room_dims' : room_dims,
                         'state_memory_len' : {

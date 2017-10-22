@@ -968,6 +968,7 @@ class MoreInfoActionWorldModel(object):
 
 		#great. now let's make our predictions and count our losses
 		act_loss_list = []
+                acc_01_list = []
 		reuse_weights = False
 		for t in range(num_timesteps):
 			encoded_states_given = [flat_encodings[t + s] for s in states_given]
@@ -977,10 +978,10 @@ class MoreInfoActionWorldModel(object):
 			with tf.variable_scope('action_model'):
 				pred = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
 			lpe, loss = cfg['action_model']['loss_func'](act_tv, pred, cfg['action_model'])
-                        print('what what')
-                        print(lpe.get_shape().as_list())
-			reuse_weights = True
-			self.act_loss_per_example.append(lpe)
+                        acc_01 = binned_01_accuracy_per_example(act_tv, pred, cfg['action_model'])			
+                        reuse_weights = True
+			acc_01_list.append(tf.cast(acc_01, tf.float32))
+                        self.act_loss_per_example.append(lpe)
 			self.act_pred.append(pred)
 			act_loss_list.append(loss)
                 if cfg.get('norepeat', False):
@@ -994,13 +995,15 @@ class MoreInfoActionWorldModel(object):
                 self.num_obj_there = []
                 self.obj_not_there_loss = []
                 self.object_there = []
+                avg_acc_obj_there = []
+                avg_acc_obj_not_there = []
                 for t in range(num_timesteps):
                     act_tv = self.action_post[:, t + act_back]
                     force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
                     obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
-                    print('debug readout stuff')
-                    print(obj_there.get_shape().as_list())
-                    print(self.act_loss_per_example[t].get_shape().as_list())
+                    obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
+                    avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+                    avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
                     self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
                     self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
                     self.num_obj_there.append(tf.reduce_sum(obj_there)) 
@@ -1013,7 +1016,8 @@ class MoreInfoActionWorldModel(object):
                 
                 self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
-                        'num_obj_there_noprint' : self.num_obj_there}
+                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there[0],
+                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there[0]}
                 self.save_to_gfs = ['act_pred']
                 
 
@@ -1605,7 +1609,6 @@ class MSExpectedUncertaintyModel:
         #this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
         depths_batch = np.array([state])
         if self.just_random:
-            print('just random!')
             ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
             chosen_idx = self.rng.randint(len(action_sample))
             return action_sample[chosen_idx], -1., ewl
@@ -1764,6 +1767,20 @@ def binned_softmax_loss_per_example(tv, prediction, cfg):
 	print(loss_per_example.get_shape().as_list())
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
+
+def binned_01_accuracy_per_example(tv, prediction, cfg):
+    thresholds = cfg['thresholds']
+    n_classes = len(thresholds) + 1
+    tv_shape = tv.get_shape().as_list()
+    d = tv_shape[1]
+    assert(len(tv_shape)) == 2
+    tv = bin_values(tv, thresholds)
+    prediction = tf.reshape(prediction, [-1, d, n_classes])
+    hardmax = tf.cast(tf.argmax(prediction, axis = -1), tf.int32)
+    correct_answers = tf.cast(tf.equal(hardmax, tv), tf.int32)
+    return correct_answers
+
+
 
 def binned_softmax_loss_per_example_w_weights(tv, prediction, cfg):
 	thresholds = cfg['thresholds']

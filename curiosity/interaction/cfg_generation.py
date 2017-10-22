@@ -27,6 +27,29 @@ NODE_5_PORT = 15871
 NODE_3_PORT = 15841
 DAMIAN_PORT = 24444
 
+
+def get_ip(node_name):
+        node2ip = {
+            "node3":   "10.102.2.151",
+            "node6":   "10.102.2.154",
+            "node1":   "10.102.2.149",
+            "node5":   "10.102.2.153",
+            "node10":  "10.102.2.158",  
+            "node8":   "10.102.2.156",
+            "node11":  "10.102.2.159",
+            "render1": "10.102.2.161",  
+            "node4":   "10.102.2.152",
+            "node12":  "10.102.2.160",
+            "node2":   "10.102.2.150",
+            "node9":   "10.102.2.157",
+            }
+        if node_name in node2ip:
+            return node2ip[node_name]
+        else:
+            raise KeyError("node_name unknown")
+
+
+
 def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class = tf.train.AdamOptimizer):
 	'''
 	Some stuff that I imagine will only change in minor ways across latent scripts.
@@ -275,7 +298,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
         params['what_to_save_params'] = {
                 'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example', 'estimated_world_loss', 'loss_per_step'],
                 'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'loss_per_step'],
-                'big_save_len' : 2,
+                'big_save_len' : 5,
                 'big_save_freq' : 1000,
                 'state_descriptor' : state_desc
         }
