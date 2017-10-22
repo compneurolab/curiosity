@@ -55,10 +55,10 @@ parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
 parser.add_argument('--objseed', default = 1, type = int)
-
+parser.add_argument('--tablesize', default = 2., type = float)
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'do'
+EXP_ID_PREFIX = 'tab'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -76,7 +76,9 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/data/nhaber/one_room_dataset/diffobj' + str(args['objseed']) + '_meta_cluster.pkl'
+
+OBJTHERE_TEST_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
+
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -443,16 +445,23 @@ model_params = {
         }
 
 
-
-one_obj_scene_info = [
+one_obj_plus_table_scene_info = [
         {
         'type' : 'SHAPENET',
         'scale' : args['objsize'],
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
+        },
+        {
+        'type' : 'TABLE',
+        'scale' : args['tablesize'],
+        'mass' : 50.,
+        'scale_var' : .01,
+        'num_items' : 1,
         }
-        ]
+]
+
 
 
 force_scaling = 200.
@@ -503,7 +512,7 @@ dp_config = {
                         'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
                 },
 
-                'scene_list' : [one_obj_scene_info],
+                'scene_list' : [one_obj_plus_table_scene_info],
                 'scene_lengths' : [1024 * 32],
                 'do_torque' : False,
 		'use_absolute_coordinates' : False
