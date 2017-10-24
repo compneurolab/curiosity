@@ -285,7 +285,7 @@ class OfflineDataProvider(threading.Thread):
 			data_lengths, 
 			capacity, 
 			metadata_filename,
-                        num_objthere = None,,
+                        num_objthere = None,
 			batcher_kwargs = None
                 ):
 		threading.Thread.__init__(self)
