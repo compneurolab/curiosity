@@ -91,7 +91,7 @@ else:
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/diffobj' + str(args['objseed']) + '.hdf5'
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/train_diffobj' + str(args['objseed']) + '.hdf5'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
