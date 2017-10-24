@@ -540,6 +540,11 @@ class FreezeUpdater:
         assert 'um_increment' not in self.targets
         self.targets['um_increment'] = um_increment
 
+        self.obj_there_supervision = updater_params.get('include_obj_there', False)
+
+
+
+
         #self.map_draw_mode = None
         #Map drawing. Meant to have options, but for now just assuming one sort of specification
         #self.state_desc = updater_params.get('state_desc', 'depths1')
@@ -570,6 +575,9 @@ class FreezeUpdater:
                 self.wm.action : batch['action'],
                 self.wm.action_post : batch['action_post']
             }
+        if self.obj_there_supervision:
+            batch['obj_there'] = np.concatenate(batch['obj_there'], axis = 0)
+            feed_dict 
         res = sess.run(self.targets, feed_dict = feed_dict)
         res.pop('um_increment')
         global_step = res['global_step']

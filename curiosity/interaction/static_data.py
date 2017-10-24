@@ -285,6 +285,7 @@ class OfflineDataProvider(threading.Thread):
 			data_lengths, 
 			capacity, 
 			metadata_filename,
+                        num_objthere = None,,
 			batcher_kwargs = None
                 ):
 		threading.Thread.__init__(self)
@@ -297,6 +298,7 @@ class OfflineDataProvider(threading.Thread):
 		self.data_lengths = data_lengths
 		self.queue = queue.Queue(capacity)
 		self.daemon = True
+                self.num_objthere = num_objthere
 
 	def run_env(self):
 		while True:
@@ -315,6 +317,14 @@ class OfflineDataProvider(threading.Thread):
 					for file_num, idx in chosen:
 						collected_dat.append(self.hdf5s[file_num][k][idx - v + 1 : idx + 1])
 					batch[k] = np.array(collected_dat)
+                        if self.num_objthere is not None:
+                            collected_data = []
+                            for file_num, idx in chosen:
+                                msgs = self.hdf5s[file_num]['msg'][idx - self.num_objthere + 1 : idx + 1]
+                                obj_there = [int('OBJ_ACT' == msg['msg']['action_type']) for msg in msgs]
+                                collected_data.append(obj_there)
+                            batch['obj_there'] = np.array(collected_data)
+
 #			collected_dat = []
 #			for file_num, idx in chosen:
 #				collected_dat.append([self.hdf5s[file_num]['msg'][idx]])
