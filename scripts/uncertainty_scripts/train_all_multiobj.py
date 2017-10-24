@@ -55,6 +55,7 @@ parser.add_argument('-nenv', '--numberofenvironments', default=16, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
 #parser.add_argument('--objseed', default = 1, type = int)
+parser.add_argument('-lse', '--loadsaveelsewhere', default = False, type = bool)
 
 
 N_ACTION_SAMPLES = 1000
@@ -537,7 +538,7 @@ validate_params = {
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT, load_and_save_elsewhere = args['loadsaveelsewhere'])
 
 
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
