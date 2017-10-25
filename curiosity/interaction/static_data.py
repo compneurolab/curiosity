@@ -321,7 +321,8 @@ class OfflineDataProvider(threading.Thread):
                             collected_data = []
                             for file_num, idx in chosen:
                                 msgs = self.hdf5s[file_num]['msg'][idx - self.num_objthere + 1 : idx + 1]
-                                obj_there = [int('OBJ_ACT' == msg['msg']['action_type']) for msg in msgs]
+                                msgs = [json.loads(msg) for msg in msgs]
+                                obj_there = [int('OBJ_ACT' == msg['msg']['action_type']) if msg is not None else 0 for msg in msgs]
                                 collected_data.append(obj_there)
                             batch['obj_there'] = np.array(collected_data)
 
