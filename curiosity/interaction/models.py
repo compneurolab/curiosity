@@ -922,6 +922,8 @@ class MoreInfoActionWorldModel(object):
 	states_shape = [num_timesteps + t_back + t_forward] + image_shape
 	self.states = tf.placeholder(tf.uint8, [None] + states_shape)
         states_cast = tf.cast(self.states, tf.float32)
+        if cfg.get('postprocess_depths', False):
+            states_cast = postprocess_depths(states_cast)
         acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
 	self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
 	self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
