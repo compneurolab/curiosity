@@ -337,7 +337,7 @@ um_encoding_choices = [
                 'poolsize' : [None, 3, None, 3, None, 3, None, 3],
                 'poolstride' : [None, 2, None, 2, None, 2, None, 2],
                 'bypass' : [None, None, None, None, None, None, None, None]
-        }
+        },
 
 #10 deeper smaller vggish
 #image size 8 * 11
@@ -351,7 +351,7 @@ um_encoding_choices = [
                 'poolsize' : [None, 3, None, 3, None, 3, None, 3],
                 'poolstride' : [None, 2, None, 2, None, 2, None, 2],
                 'bypass' : [None, None, None, None, None, None, None, None]
-        }
+        },
 
 
 #11 smallnet
@@ -448,7 +448,7 @@ shared_mlp_choices = [
             'num_features' : [128],
             'nonlinearities' : ['relu'],
             'dropout' : [.5]
-        }
+        },
 
 #9 real small, real real small
         {
@@ -528,7 +528,7 @@ mlp_before_action_choices = [
             'num_features' : [],
             'nonlinearities' : [],
             'dropout' : []
-        } 
+        },
         
         
         
