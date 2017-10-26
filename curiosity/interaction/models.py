@@ -922,13 +922,15 @@ class MoreInfoActionWorldModel(object):
 	states_shape = [num_timesteps + t_back + t_forward] + image_shape
 	self.states = tf.placeholder(tf.uint8, [None] + states_shape)
         states_cast = tf.cast(self.states, tf.float32)
+        if cfg.get('postprocess_depths', False):
+            states_cast = postprocess_depths(states_cast)
         acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
 	self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
 	self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
 	act_back = - min(actions_given)		
                 
         if cfg.get('include_obj_there', False):
-            self.obj_there_via_msg = tf.placeholder(tf.float32, [None, acts_shape[0]])
+            self.obj_there_via_msg = tf.placeholder(tf.int64, [None, acts_shape[0]], name = 'obj_there_via_msg')
 
 
 
@@ -953,6 +955,9 @@ class MoreInfoActionWorldModel(object):
         self.action_for_um = self.action[:, um_act_idx]
         if cfg.get('include_obj_there', False):
             self.obj_there_supervision = self.obj_there_via_msg[:,cfg.get('obj_there_supervision_idx', 2)]
+            print('in moreinfo wm')
+            print(self.obj_there_supervision)
+
 
 	#good job. now encode each state
 	reuse_weights = False
@@ -1492,6 +1497,11 @@ class SimpleForceUncertaintyModel:
 		chosen_idx = self.rng.randint(len(action_sample))
 		return action_sample[chosen_idx], -1., None
 
+
+def objthere_signal(world_model):
+    return world_model.obj_there_supervision
+
+
 class MSExpectedUncertaintyModel:
     def __init__(self, cfg, world_model):
 	with tf.variable_scope('uncertainty_model'):
@@ -1806,6 +1816,15 @@ def binned_softmax_loss(tv, prediction, cfg):
 	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
 	return loss_per_example, loss
 
+
+def softmax_loss(tv, prediction, cfg):
+    tv = tf.squeeze(tv)
+    print('in loss func')
+    print(tv)
+    loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv, logits = prediction)
+    loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
+    return loss_per_example, loss
+
 def ms_sum_binned_softmax_loss(tv, prediction, cfg):
 	assert len(tv) == len(prediction)
 	loss_per_example_and_step = [binned_softmax_loss(y, p, cfg) for y, p in zip(tv, prediction)]
@@ -1818,9 +1837,11 @@ def ms_sum_binned_softmax_loss(tv, prediction, cfg):
 def objthere_loss(tv, prediction, cfg):
     assert len(prediction) == 1
     prediction_time1 = prediction[0]
-    loss_per_ex_and_step = [binned_softmax_loss(tv, prediction_time1)]
-    loss_per_example = [lpe for lpe, lps in loss_per_example_and_step]
-    loss_per_step = [lps for lpe, lps in loss_per_example_and_step]
+    print('in objthere loss')
+    print(tv)
+    loss_per_ex_and_step = [softmax_loss(tv, prediction_time1, cfg)]
+    loss_per_example = [lpe for lpe, lps in loss_per_ex_and_step]
+    loss_per_step = [lps for lpe, lps in loss_per_ex_and_step]
     loss = tf.reduce_mean(loss_per_step)
     return loss_per_example, loss_per_step, loss
 

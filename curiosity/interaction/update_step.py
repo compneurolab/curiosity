@@ -142,7 +142,7 @@ class ExperienceReplayPostprocessor:
 		if 'msg' in batch['recent']:
 			looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in batch['recent']['msg']]
                 	res['obj_freq'] = np.mean(looking_at_obj)
-                elif type(batch['recent']) == list:
+                elif type(batch['recent']) == list and len(batch['recent'][0]) > 0:
                     mean_per_provider = []
                     for provider_recent in batch['recent']:
                         looking_at_obj = [1 if msg is not None and msg['msg']['action_type'] == 'OBJ_ACT' else 0 for msg in provider_recent['msg']]
@@ -308,6 +308,8 @@ class ActionUncertaintyValidatorWithReadouts:
         self.map_draw_example_indices = [0, 31]
         self.map_draw_timestep_indices = [1, 2]
         self.state_desc = 'depths1'
+        self.insert_objthere = False if data_provider.num_objthere is None else True
+
 
     def run(self, sess):
         batch = self.dp.dequeue_batch()
@@ -316,6 +318,8 @@ class ActionUncertaintyValidatorWithReadouts:
                 self.wm.action : batch['action'],
                 self.wm.action_post : batch ['action_post']
                 }
+        if self.insert_objthere:
+            feed_dict[self.wm.obj_there_via_msg] = batch['obj_there']
         res = sess.run(self.targets, feed_dict = feed_dict)
         #TODO case it for online
         res['recent'] = {}
@@ -577,7 +581,7 @@ class FreezeUpdater:
             }
         if self.obj_there_supervision:
             batch['obj_there'] = np.concatenate(batch['obj_there'], axis = 0)
-            feed_dict 
+            feed_dict[self.wm.obj_there_via_msg] = batch['obj_there']
         res = sess.run(self.targets, feed_dict = feed_dict)
         res.pop('um_increment')
         global_step = res['global_step']
