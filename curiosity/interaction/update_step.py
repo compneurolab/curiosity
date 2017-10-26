@@ -564,7 +564,9 @@ class FreezeUpdater:
         
 
     def update(self, sess, visualize = False):
-        batch = {}
+        if self.um.just_random:
+            print('Selecting action at random')
+	batch = {}
         for i, dp in enumerate(self.data_provider):
             provider_batch = dp.dequeue_batch()
             for k in provider_batch:
