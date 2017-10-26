@@ -1,5 +1,6 @@
 '''
-Random actions, after index mismatch bug.
+An object and a table, this time random.
+Note: first experiment didn't have the exp id switched, so it is tab.
 '''
 
 
@@ -58,7 +59,7 @@ parser.add_argument('--objseed', default = 1, type = int)
 parser.add_argument('--tablesize', default = 2., type = float)
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'tab'
+EXP_ID_PREFIX = 'tabr'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
