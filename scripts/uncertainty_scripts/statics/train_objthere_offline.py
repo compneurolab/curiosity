@@ -373,10 +373,32 @@ um_encoding_choices = [
                 'strides' : [4, 4],
                 'num_filters' : [16, 16],
                 'bypass': [None, None]
-        }
+        },
+
+#13 deeper still
+#image size 4 * 6
+#output encoding dim 1536
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2]
+        },
 
 
-
+#14 seems ridiculous for this purpose
+#image size 2 * 3
+#output encoding dim 384
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]
+        },
 
 
 
