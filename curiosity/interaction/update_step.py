@@ -198,17 +198,18 @@ class DataWriteUpdater:
 		self.handles = {'msg' : hdf5.require_dataset('msg', shape = (N,), dtype = dt),
 				'depths1' : hdf5.require_dataset('depths1', shape = (N, height, width, 3), dtype = np.uint8),
                                 'objects1': hdf5.require_dataset('objects1', shape = (N, height, width, 3), dtype = np.uint8),
+                                'images1': hdf5.require_dataset('images1', shape = (N, height, width, 3), dtype = np.uint8),
 				'action' : hdf5.require_dataset('action', shape = (N, act_dim), dtype = np.float32),
 				'action_post' : hdf5.require_dataset('action_post', shape = (N, act_dim), dtype = np.float32)}
-		print('save loc set up')
+                print('save loc set up')
 		self.start = 0	
 
 	def update(self):
 		batch = self.data_provider.dequeue_batch()
 		bs = len(batch['recent']['msg'])
-                assert 'objects1' in batch['recent']
+                assert 'objects1' in batch['recent'] and 'images1' in batch['recent']
 		end = self.start + bs
-		for k in ['depths1', 'objects1', 'action', 'action_post']:
+		for k in ['depths1', 'objects1', 'images1', 'action', 'action_post']:
 			tosave = batch['recent'][k]
 			if k in ['action', 'action_post']:
 				tosave = tosave.astype(np.float32)

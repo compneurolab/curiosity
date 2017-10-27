@@ -55,7 +55,7 @@ parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--tasknum', required = True, type = str)
-parser.add_argument('--nsave', default = 32 * 2600, type = int)
+parser.add_argument('--nsave', default = 32 * 800, type = int)
 parser.add_argument('--forcescaling', default = 200., type = float)
 parser.add_argument('--objseed', default = 1, type = int)
 parser.add_argument('--rendernode', default=-1, type = int)
@@ -91,7 +91,7 @@ else:
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/train_diffobj' + str(args['objseed']) + '.hdf5'
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/wimgval_diffobj' + str(args['objseed']) + '.hdf5'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -492,6 +492,7 @@ data_lengths = {
                         'obs' : {
                                 'depths1' : s_back + s_forward + NUM_TIMESTEPS,
                                 'objects1' : s_back + s_forward + NUM_TIMESTEPS,
+                                'images1' : s_back + s_forward + NUM_TIMESTEPS,
                             },
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
@@ -509,6 +510,7 @@ dp_config = {
                         'state_memory_len' : {
                                         'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS,
                                         'objects1': history_len + s_back + s_forward + NUM_TIMESTEPS,
+                                        'images1' : history_len + s_back + s_forward + NUM_TIMESTEPS
                                 },
                         'action_memory_len' : history_len + a_back + a_forward + NUM_TIMESTEPS,
                         'message_memory_len' : history_len +  a_back + a_forward + NUM_TIMESTEPS,
