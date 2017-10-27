@@ -129,7 +129,7 @@ class ExperienceReplayPostprocessor:
 			#action_sample = [other[2] for other in batch['other']]
 			res['batch'] = {}
 			for desc, val in batch.iteritems():
-			    if desc not in  ['recent', 'depths1']:
+			    if desc not in  ['recent', 'depths1', 'objects1', 'images1']:
 			        res['batch'][desc] = val
 			res['recent'] = batch['recent']
 		else:
@@ -519,7 +519,7 @@ class FreezeUpdater:
         self.um_lr_params, um_lr = get_learning_rate(self.global_step, ** learning_rate_params['uncertainty_model'])
         num_not_frozen = 0
         self.targets = {}
-        self.state_desc = 'depths1'
+        self.state_desc = updater_params.get('state_desc', 'depths1')
         if not freeze_wm:
             num_not_frozen += 1
             act_opt_params, act_opt = get_optimizer(act_lr, self.wm.act_loss, self.global_step, optimizer_params['world_model']['act_model'], var_list = self.wm.act_var_list + self.wm.encode_var_list)
@@ -574,7 +574,7 @@ class FreezeUpdater:
                     batch[k].append(provider_batch[k])
                 else:
                     batch[k] = [provider_batch[k]]
-        for k in ['action', 'action_post', 'depths1']:
+        for k in ['action', 'action_post', self.state_desc]:
             batch[k] = np.concatenate(batch[k], axis=0)
         feed_dict = {
                 self.wm.states : batch[self.state_desc],
