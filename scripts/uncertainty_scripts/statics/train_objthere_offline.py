@@ -400,6 +400,27 @@ um_encoding_choices = [
             'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]
         },
 
+#15 deep down to ridiculously tiny
+#image size 1 * 2
+#output encoding dim 128
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]
+        },
+
+#16 deep down to small but let's space out the max pooling more
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, None, 3, None, None, 3, None, None, 3, None, None, 3, None, None, 3, None, None, 3],
+            'poolstride' : [None, None, 2, None, None, 2, None, None, 2, None, None, 2, None, None, 2, None, None, 2]
+        },
 
 
 
