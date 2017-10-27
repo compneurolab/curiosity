@@ -1,6 +1,5 @@
 '''
-An object and a table, this time random.
-Note: first experiment didn't have the exp id switched, so it is tab.
+Random actions, after index mismatch bug.
 '''
 
 
@@ -52,14 +51,14 @@ parser.add_argument('--modelseed', default = 0, type = int)
 parser.add_argument('--gather', default = 48, type = int)
 parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
-parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
+parser.add_argument('-nenv', '--numberofenvironments', default=16, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
-parser.add_argument('--objseed', default = 1, type = int)
-parser.add_argument('--tablesize', default = 2., type = float)
+#parser.add_argument('--objseed', default = 1, type = int)
+
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'tabr'
+EXP_ID_PREFIX = 'vggr'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -68,7 +67,6 @@ T_PER_STATE = 2
 
 args = vars(parser.parse_args())
 
-obj_seed = args['objseed']
 
 render_node = args['rendernode']
 RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
@@ -77,9 +75,7 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-
-OBJTHERE_TEST_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
-
+OBJTHERE_TEST_METADATA_LOC = '/data/nhaber/one_room_dataset/diffobj_all_meta_cluster.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -105,98 +101,54 @@ n_classes_um = len(um_thresholds) + 1
 batch_size = args['batchsize']
 
 
+encoding_choices = [
 
-wm_encoding_choices = [
+
         {
-                'sizes' : [3, 3, 3, 3], 
-                'strides' : [2, 2, 2, 2], 
-                'num_filters' : [32, 32, 32, 32], 
-                'bypass' : [None, None, None, None]
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2],
+            'bypass' : [None, None, None, None, None, None, None, None]
         },
-
-        {
-                'sizes' : [7, 3, 3, 3],
-                'strides' : [3, 2, 2, 2],
-                'num_filters' : [32, 32, 32, 32],
-                'bypass' : [0, 0, 0, 0]
-        },
-
-        {
-                'sizes' : [7, 3, 3, 3, 3],
-                'strides' : [3, 2, 2, 2, 2],
-                'num_filters' : [32, 32, 32, 32, 32],
-                'bypass' : [0, 0, 0, 0, 0]
-        },
-
-        {
-                'sizes' : [7, 3, 3, 3, 3],
-                'strides' : [2, 2, 1, 1, 1],
-                'num_filters' : [4, 4, 4, 4, 4],
-                'bypass' : [0, 0, 0, 0, 0]
-        }
-
 
 
 ]
 
-wm_mlp_before_concat_choices = [
+
+
+mlp_choices = [
+
+
+
         {
-                'num_features' : [500, 10],
-                'nonlinearities' : ['relu', 'relu']
+        'num_features' : [512],
+        'nonlinearities' : ['relu'],
+        'dropout' : [.5]
         },
-        {
-                'num_features' : [500, 50],
-                'nonlinearities' : ['relu', 'relu']
-        }
-
-
 
 
 ]
 
 
 wm_mlp_choices = [
+
         {
-                'num_features' : [256, ACTION_DIM * n_classes_wm],
+                'num_features' : [512, ACTION_DIM * n_classes_wm],
                 'nonlinearities' : ['relu', 'identity'],
-                'dropout' : [None, None]
+                'dropout' : [.5, None]
         },
 
-        {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
-                'nonlinearities' : ['relu', 'relu', 'identity'],
-                'dropout' : [None, None, None]
-        },
 
-        {
-                'num_features' : [50, 50, ACTION_DIM * n_classes_wm],
-                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
-                'dropout' : [None, None, None]
-        },
 
-        {
-                'num_features' : [100, 100, 100, ACTION_DIM * n_classes_wm],
-                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
-                'dropout' : [None, None, None, None]
-        },
-
-        {
-                'num_features' : [500, 500, ACTION_DIM * n_classes_wm],
-                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
-                'dropout' : [None, None, None]
-        },
-
-        {
-                'num_features' : [1000, 1000, 500, ACTION_DIM * n_classes_wm],
-                'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu'], ['crelu', 'square_crelu'], 'identity'],
-                'dropout' : [None, None, None, None]
-        }
 
 
 ]
 
 
-wm_encoding_choice = wm_encoding_choices[args['wmencarchitecture']]
+
+wm_encoding_choice = encoding_choices[args['wmencarchitecture']]
 wm_mlp_choice = wm_mlp_choices[args['wmfcarchitecture']]
 
 
@@ -215,69 +167,16 @@ wm_cfg = {
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
         },
-        'norepeat' : True
+        'norepeat' : True,
+        'postprocess_depths' : True
 }
 
 
 mbc_idx = args['wmmbcarchitecture']
 if mbc_idx != -1:
-        wm_mbc_choice = wm_mlp_before_concat_choices[mbc_idx]
+        wm_mbc_choice = mlp_choices[mbc_idx]
         wm_cfg['action_model']['mlp_before_concat'] = cfg_generation.generate_mlp_architecture_cfg(**wm_mbc_choice)
 
-
-
-um_encoding_choices = [
-
-        {
-                'sizes' : [7, 3, 3, 3],
-                'strides' : [3, 2, 2, 2],
-                'num_filters' : [32, 32, 32, 32],
-                'bypass' : [0, 0, 0, 0]
-        },
-
-	{
-		'sizes' : [7, 3],
-		'strides' : [3, 2],
-		'num_filters' : [16, 2],
-		'bypass' : [0, 0]
-	},
-
-	{
-		'sizes' : [7, 3, 3, 3, 3],
-		'strides' : [3, 2, 2, 2, 2],
-		'num_filters' : [32, 32, 32, 32, 32],
-		'bypass' : [0, 0, 0, 0, 0]
-	}
-
-]
-
-
-
-shared_mlp_choices = [
-	{
-		'num_features' : [100, 100],
-		'nonlinearities' : ['relu', 'relu'],
-		'dropout' : [None, None]
-	},
-
-	{
-		'num_features' : [50, 50],
-		'nonlinearities' : ['relu', 'relu'],
-		'dropout' : [None, None]
-	},
-
-	{
-		'num_features' : [500],
-		'nonlinearities' : ['relu'],
-		'dropout' : [None]
-	},
-
-	{
-		'num_features' : [50, 50],
-		'nonlinearities' : [['crelu', 'square_crelu'], ['crelu', 'square_crelu']],
-		'dropout' : [None, None]
-	}
-]
 
 
 
@@ -290,28 +189,9 @@ separate_mlp_choices_proto = {
 separate_mlp_choice = dict((t, separate_mlp_choices_proto) for t in range(NUM_TIMESTEPS))
 
 
-
-mlp_before_action_choices = [
-	{
-		'num_features' : [500, 10],
-		'nonlinearities' : ['relu', 'relu']
-	},
-	{
-		'num_features' : [500, 50],
-		'nonlinearities' : ['relu', 'relu']
-	},
-	{
-		'num_features' : [300, 100],
-		'nonlinearities' : ['relu', 'relu']
-	}
-]
-
-
-
-
-um_encoding_args = um_encoding_choices[args['umencarchitecture']]
-um_mlp_before_act_args = mlp_before_action_choices[args['ummbaarchitecture']]
-um_mlp_args = shared_mlp_choices[args['umfcarchitecture']]
+um_encoding_args = encoding_choices[args['umencarchitecture']]
+um_mlp_before_act_args = mlp_choices[args['ummbaarchitecture']]
+um_mlp_args = mlp_choices[args['umfcarchitecture']]
 
 
 um_cfg = {
@@ -324,7 +204,7 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-	'just_random' : 1
+	'just_random' : True
 }
 
 model_cfg = {
@@ -447,23 +327,16 @@ model_params = {
         }
 
 
-one_obj_plus_table_scene_info = [
+
+one_obj_scene_info = [
         {
         'type' : 'SHAPENET',
         'scale' : args['objsize'],
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
-        },
-        {
-        'type' : 'TABLE',
-        'scale' : args['tablesize'],
-        'mass' : 50.,
-        'scale_var' : .01,
-        'num_items' : 1,
         }
-]
-
+        ]
 
 
 force_scaling = 200.
@@ -487,7 +360,7 @@ dp_config = {
                 'n_environments': n_env,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
-                        'random_seed' : obj_seed,
+                        'random_seed' : range(1, 13) + [14, 17, 19, 22],
                         'unity_seed' : 1,
                         'room_dims' : room_dims,
                         'state_memory_len' : {
@@ -514,7 +387,7 @@ dp_config = {
                         'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
                 },
 
-                'scene_list' : [one_obj_plus_table_scene_info],
+                'scene_list' : [one_obj_scene_info],
                 'scene_lengths' : [1024 * 32],
                 'do_torque' : False,
 		'use_absolute_coordinates' : False
@@ -549,7 +422,7 @@ validate_params = {
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'cluster', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'damian', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
 
 
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
@@ -578,7 +451,7 @@ params = {
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5 if test_mode else 10000
+params['save_params']['save_valid_freq'] = 5 if test_mode else 5000
 params['allow_growth'] = True
 
 
