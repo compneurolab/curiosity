@@ -31,9 +31,9 @@ force_scaling = 200
 
 #SMALLER_TEST_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2000, 2001, 2002]]
 the_chosen_ones = range(1, 13) + [14, 17, 19, 22]
-SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/wimg_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
-SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/wimg_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
-JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/wimg_diffobj_all_meta.pkl'
+SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/wimgval_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
+SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/wimgval_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
+JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/wimgval_diffobj_all_meta.pkl'
 
 BATCH_SIZE = 32
 #T_PER_STATE = 2
@@ -60,10 +60,10 @@ print('done checking')
 #train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths)
 #train_objthere_metadata = static_data.get_objthere_metadata(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, data_lengths)
 #test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths)
-test_objthere_metadatas = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
+#test_objthere_metadatas = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
 static_data.get_objthere_metadata(SMALLER_TEST_FILENAMES, JOINED_META_FILENAME, data_lengths, state_desc = state_desc)
 
-static_data.save_some_objthere_images(test_objthere_metadatas, '/media/data4/nhaber/one_room_dataset/try_wimg', how_many = 10, state_desc = state_desc)
+#static_data.save_some_objthere_images(test_objthere_metadatas, '/media/data4/nhaber/one_room_dataset/try_wimg', how_many = 10, state_desc = state_desc)
 '''
 dummy_sess = None
 #rand_dp = static_data.OfflineDataProvider(BATCH_SIZE, static_data.UniformRandomBatcher, data_lengths, 5, UNIFORM_METADATA_LOC, batcher_kwargs = {'seed' : 0})
