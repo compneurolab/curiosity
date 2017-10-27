@@ -39,7 +39,7 @@ def check_obj_there(hdf5_filenames):
 		good_until[filename] = idx
 	return good_until
 
-def save_some_objthere_images(metadatas, save_path, how_many = 100):
+def save_some_objthere_images(metadatas, save_path, state_desc = 'depths1', how_many = 100):
     rng = np.random.RandomState(0)
     print(save_path)
     for md in metadatas:
@@ -53,7 +53,7 @@ def save_some_objthere_images(metadatas, save_path, how_many = 100):
         fn_end = fn_end.split('.')[0]
         idxs_to_save = rng.permutation(there_idxs)[:how_many]
         idxs_to_save = [idx for fnn, idx in idxs_to_save]
-        imgs = [f['depths1'][idx - 1] for idx in idxs_to_save]
+        imgs = [f[state_desc][idx - 1] for idx in idxs_to_save]
         imgs = [Image.fromarray(img) for img in imgs]
         obj_images = [f['objects1'][idx - 1] for idx in idxs_to_save]
         obj_images = [Image.fromarray(img) for img in obj_images]
@@ -85,11 +85,11 @@ def print_some_actions(hdf5_filenames, batches_to_print = 2):
 				msg = json.loads(msg)
 				print(str(idx + j) + str(msg['msg']))
 
-def get_uniform_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1):
+def get_uniform_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, state_desc = 'depths1'):
 	hdf5s = [h5py.File(fn, mode = 'r') for fn in hdf5_filenames]
 	print('starting inspection')
 	valid_idxs = []
-	min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
+	min_idx = max(data_lengths['obs'][state_desc], data_lengths['action'], data_lengths['action_post']) - 1
 	for file_num, src in enumerate(hdf5s):
 		msgs_all = src['msg']
 		incomplete_filenum = False
@@ -130,8 +130,8 @@ class UniformRandomBatcher:
 		return retval
 
 
-def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0, good_until = {}):
-	min_idx = max(data_lengths['obs']['depths1'], data_lengths['action'], data_lengths['action_post']) - 1
+def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0, good_until = {}, state_desc = 'depths1'):
+	min_idx = max(data_lengths['obs'][state_desc], data_lengths['action'], data_lengths['action_post']) - 1
 	batch_size = 32
 	obj_there_idxs = []
 	obj_not_there_idxs = []
@@ -159,9 +159,9 @@ def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_
 		cPickle.dump(metadata, stream)
 	return metadata
 
-def get_objthere_metadata_deluxe(hdf5_filenames, save_loc, timesteps_before, timesteps_after, action_repeat_mod = 1, action_repeat_offset = 0):
-	max_before = max(timesteps_before['obs']['depths1'], timesteps_before['action'], timesteps_before['action_post'])
-	max_after = max(timesteps_after['obs']['depths1'], timesteps_after['action'], timesteps_after['action_post'])
+def get_objthere_metadata_deluxe(hdf5_filenames, save_loc, timesteps_before, timesteps_after, action_repeat_mod = 1, action_repeat_offset = 0, state_desc = 'depths1'):
+	max_before = max(timesteps_before['obs'][state_desc], timesteps_before['action'], timesteps_before['action_post'])
+	max_after = max(timesteps_after['obs'][state_desc], timesteps_after['action'], timesteps_after['action_post'])
 	batch_size = 32
 	obj_there_idxs = []
 	obj_not_there_idxs = []
