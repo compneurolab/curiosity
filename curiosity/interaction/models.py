@@ -922,8 +922,13 @@ class MoreInfoActionWorldModel(object):
 	states_shape = [num_timesteps + t_back + t_forward] + image_shape
 	self.states = tf.placeholder(tf.uint8, [None] + states_shape)
         states_cast = tf.cast(self.states, tf.float32)
-        if cfg.get('postprocess_depths', False):
+        postprocess_method = cfg.get('postprocess')
+        if postprocess_method == 'depths1':
             states_cast = postprocess_depths(states_cast)
+        elif postprocess_method == 'images1':
+            states_cast = postprocess_std(states_cast)
+        else:
+            assert postprocess_method is None
         acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
 	self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
 	self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
@@ -1519,7 +1524,13 @@ class MSExpectedUncertaintyModel:
             #should also really include some past actions
             #encoding
             x = tf.cast(x, tf.float32)
-            x = postprocess_depths(x)
+            postprocess_method = cfg.get('postprocess')
+            if postprocess_method == 'depths1':
+                x = postprocess_depths(x)
+            elif postprocess_method == 'images1':
+                x = postprocess_std(x)
+            else:
+                assert postprocess_method is None
             x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
             self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             
