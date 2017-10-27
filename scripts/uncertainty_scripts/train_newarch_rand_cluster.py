@@ -451,7 +451,7 @@ params = {
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5 if test_mode else 10000
+params['save_params']['save_valid_freq'] = 5 if test_mode else 5000
 params['allow_growth'] = True
 
 
