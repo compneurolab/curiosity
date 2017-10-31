@@ -114,6 +114,28 @@ encoding_choices = [
         },
 
 
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]
+        },
+
+        {
+            'sizes' : [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+            'strides' : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            'num_filters' : [64, 64, 64, 64, 128, 128, 128, 128, 192, 192, 192, 192],
+            'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None],
+            'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
+            'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]
+        },
+
+
+
+
+
 ]
 
 
