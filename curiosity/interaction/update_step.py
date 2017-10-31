@@ -307,14 +307,15 @@ class ActionUncertaintyValidatorWithReadouts:
         self.action_sampler = models.UniformActionSampler(hardcoded_cfg)
         self.map_draw_example_indices = [0, 31]
         self.map_draw_timestep_indices = [1, 2]
-        self.state_desc = 'depths1'
+        #relies on there being just one obs type
+        self.state_desc = data_provider.data_lengths['obs'].keys()[0]
         self.insert_objthere = False if data_provider.num_objthere is None else True
 
 
     def run(self, sess):
         batch = self.dp.dequeue_batch()
         feed_dict = {
-                self.wm.states : batch['depths1'],
+                self.wm.states : batch[self.state_desc],
                 self.wm.action : batch['action'],
                 self.wm.action_post : batch ['action_post']
                 }
@@ -584,6 +585,7 @@ class FreezeUpdater:
         if self.obj_there_supervision:
             batch['obj_there'] = np.concatenate(batch['obj_there'], axis = 0)
             feed_dict[self.wm.obj_there_via_msg] = batch['obj_there']
+        print('state desc! ' + self.state_desc)
         res = sess.run(self.targets, feed_dict = feed_dict)
         res.pop('um_increment')
         global_step = res['global_step']

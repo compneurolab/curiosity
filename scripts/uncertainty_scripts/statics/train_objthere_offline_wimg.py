@@ -60,7 +60,7 @@ parser.add_argument('-opbt','--obj_there_per_batch_train', default = 6, type = i
 parser.add_argument('--traindataseed', default = 1, type = int)
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'objo'
+EXP_ID_PREFIX = 'oowimg'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5

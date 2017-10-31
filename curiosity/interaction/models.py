@@ -1528,6 +1528,7 @@ class MSExpectedUncertaintyModel:
             if postprocess_method == 'depths1':
                 x = postprocess_depths(x)
             elif postprocess_method == 'images1':
+                print('POSTPROCESSING AS IMAGES')
                 x = postprocess_std(x)
             else:
                 assert postprocess_method is None
