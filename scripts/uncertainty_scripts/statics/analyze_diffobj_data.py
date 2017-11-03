@@ -60,7 +60,16 @@ print('done checking')
 #train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths)
 #train_objthere_metadata = static_data.get_objthere_metadata(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, data_lengths)
 #test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths)
-#test_objthere_metadatas = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
+test_objthere_metadatas = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
+
+
+for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES):
+    try:
+        static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc)
+    except:
+        print('something wrong with ' + fn) 
+
+
 all_meta = static_data.get_objthere_metadata(SMALLER_TEST_FILENAMES, JOINED_META_FILENAME, data_lengths, state_desc = state_desc)
 
 #static_data.save_some_objthere_images(test_objthere_metadatas, '/media/data4/nhaber/one_room_dataset/try_wimg', how_many = 10, state_desc = state_desc)
