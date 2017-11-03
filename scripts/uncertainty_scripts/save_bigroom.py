@@ -59,7 +59,7 @@ parser.add_argument('--nsave', default = 32 * 800, type = int)
 parser.add_argument('--forcescaling', default = 200., type = float)
 parser.add_argument('--objseed', default = 1, type = int)
 parser.add_argument('--rendernode', default=-1, type = int)
-
+parser.add_argument('--roomsize', default = 5, type = int)
 
 
 args = vars(parser.parse_args())
@@ -69,10 +69,11 @@ N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'a'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
-ACTION_DIM = 8
+ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
-
+room_size = args['roomsize']
+ROOM_DIMS = (room_size, room_size)
 
 
 
@@ -91,7 +92,7 @@ else:
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/torque/val_diffobj' + str(args['objseed']) + '.hdf5'
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/bigroom/val_diffobj' + str(args['objseed']) + '.hdf5'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -480,7 +481,7 @@ one_obj_scene_info = [
 
 
 force_scaling = 200.
-room_dims = (5, 5)
+room_dims = ROOM_DIMS
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']
 if test_mode:
@@ -535,7 +536,7 @@ dp_config = {
 
                 'scene_list' : [one_obj_scene_info],
                 'scene_lengths' : [scene_len],
-                'do_torque' : True,
+                'do_torque' : False,
 		'use_absolute_coordinates' : False
 
 
