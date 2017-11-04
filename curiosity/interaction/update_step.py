@@ -298,15 +298,10 @@ class ActionUncertaintyValidatorWithReadouts:
         self.wm = model['world_model']
         self.um = model['uncertainty_model']
         self.targets = {}
-        self.targets.update(self.wm.readouts)
-        self.targets.update(self.um.readouts)
+        self.targets.update({k : v for k, v in self.wm.readouts.items() if k not in self.wm.save_to_gfs})
+        self.targets.update({k : v for k, v in self.um.readouts.items() if k not in self.um.save_to_gfs})
         #this should be changed for an online data provider, set to do nothing
         self.map_draw_mode = 'specified_indices'
-        #TODO read this off other stuff
-        hardcoded_cfg = {'world_model' : {'act_dim' : 5}, 'uncertainty_model' : {'n_action_samples' : 1000}, 'seed' : 0}
-        self.action_sampler = models.UniformActionSampler(hardcoded_cfg)
-        self.map_draw_example_indices = [0, 31]
-        self.map_draw_timestep_indices = [1, 2]
         #relies on there being just one obs type
         self.state_desc = data_provider.data_lengths['obs'].keys()[0]
         self.insert_objthere = False if data_provider.num_objthere is None else True
