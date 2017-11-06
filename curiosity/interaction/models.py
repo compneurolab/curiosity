@@ -1024,7 +1024,7 @@ class MoreInfoActionWorldModel(object):
             obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
             obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
             avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
-            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
             self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
             self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
             self.num_obj_there.append(tf.reduce_sum(obj_there)) 
