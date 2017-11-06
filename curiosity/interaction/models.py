@@ -984,7 +984,7 @@ class MoreInfoActionWorldModel(object):
 
         #just hardcode this for now
         #assuming that the timestep before the action corresponds to states_given[1]
-        self.encoding_for_um = flat_encodings_no_mlps[states_given[1]] 
+        self.encoding_for_um = flat_encodings_no_mlp[states_given[1]] 
 
 	#great. now let's make our predictions and count our losses
 	act_loss_list = []
