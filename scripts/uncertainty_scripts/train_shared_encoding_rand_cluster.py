@@ -58,7 +58,7 @@ parser.add_argument('--rendernode', default = 'render1', type = str)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = ''
+EXP_ID_PREFIX = 'r'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 8
