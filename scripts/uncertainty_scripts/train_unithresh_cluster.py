@@ -440,7 +440,7 @@ validate_params = {
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'cluster', prefix = EXP_ID_PREFIX, state_desc = 'images1', 
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'damian', prefix = EXP_ID_PREFIX, state_desc = 'images1', 
 			portnum = cfg_generation.NODE_5_PORT)
 
 
