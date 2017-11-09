@@ -305,6 +305,7 @@ class Environment:
                         termination_condition = lambda env : False,
                         environment_timeout=60,
                         client_timeout=None,
+			gpu_num = 0
                 ):
                 #TODO: SCREEN_DIMS does nothing right now
                 self.timeout = environment_timeout
@@ -377,6 +378,9 @@ class Environment:
                 self.action_memory = [None for _ in range(self.action_memory_len)]
                 self.action_post_memory = [None for _ in range(self.action_memory_len)]
                 self.other_data_memory = [None for _ in range(other_data_memory_length)]
+		self.gpu_num = str(gpu_num)
+		assert gpu_num in ['0', '1', '2', '3']
+
 
         def init_tdw_client(self):
                 return TDW_Client(self.host_address,
@@ -461,7 +465,7 @@ class Environment:
                 if self.not_yet_joined:
                         if self.USE_TDW:
                                 self.tc.load_config(self.config)
-                                self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
+                                self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT, 'gpu_num' : self.gpu_num})
                                 print('about to hit run')
                                 msg = {'msg' : {}}
                                 self.sock = self.tc.run()
