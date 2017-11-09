@@ -956,7 +956,7 @@ class MoreInfoActionWorldModel(object):
         #a handle for uncertainty modeling. should probably do this in a more general way.
 	um_begin_idx, um_end_idx = cfg.get('um_state_idxs', (1, 3))
 	um_act_idx = cfg.get('um_act_idx', 2)
-	self.s_i = self.states[:, um_begin_idx:um_end_idx]
+        self.s_i = self.states[:, um_begin_idx:um_end_idx]
         self.action_for_um = self.action[:, um_act_idx]
         if cfg.get('include_obj_there', False):
             self.obj_there_supervision = self.obj_there_via_msg[:,cfg.get('obj_there_supervision_idx', 2)]
@@ -964,12 +964,16 @@ class MoreInfoActionWorldModel(object):
             print(self.obj_there_supervision)
 
 
+
+
 	#good job. now encode each state
 	reuse_weights = False
 	flat_encodings = {}
-	for s, collected_state in states_collected.iteritems():
+        flat_encodings_no_mlp = {}
+        for s, collected_state in states_collected.iteritems():
 	    with tf.variable_scope('encode_model'):
 		encoding = feedforward_conv_loop(collected_state, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            flat_encodings_no_mlp[s] = encoding
 	    enc_flat = flatten(encoding)
 	    if 'mlp_before_concat' in cfg['action_model']:
 		with tf.variable_scope('before_action'):
@@ -977,6 +981,10 @@ class MoreInfoActionWorldModel(object):
 	    flat_encodings[s] = enc_flat
 	    #reuse weights after first time doing computation
 	    reuse_weights = True
+
+        #just hardcode this for now
+        #assuming that the timestep before the action corresponds to states_given[1]
+        self.encoding_for_um = flat_encodings_no_mlp[states_given[1]] 
 
 	#great. now let's make our predictions and count our losses
 	act_loss_list = []
@@ -1016,7 +1024,7 @@ class MoreInfoActionWorldModel(object):
             obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
             obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
             avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
-            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
             self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
             self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
             self.num_obj_there.append(tf.reduce_sum(obj_there)) 
@@ -1533,7 +1541,10 @@ class MSExpectedUncertaintyModel:
             else:
                 assert postprocess_method is None
             x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
-            self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            if cfg.get('use_wm_encoding', False):
+                self.encoded = world_model.encoding_for_um
+            else:
+                self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             
             #choke down
             x = flatten(x)

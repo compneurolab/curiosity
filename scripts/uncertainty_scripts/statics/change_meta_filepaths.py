@@ -12,16 +12,16 @@ import os
 
 
 #where to find it right now. dumps the new stuff here with new filenames.
-current_meta_path = '/media/data4/nhaber/one_room_dataset/wimg'
+current_meta_path = '/media/data4/nhaber/one_room_dataset/bigroom'
 
 #the meta files to change
-current_metas = ['wimg_diffobj_all_meta.pkl', 'wimgval_diffobj_all_meta.pkl']
+current_metas = ['val_diffobj_all_meta.pkl']
 #the old path prefix in metas for replace
-old_path_prefix = '/media/data4/nhaber/one_room_dataset/wimg'
+old_path_prefix = '/media/data4/nhaber/one_room_dataset'
 #new path prefix for replace
-new_path_prefix = '/data/nhaber/one_room_dataset/wimg'
+new_path_prefix = '/data/nhaber/one_room_dataset'
 #what to call them now (can be overwrite)
-new_filenames = ['wimg_diffobj_all_meta_cluster.pkl', 'wimgval_diffobj_all_meta_cluster.pkl']
+new_filenames = ['val_diffobj_all_meta_cluster.pkl']
 
 
 full_meta_paths = [os.path.join(current_meta_path, fn) for fn in current_metas]
