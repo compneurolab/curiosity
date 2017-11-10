@@ -42,6 +42,7 @@ def get_ip(node_name):
             "node12":  "10.102.2.160",
             "node2":   "10.102.2.150",
             "node9":   "10.102.2.157",
+            "freud": "171.64.40.213"
             }
         if node_name in node2ip:
             return node2ip[node_name]

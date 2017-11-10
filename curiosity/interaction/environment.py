@@ -143,11 +143,9 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
             oarray1 = 256**2 * oarray[:, :, 0] + 256 * oarray[:, :, 1] + oarray[:, :, 2]
             xs, ys = (oarray1 == obj_id).nonzero()
             #added minor computation for max_interaction_distance
-            print('max dist: ' + str(max_interaction_distance))
             if max_interaction_distance is not None:
                 obj_loc = np.array(available_objects[0][2])
                 obj_dist = np.linalg.norm(np.array(env.observation['info']['avatar_position']) - obj_loc)
-            print('obj dist: ' +str(obj_dist))
             #if not in view
             if len(xs) == 0:
                 msg['msg']['action_type'] = 'NO_OBJ_ACT'
@@ -180,7 +178,6 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
                 for i in range(2, action_len):
                         msg['msg']['action_type'] = 'OBJ_NOT_PRESENT'
                         action_normalized[i] = 0.
-        print(msg['msg']['action_type'])
         return msg, action_normalized
 
 
