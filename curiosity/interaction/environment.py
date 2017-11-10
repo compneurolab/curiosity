@@ -162,8 +162,8 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
                 msg['msg']['action_type'] = 'OBJ_ACT'
                 msg_action = {}
                 msg_action['use_absolute_coordinates'] = use_absolute_coordinates
-                if not use_absolute_coordinates:
-                        print('using relative coordinates!')
+                #if not use_absolute_coordinates:
+                #        print('using relative coordinates!')
                 msg_action['force'] = list(action[2:5])
                 if do_torque:
                     msg_action['torque'] = list(action[5:])
