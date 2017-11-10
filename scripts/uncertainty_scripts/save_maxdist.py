@@ -59,7 +59,7 @@ parser.add_argument('--nsave', default = 32 * 800, type = int)
 parser.add_argument('--forcescaling', default = 200., type = float)
 parser.add_argument('--objseed', default = 1, type = int)
 parser.add_argument('--rendernode', default=-1, type = int)
-parser.add_argument('--maxinteractivedist', default=-1, type = float)
+parser.add_argument('--maxdist', default=2., type = float)
 
 
 args = vars(parser.parse_args())
@@ -114,6 +114,8 @@ n_classes_wm = len(act_thresholds) + 1
 um_thresholds = [args['uncertaintythreshold']]
 n_classes_um = len(um_thresholds) + 1
 batch_size = args['batchsize']
+max_interaction_distance = args['maxdist']
+
 
 act_dim = ACTION_DIM
 tasknum = args['tasknum']
