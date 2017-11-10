@@ -74,7 +74,7 @@ def query_results_to_unity_data(query_results, scale, mass, var = .01, seed = 0)
                 item['isLight'] = res['isLight']
                 item['anchor_type'] = res['anchor_type']
                 #print(res['aws_address'])
-                item['aws_address'] = res['aws_address']
+                item['aws_address'] = res['aws_address'] #'/home/mrowca/workspace/ThreeDWorld-private/Assets/Resources/FlexResources/StandardShapes/Solids0/CubeL.prefab' #res['aws_address']
                 item['mass'] = mass
                 item['scale'] = {"option": "Absol_size", "scale": scale, "var": var, "seed": seed, 'apply_to_inst' : True}
                 item['_id_str'] = str(res['_id'])
@@ -294,7 +294,7 @@ class Environment:
                         host_address = None,
                         msg_names = HDF5_NAMES,
                         shaders = SHADERS,
-                        n_cameras = 2,
+                        n_cameras = 1,
                         message_memory_len = 2,
                         action_memory_len = 2,
                         local_pickled_query = None,
@@ -562,6 +562,12 @@ class Environment:
                     self.observation = self.handle_message_new(self.msg_names, 
                             timeout=self.timeout)
                     self.observation['info'] = json.loads(self.observation['info'])
+                    #parse dict to list
+                    for key in ['avatar_position', 'avatar_up', 'avatar_forward',
+                            'avatar_right', 'avatar_velocity', 'avatar_angvel',
+                            'avatar_rotation']:
+                        rec = json.loads(self.observation['info'][key])
+                        self.observation['info'][key] = [rec['x'], rec['y'], rec['z']]
                     self.environment_pid = self.observation['info']['environment_pid']
                     for (k, shape) in self.rescale_dict.iteritems():
                         self.observation[k] = imresize(self.observation[k], shape)
