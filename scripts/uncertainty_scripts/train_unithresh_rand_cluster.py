@@ -55,7 +55,7 @@ parser.add_argument('-nenv', '--numberofenvironments', default=16, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
 #parser.add_argument('--objseed', default = 1, type = int)
-
+parser.add_argument('--rendergpu', default = '0', type = str)
 
 N_ACTION_SAMPLES = 1000
 EXP_ID_PREFIX = 'r'
@@ -395,7 +395,8 @@ dp_config = {
                         'host_address' : RENDER1_HOST_ADDRESS,
                         'rng_periodicity' : 1,
                         'termination_condition' : environment.obj_not_present_termination_condition,
-                        'selected_build' : 'three_world_locked_rot.x86_64'
+                        'selected_build' : 'three_world_locked_rot.x86_64',
+			'gpu_num' : args['rendergpu']
                 },
 
                 'provider_params' : {
