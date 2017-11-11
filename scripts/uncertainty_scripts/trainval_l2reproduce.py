@@ -229,7 +229,8 @@ wm_cfg = {
         'action_model' : {
                 'loss_func' : models.l2_loss_per_example,
                 'loss_factor' : 1.,
-                'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
+                'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice),
+                'thresholds': [-0.1,0.1]
         }
 }
 

@@ -388,7 +388,7 @@ class Environment:
                 self.action_post_memory = [None for _ in range(self.action_memory_len)]
                 self.other_data_memory = [None for _ in range(other_data_memory_length)]
 		self.gpu_num = str(gpu_num)
-		assert gpu_num in ['0', '1', '2', '3']
+		assert self.gpu_num in ['0', '1', '2', '3'], self.gpu_num
 
 
         def init_tdw_client(self):
