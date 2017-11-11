@@ -77,7 +77,7 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj_all_meta.pkl'
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj_all_meta_cluster.pkl'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
