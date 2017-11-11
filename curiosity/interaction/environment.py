@@ -108,7 +108,7 @@ def test_action_to_message_fn(action, env):
         return msg
 
 
-def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True, use_absolute_coordinates = True):
+def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = None, do_torque = True, use_absolute_coordinates = True, max_interaction_distance = None):
         '''
                 Sends message given forward vel, y-angular speed, force, torque.
                 If wall_safety is a number, stops the agent from stepping closer to the wall from wall_safety.
@@ -136,36 +136,44 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
         if len(available_objects) > 1:
                 raise Exception('This action parametrization only meant for one object')
         elif len(available_objects) == 1:
-                obj_id = available_objects[0][1]
-                oarray = env.observation['objects1']
-                if type(oarray) == list:
-                        oarray = oarray[-1]
-                #see if the object is in view
-                oarray1 = 256**2 * oarray[:, :, 0] + 256 * oarray[:, :, 1] + oarray[:, :, 2]
-                xs, ys = (oarray1 == obj_id).nonzero()
-                #if not in view
-                if len(xs) == 0:
-                        msg['msg']['action_type'] = 'NO_OBJ_ACT'
-                        for i in range(2, action_len):
-                                action_normalized[i] = 0.
-                #if in view
+            obj_id = available_objects[0][1]
+            oarray = env.observation['objects1']
+            if type(oarray) == list:
+                oarray = oarray[-1]
+            #see if the object is in view
+            oarray1 = 256**2 * oarray[:, :, 0] + 256 * oarray[:, :, 1] + oarray[:, :, 2]
+            xs, ys = (oarray1 == obj_id).nonzero()
+            #added minor computation for max_interaction_distance
+            if max_interaction_distance is not None:
+                obj_loc = np.array(available_objects[0][2])
+                obj_dist = np.linalg.norm(np.array(env.observation['info']['avatar_position']) - obj_loc)
+            #if not in view
+            if len(xs) == 0:
+                msg['msg']['action_type'] = 'NO_OBJ_ACT'
+                for i in range(2, action_len):
+                    action_normalized[i] = 0.
+            #if in view, but too far
+            elif max_interaction_distance is not None and obj_dist > max_interaction_distance:
+                msg['msg']['action_type'] = 'OBJ_FAR'
+                for i in range(2, action_len):
+                    action_normalized[i] = 0.
+            else:
+                #set action_pos equal to the seen center of mass. this doesn't matter
+                seen_cm = np.round(np.array(zip(xs, ys)).mean(0))
+                msg['msg']['action_type'] = 'OBJ_ACT'
+                msg_action = {}
+                msg_action['use_absolute_coordinates'] = use_absolute_coordinates
+                #if not use_absolute_coordinates:
+                #        print('using relative coordinates!')
+                msg_action['force'] = list(action[2:5])
+                if do_torque:
+                    msg_action['torque'] = list(action[5:])
                 else:
-                        #set action_pos equal to the seen center of mass. this doesn't matter
-                        seen_cm = np.round(np.array(zip(xs, ys)).mean(0))
-                        msg['msg']['action_type'] = 'OBJ_ACT'
-                        msg_action = {}
-                        msg_action['use_absolute_coordinates'] = use_absolute_coordinates
-                        #if not use_absolute_coordinates:
-                        #        print('using relative coordinates!')
-                        msg_action['force'] = list(action[2:5])
-                        if do_torque:
-                                msg_action['torque'] = list(action[5:])
-                        else:
-                                msg_action['torque'] = [0., 0., 0.]
-                        msg_action['id'] = str(obj_id)
-                        msg_action['object'] = str(obj_id)
-                        msg_action['action_pos'] = list(map(float, seen_cm))
-                        msg['msg']['actions'].append(msg_action)
+                    msg_action['torque'] = [0., 0., 0.]
+                    msg_action['id'] = str(obj_id)
+                    msg_action['object'] = str(obj_id)
+                    msg_action['action_pos'] = list(map(float, seen_cm))
+                    msg['msg']['actions'].append(msg_action)
         else:
                 print('Warning! object not found!')
                 for i in range(2, action_len):
@@ -306,6 +314,7 @@ class Environment:
                         termination_condition = lambda env : False,
                         environment_timeout=60,
                         client_timeout=None,
+			gpu_num = 0
                 ):
                 #TODO: SCREEN_DIMS does nothing right now
                 self.timeout = environment_timeout
@@ -378,6 +387,9 @@ class Environment:
                 self.action_memory = [None for _ in range(self.action_memory_len)]
                 self.action_post_memory = [None for _ in range(self.action_memory_len)]
                 self.other_data_memory = [None for _ in range(other_data_memory_length)]
+		self.gpu_num = str(gpu_num)
+		assert gpu_num in ['0', '1', '2', '3']
+
 
         def init_tdw_client(self):
                 return TDW_Client(self.host_address,
@@ -462,7 +474,7 @@ class Environment:
                 if self.not_yet_joined:
                         if self.USE_TDW:
                                 self.tc.load_config(self.config)
-                                self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT})
+                                self.tc.load_profile({'screen_width': self.SCREEN_WIDTH, 'screen_height': self.SCREEN_HEIGHT, 'gpu_num' : self.gpu_num})
                                 print('about to hit run')
                                 msg = {'msg' : {}}
                                 self.sock = self.tc.run()

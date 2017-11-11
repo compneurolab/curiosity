@@ -909,6 +909,138 @@ def l2_loss_per_example(tv, pred, cfg):
 
 
 class MoreInfoActionWorldModel(object):
+    def __init__(self, cfg):
+        #placeholder setup
+	num_timesteps = cfg['num_timesteps']
+	image_shape = list(cfg['image_shape'])
+	state_steps = list(cfg['state_steps'])
+	states_given = list(cfg['states_given'])
+	actions_given = list(cfg['actions_given'])
+	act_dim = cfg['act_dim']
+	t_back = - (min(state_steps) + min(states_given))
+	t_forward = max(state_steps) + max(states_given)
+	states_shape = [num_timesteps + t_back + t_forward] + image_shape
+	self.states = tf.placeholder(tf.uint8, [None] + states_shape)
+        states_cast = tf.cast(self.states, tf.float32)
+        postprocess_method = cfg.get('postprocess')
+        if postprocess_method == 'depths1':
+            states_cast = postprocess_depths(states_cast)
+        elif postprocess_method == 'images1':
+            states_cast = postprocess_std(states_cast)
+        else:
+            assert postprocess_method is None
+        acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
+	self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
+	self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
+	act_back = - min(actions_given)		
+                
+        if cfg.get('include_obj_there', False):
+            self.obj_there_via_msg = tf.placeholder(tf.int64, [None, acts_shape[0]], name = 'obj_there_via_msg')
+
+
+
+	#things we gotta fill in
+	self.act_loss_per_example = []
+	self.act_pred = []
+
+	#start your engines
+	m = ConvNetwithBypasses()
+	#concat states at all timesteps needed
+	states_collected = {}
+	#this could be more general, for now all timesteps tested on are adjacent, but one could imagine this changing...
+	for t in range(num_timesteps):
+	    for s in states_given:
+		if t + s not in states_collected:
+                    states_collected[t+s] = tf_concat([states_cast[:, t + s + i + t_back] for i in state_steps], axis = 3)
+	
+        #a handle for uncertainty modeling. should probably do this in a more general way.
+	um_begin_idx, um_end_idx = cfg.get('um_state_idxs', (1, 3))
+	um_act_idx = cfg.get('um_act_idx', 2)
+        self.s_i = self.states[:, um_begin_idx:um_end_idx]
+        self.action_for_um = self.action[:, um_act_idx]
+        if cfg.get('include_obj_there', False):
+            self.obj_there_supervision = self.obj_there_via_msg[:,cfg.get('obj_there_supervision_idx', 2)]
+            print('in moreinfo wm')
+            print(self.obj_there_supervision)
+
+
+
+
+	#good job. now encode each state
+	reuse_weights = False
+	flat_encodings = {}
+        flat_encodings_no_mlp = {}
+        for s, collected_state in states_collected.iteritems():
+	    with tf.variable_scope('encode_model'):
+		encoding = feedforward_conv_loop(collected_state, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            flat_encodings_no_mlp[s] = encoding
+	    enc_flat = flatten(encoding)
+	    if 'mlp_before_concat' in cfg['action_model']:
+		with tf.variable_scope('before_action'):
+		    enc_flat = hidden_loop_with_bypasses(enc_flat, m, cfg['action_model']['mlp_before_concat'], reuse_weights = reuse_weights, train = True)
+	    flat_encodings[s] = enc_flat
+	    #reuse weights after first time doing computation
+	    reuse_weights = True
+
+        #just hardcode this for now
+        #assuming that the timestep before the action corresponds to states_given[1]
+        self.encoding_for_um = flat_encodings_no_mlp[states_given[1]] 
+
+	#great. now let's make our predictions and count our losses
+	act_loss_list = []
+        acc_01_list = []
+	reuse_weights = False
+	for t in range(num_timesteps):
+	    encoded_states_given = [flat_encodings[t + s] for s in states_given]
+	    act_given = [self.action[:, t + a + act_back] for a in actions_given]
+	    act_tv = self.action_post[:, t + act_back]
+	    x = tf_concat(encoded_states_given + act_given, axis = 1)
+	    with tf.variable_scope('action_model'):
+		pred = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
+	    lpe, loss = cfg['action_model']['loss_func'](act_tv, pred, cfg['action_model'])
+            acc_01 = binned_01_accuracy_per_example(act_tv, pred, cfg['action_model'])			
+            reuse_weights = True
+	    acc_01_list.append(tf.cast(acc_01, tf.float32))
+            self.act_loss_per_example.append(lpe)
+	    self.act_pred.append(pred)
+	    act_loss_list.append(loss)
+        if cfg.get('norepeat', False):
+            self.act_loss = act_loss_list[0]
+        else:
+	    self.act_loss = tf.reduce_mean(act_loss_list)
+	self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
+	self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
+        
+        #adding on readouts
+        self.obj_there_loss = []
+        self.num_obj_there = []
+        self.obj_not_there_loss = []
+        self.object_there = []
+        avg_acc_obj_there = []
+        avg_acc_obj_not_there = []
+        for t in range(num_timesteps):
+            act_tv = self.action_post[:, t + act_back]
+            force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
+            obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
+            obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
+            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
+            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+            self.num_obj_there.append(tf.reduce_sum(obj_there)) 
+            self.object_there.append(obj_there)                
+                
+        self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
+                        'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
+                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there[0],
+                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there[0]}
+        self.save_to_gfs = ['act_pred']
+                
+
+
+
+
+class LatentMoreInfoActionWorldModel(object):
 	def __init__(self, cfg):
 		#placeholder setup
 		num_timesteps = cfg['num_timesteps']
@@ -916,7 +1048,9 @@ class MoreInfoActionWorldModel(object):
 		state_steps = list(cfg['state_steps'])
 		states_given = list(cfg['states_given'])
 		actions_given = list(cfg['actions_given'])
-		act_dim = cfg['act_dim']
+		fm_states_given = list(cfg['fm_states_given'])
+                fm_actions_given = list(cfg['fm_actions_given'])
+                act_dim = cfg['act_dim']
 		t_back = - (min(state_steps) + min(states_given))
 		t_forward = max(state_steps) + max(states_given)
 		states_shape = [num_timesteps + t_back + t_forward] + image_shape
@@ -931,6 +1065,8 @@ class MoreInfoActionWorldModel(object):
 		#things we gotta fill in
 		self.act_loss_per_example = []
 		self.act_pred = []
+                self.fut_loss_per_example = []
+                self.fut_pred = []
 
 		#start your engines
 		m = ConvNetwithBypasses()
@@ -955,10 +1091,12 @@ class MoreInfoActionWorldModel(object):
 		#good job. now encode each state
 		reuse_weights = False
 		flat_encodings = {}
+                flat_encodings_pre_mlp = {}
 		for s, collected_state in states_collected.iteritems():
 			with tf.variable_scope('encode_model'):
 				encoding = feedforward_conv_loop(collected_state, m, cfg['encode'], desc = 'encode', bypass_nodes = None, reuse_weights = reuse_weights, batch_normalize = False, no_nonlinearity_end = False)[-1]
 			enc_flat = flatten(encoding)
+                        flat_encodings_pre_mlp[s] = enc_flat
 			if 'mlp_before_concat' in cfg['action_model']:
 				with tf.variable_scope('before_action'):
 					enc_flat = hidden_loop_with_bypasses(enc_flat, m, cfg['action_model']['mlp_before_concat'], reuse_weights = reuse_weights, train = True)
@@ -966,7 +1104,7 @@ class MoreInfoActionWorldModel(object):
 			#reuse weights after first time doing computation
 			reuse_weights = True
 
-		#great. now let's make our predictions and count our losses
+		#great. now let's make our action predictions and count our losses
 		act_loss_list = []
 		reuse_weights = False
 		for t in range(num_timesteps):
@@ -989,10 +1127,43 @@ class MoreInfoActionWorldModel(object):
 		    self.act_loss = tf.reduce_mean(act_loss_list)
 		self.act_var_list = [var for var in tf.global_variables() if 'action_model' in var.name or 'before_action' in var.name]
 		self.encode_var_list = [var for var in tf.global_variables() if 'encode_model' in var.name]
+                
+                
+                
+                #super. now for the latent-space future model.
+                fut_loss_list = []
+                reuse_weights = False
+                for t in range(num_timesteps):
+                    encoded_states_given = [flat_encodings_pre_mlp[t + s] for s in fm_states_given]
+                    act_given = [self.action[:, t + a + act_back] for a in fm_actions_given]
+                    fut_tv = flat_encodings_pre_mlp[t]
+                    x = tf_concat(encoded_states_given + act_given, axis = 1)
+                    with tf.variable_scope('future_model'):
+                        pred = hidden_loop_with_bypasses(x, m, cfg['future_model']['mlp'], reuse_weights = reuse_weights, train = True)
+                    print('sizes')
+                    print(pred)
+                    lpe, loss = cfg['future_model']['loss_func'](fut_tv, pred, cfg['future_model'])
+                    
+                    reuse_weights = True
+                    self.fut_loss_per_example.append(lpe)
+                    self.fut_pred.append(pred)
+                    fut_loss_list.append(loss)
+                if cfg.get('norepeat', True):
+                    self.fut_loss = fut_loss_list[0]
+                else:
+                    self.act_loss = tf.reduce_mean(fut_loss_list)
+                self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
+
+                
+                
+                
+                
                 #adding on readouts
                 self.obj_there_loss = []
                 self.num_obj_there = []
                 self.obj_not_there_loss = []
+                self.obj_there_fut_loss = []
+                self.obj_not_there_fut_loss = []
                 self.object_there = []
                 for t in range(num_timesteps):
                     act_tv = self.action_post[:, t + act_back]
@@ -1003,7 +1174,9 @@ class MoreInfoActionWorldModel(object):
                     print(self.act_loss_per_example[t].get_shape().as_list())
                     self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
                     self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
-                    self.num_obj_there.append(tf.reduce_sum(obj_there)) 
+                    self.obj_there_fut_loss.append(tf.reduce_sum(obj_there * self.fut_loss_per_example[t]) / tf.reduce_sum(obj_there))
+                    self.obj_not_there_fut_loss.append(tf.reduce_sum((1. - obj_there) * self.fut_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+                    self.num_obj_there.append(tf.reduce_sum(obj_there))
                     self.object_there.append(obj_there)
                 
                 print('what is going on with loss per example?')
@@ -1011,11 +1184,13 @@ class MoreInfoActionWorldModel(object):
                 
                 
                 
-                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
+                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 'fut_loss' : self.fut_loss,
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
-                        'num_obj_there_noprint' : self.num_obj_there}
+                        'num_obj_there_noprint' : self.num_obj_there, 'obj_there_fut_loss_noprint' : self.obj_there_fut_loss,
+                        'obj_not_there_fut_loss_noprint' : self.obj_not_there_fut_loss
+                        }
                 self.save_to_gfs = ['act_pred']
-                
+ 
 
 
 
@@ -1266,12 +1441,15 @@ class MixedUncertaintyModel:
 			#TODO FINISH
 
 
-def get_mixed_loss(world_model, weighting):
+def get_mixed_loss(world_model, weighting, multistep = False):
 	print(weighting.keys())
 	print('in the loss maker!')
 	print(world_model.act_loss_per_example)
 	print(world_model.fut_loss_per_example)
+	if multistep:
+		return [weighting['action'] * l_a + weighting['future'] * l_f for l_a, l_f in zip(world_model.act_loss_per_example, world_model.fut_loss_per_example)]
 	return weighting['action'] * world_model.act_loss_per_example + weighting['future'] * world_model.fut_loss_per_example
+
 
 def get_obj_there(world_model):
 	return world_model.obj_there
@@ -1332,14 +1510,21 @@ class SimpleForceUncertaintyModel:
 		chosen_idx = self.rng.randint(len(action_sample))
 		return action_sample[chosen_idx], -1., None
 
+
+def objthere_signal(world_model):
+    return world_model.obj_there_supervision
+
+
 class MSExpectedUncertaintyModel:
     def __init__(self, cfg, world_model):
 	with tf.variable_scope('uncertainty_model'):
             self.step = tf.get_variable('um_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
             m = ConvNetwithBypasses()
             self.s_i = x = world_model.s_i
-            print(self.s_i.dtype)
-            self.true_loss = world_model.act_loss_per_example
+            if 'loss_signal_func' in cfg:
+                self.true_loss = cfg['loss_signal_func'](world_model, **cfg['loss_signal_kwargs'])
+            else:
+                self.true_loss = world_model.act_loss_per_example
             n_timesteps = len(world_model.act_loss_per_example)
             t_per_state = self.s_i.get_shape().as_list()[1]
             #the action it decides on is the first action giving a transition from the starting state.
@@ -1347,9 +1532,19 @@ class MSExpectedUncertaintyModel:
             #should also really include some past actions
             #encoding
             x = tf.cast(x, tf.float32)
-            x = postprocess_depths(x)
+            postprocess_method = cfg.get('postprocess')
+            if postprocess_method == 'depths1':
+                x = postprocess_depths(x)
+            elif postprocess_method == 'images1':
+                print('POSTPROCESSING AS IMAGES')
+                x = postprocess_std(x)
+            else:
+                assert postprocess_method is None
             x = tf_concat([x[:, i] for i in range(t_per_state)], 3)
-            self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
+            if cfg.get('use_wm_encoding', False):
+                self.encoded = world_model.encoding_for_um
+            else:
+                self.encoded = x = feedforward_conv_loop(x, m, cfg['shared_encode'], desc = 'encode', bypass_nodes = None, reuse_weights = False, batch_normalize = False, no_nonlinearity_end = False)[-1]
             
             #choke down
             x = flatten(x)
@@ -1445,7 +1640,6 @@ class MSExpectedUncertaintyModel:
         #this should eventually implement a policy, for now uniformly random, but we still want that sweet estimated world loss.
         depths_batch = np.array([state])
         if self.just_random:
-            print('just random!')
             ewl = sess.run(self.estimated_world_loss, feed_dict = {self.s_i : depths_batch, self.action_sample : action_sample})
             chosen_idx = self.rng.randint(len(action_sample))
             return action_sample[chosen_idx], -1., ewl
@@ -1605,6 +1799,20 @@ def binned_softmax_loss_per_example(tv, prediction, cfg):
 	loss = tf.reduce_mean(loss_per_example)
 	return loss_per_example, loss
 
+def binned_01_accuracy_per_example(tv, prediction, cfg):
+    thresholds = cfg['thresholds']
+    n_classes = len(thresholds) + 1
+    tv_shape = tv.get_shape().as_list()
+    d = tv_shape[1]
+    assert(len(tv_shape)) == 2
+    tv = bin_values(tv, thresholds)
+    prediction = tf.reshape(prediction, [-1, d, n_classes])
+    hardmax = tf.cast(tf.argmax(prediction, axis = -1), tf.int32)
+    correct_answers = tf.cast(tf.equal(hardmax, tv), tf.int32)
+    return correct_answers
+
+
+
 def binned_softmax_loss_per_example_w_weights(tv, prediction, cfg):
 	thresholds = cfg['thresholds']
 	loss_weights = cfg['loss_weights']
@@ -1631,6 +1839,15 @@ def binned_softmax_loss(tv, prediction, cfg):
 	loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
 	return loss_per_example, loss
 
+
+def softmax_loss(tv, prediction, cfg):
+    tv = tf.squeeze(tv)
+    print('in loss func')
+    print(tv)
+    loss_per_example = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = tv, logits = prediction)
+    loss = tf.reduce_mean(loss_per_example) * cfg.get('loss_factor', 1.)
+    return loss_per_example, loss
+
 def ms_sum_binned_softmax_loss(tv, prediction, cfg):
 	assert len(tv) == len(prediction)
 	loss_per_example_and_step = [binned_softmax_loss(y, p, cfg) for y, p in zip(tv, prediction)]
@@ -1639,7 +1856,23 @@ def ms_sum_binned_softmax_loss(tv, prediction, cfg):
 	loss = tf.reduce_mean(loss_per_step)
 	return loss_per_example, loss_per_step, loss
 
-	
+
+def objthere_loss(tv, prediction, cfg):
+    assert len(prediction) == 1
+    prediction_time1 = prediction[0]
+    print('in objthere loss')
+    print(tv)
+    loss_per_ex_and_step = [softmax_loss(tv, prediction_time1, cfg)]
+    loss_per_example = [lpe for lpe, lps in loss_per_ex_and_step]
+    loss_per_step = [lps for lpe, lps in loss_per_ex_and_step]
+    loss = tf.reduce_mean(loss_per_step)
+    return loss_per_example, loss_per_step, loss
+
+
+
+
+
+
 def equal_spacing_softmax_loss(tv, prediction, cfg):
 	num_classes = cfg.get('num_classes', 2)
 	min_value = cfg.get('min_value', -1.)

@@ -31,9 +31,9 @@ force_scaling = 200
 
 #SMALLER_TEST_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2000, 2001, 2002]]
 the_chosen_ones = range(1, 13) + [14, 17, 19, 22]
-SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/bigroom/val_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
-SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/bigroom/val_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
-JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/bigroom/val_diffobj_all_meta.pkl'
+SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
+SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
+JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj_all_meta.pkl'
 
 BATCH_SIZE = 32
 #T_PER_STATE = 2
@@ -46,9 +46,9 @@ state_desc = 'images1'
 
 
 data_lengths = {
-                        'obs' : {state_desc : 7},
-                        'action' : 6,
-                        'action_post' : 6}
+                        'obs' : {state_desc : 10},
+                        'action' : 9,
+                        'action_post' : 9}
 
 
 
@@ -60,7 +60,7 @@ print('done checking')
 #train_uniform_metadata = static_data.get_uniform_metadata(TRAIN_HDF5_FILENAMES, TRAIN_UNIFORM_METADATA_LOC, data_lengths)
 #train_objthere_metadata = static_data.get_objthere_metadata(TRAIN_HDF5_FILENAMES, TRAIN_OBJTHERE_METADATA_LOC, data_lengths)
 #test_uniform_metadata = static_data.get_uniform_metadata(TEST_HDF5_FILENAMES, TEST_UNIFORM_METADATA_LOC, data_lengths)
-test_objthere_metadatas = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
+each_meta = [static_data.get_objthere_metadata([fn], ml, data_lengths, state_desc = state_desc) for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES)]
 
 
 for fn, ml in zip(SMALLER_TEST_FILENAMES, SMALLER_META_FILENAMES):

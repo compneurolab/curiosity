@@ -194,9 +194,11 @@ class ObjectThereFixedPermutationBatcher:
         assert len(self.obj_there_idxs) / num_there_per_batch > reset_batch_num and len(self.obj_not_there_idxs) / num_not_there_per_batch > reset_batch_num
         self.there_schedule = self.rng.permutation(self.obj_there_idxs)
         self.not_there_schedule = self.rng.permutation(self.obj_not_there_idxs)
-        print('Initialization complete')
+        self.num_there_per_batch = num_there_per_batch
+        self.num_not_there_per_batch = num_not_there_per_batch
         self.batch_count = 0
         self.reset_batch_num = reset_batch_num
+        print('Initialization complete')
 
     def get_batch_indices(self):
         if self.batch_count > self.reset_batch_num:
@@ -209,8 +211,6 @@ class ObjectThereFixedPermutationBatcher:
         self.not_there_start += self.num_not_there_per_batch
         self.batch_count += 1
         return list(obj_there_batch) + list(obj_not_there_batch)
-
-
 
 class ObjectThereBatcher:
 	def __init__(self, batch_size, metadata, seed, num_there_per_batch, num_not_there_per_batch):
@@ -321,6 +321,7 @@ class OfflineDataProvider(threading.Thread):
 			data_lengths, 
 			capacity, 
 			metadata_filename,
+                        num_objthere = None,
 			batcher_kwargs = None
                 ):
 		threading.Thread.__init__(self)
@@ -333,6 +334,7 @@ class OfflineDataProvider(threading.Thread):
 		self.data_lengths = data_lengths
 		self.queue = queue.Queue(capacity)
 		self.daemon = True
+                self.num_objthere = num_objthere
 
 	def run_env(self):
 		while True:
@@ -351,6 +353,15 @@ class OfflineDataProvider(threading.Thread):
 					for file_num, idx in chosen:
 						collected_dat.append(self.hdf5s[file_num][k][idx - v + 1 : idx + 1])
 					batch[k] = np.array(collected_dat)
+                        if self.num_objthere is not None:
+                            collected_data = []
+                            for file_num, idx in chosen:
+                                msgs = self.hdf5s[file_num]['msg'][idx - self.num_objthere + 1 : idx + 1]
+                                msgs = [json.loads(msg) for msg in msgs]
+                                obj_there = [int('OBJ_ACT' == msg['msg']['action_type']) if msg is not None else 0 for msg in msgs]
+                                collected_data.append(obj_there)
+                            batch['obj_there'] = np.array(collected_data)
+
 #			collected_dat = []
 #			for file_num, idx in chosen:
 #				collected_dat.append([self.hdf5s[file_num]['msg'][idx]])

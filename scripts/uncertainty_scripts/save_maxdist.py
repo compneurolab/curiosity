@@ -1,5 +1,6 @@
 '''
 Random actions, after index mismatch bug.
+a
 '''
 
 
@@ -48,35 +49,49 @@ parser.add_argument('--nclasses', default = 4, type = int)
 parser.add_argument('-at', '--actionthreshold', default = .1, type = float)
 parser.add_argument('-ut', '--uncertaintythreshold', default = .1, type = float)
 parser.add_argument('--modelseed', default = 0, type = int)
-parser.add_argument('--gather', default = 48, type = int)
+parser.add_argument('--gather', default = 32, type = int)
 parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
-parser.add_argument('--rendernode', default = 'render1', type = str)
+parser.add_argument('--tasknum', required = True, type = str)
+parser.add_argument('--nsave', default = 32 * 800, type = int)
+parser.add_argument('--forcescaling', default = 200., type = float)
+parser.add_argument('--objseed', default = 1, type = int)
+parser.add_argument('--rendernode', default=-1, type = int)
+parser.add_argument('--maxdist', default=2., type = float)
 
+
+args = vars(parser.parse_args())
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'a'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
 
-args = vars(parser.parse_args())
 
 
 
 render_node = args['rendernode']
-RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
+if render_node == 1:
+    RENDER1_HOST_ADDRESS = '10.102.2.149'
+elif render_node == 5:
+    RENDER1_HOST_ADDRESS = '10.102.2.153'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+                
+
+
 
 
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl' 
+OBJTHERE_TEST_METADATA_LOC = '/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj' + str(args['objseed']) + '.hdf5'
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -93,15 +108,21 @@ def online_agg_func(agg_res, res, step):
 
 def agg_func(res):
     return res
-
 test_mode = args['testmode']
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
 n_classes_wm = len(act_thresholds) + 1
 um_thresholds = [args['uncertaintythreshold']]
 n_classes_um = len(um_thresholds) + 1
 batch_size = args['batchsize']
+max_interaction_distance = args['maxdist']
 
 
+act_dim = ACTION_DIM
+tasknum = args['tasknum']
+force_scaling = args['forcescaling']
+scene_len = 32 * 1024
+image_shape = image_scale = (128, 170)
+save_filename = OBJTHERE_TEST_METADATA_LOC
 
 wm_encoding_choices = [
         {
@@ -312,6 +333,7 @@ um_mlp_args = shared_mlp_choices[args['umfcarchitecture']]
 
 
 um_cfg = {
+        'just_random': 1,
 	'shared_encode' : cfg_generation.generate_conv_architecture_cfg(desc = 'encode', **um_encoding_args),
 	'shared_mlp_before_action' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_before_act_args),
 	'shared_mlp' : cfg_generation.generate_mlp_architecture_cfg(**um_mlp_args),
@@ -321,7 +343,6 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
 }
 
 model_cfg = {
@@ -418,8 +439,12 @@ def get_static_data_provider(data_params, model_params, action_model):
 
 
 train_params = {
-	'updater_func' : update_step.FreezeUpdater,
+	'updater_func' : update_step.DataWriteUpdater,
 	'updater_kwargs' : {
+                'hdf5_filename': save_filename,
+                'N_save': args['nsave'],
+                'act_dim': act_dim,
+                'image_shape': image_shape,
 		'state_desc' : 'depths1',
                 'freeze_wm' : False,
                 'freeze_um' : False,
@@ -466,7 +491,11 @@ batch_size = args['batchsize']
 
 
 data_lengths = {
-                        'obs' : {'depths1' : s_back + s_forward + NUM_TIMESTEPS},
+                        'obs' : {
+                                'depths1' : s_back + s_forward + NUM_TIMESTEPS,
+                                'objects1' : s_back + s_forward + NUM_TIMESTEPS,
+                                'images1' : s_back + s_forward + NUM_TIMESTEPS,
+                            },
                         'action' : a_back + a_forward + NUM_TIMESTEPS,
                         'action_post' : a_back + a_forward + NUM_TIMESTEPS}
 
@@ -477,17 +506,19 @@ dp_config = {
                 'n_environments': n_env,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
-                        'random_seed' : 1,
+                        'random_seed' : args['objseed'],
                         'unity_seed' : 1,
                         'room_dims' : room_dims,
                         'state_memory_len' : {
-                                        'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS
+                                        'depths1' : history_len + s_back + s_forward + NUM_TIMESTEPS,
+                                        'objects1': history_len + s_back + s_forward + NUM_TIMESTEPS,
+                                        'images1' : history_len + s_back + s_forward + NUM_TIMESTEPS
                                 },
                         'action_memory_len' : history_len + a_back + a_forward + NUM_TIMESTEPS,
                         'message_memory_len' : history_len +  a_back + a_forward + NUM_TIMESTEPS,
                         'other_data_memory_length' : 32,
                         'rescale_dict' : {
-                                        'depths1' : IMAGE_SCALE
+                                        'depths1' : image_shape
                                 },
                         'USE_TDW' : True,
                         'host_address' : RENDER1_HOST_ADDRESS,
@@ -505,10 +536,10 @@ dp_config = {
                 },
 
                 'scene_list' : [one_obj_scene_info],
-                'scene_lengths' : [1024 * 32],
+                'scene_lengths' : [scene_len],
                 'do_torque' : False,
-		'use_absolute_coordinates' : False
-
+		'use_absolute_coordinates' : False,
+                'max_interaction_distance' : max_interaction_distance
 
 
         }
@@ -518,13 +549,13 @@ validate_params = {
         'valid0': {
             'func' : update_step.ActionUncertaintyValidatorWithReadouts,
             'kwargs' : {},
-            'num_steps' : 500,
+            'num_steps' : 10,
             'online_agg_func' : online_agg_func,
             'agg_func' : agg_func,
             'data_params' : {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereFixedPermutationBatcher,
+                'batcher_constructor' : static_data.ObjectThereBatcher,
                 'data_lengths' : data_lengths,
                 'capacity' : 5,
                 'metadata_filename' : OBJTHERE_TEST_METADATA_LOC,
@@ -532,43 +563,36 @@ validate_params = {
                     'seed' : 0,
                     'num_there_per_batch' : 16,
                     'num_not_there_per_batch' : 16,
-                    'reset_batch_num' : 500
                 }
             }
         }
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+#load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
 
 
-load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
-load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
-load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
-load_and_save_params['save_params']['save_metrics_freq'] = 20 if test_mode else 1000
+#load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']
+#load_and_save_params['what_to_save_params']['big_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+#load_and_save_params['what_to_save_params']['little_save_keys'].extend(['um_loss1', 'um_loss2', 'um_loss0'])
+#load_and_save_params['save_params']['save_metrics_freq'] = 20 if test_mode else 1000
 
 
 
-postprocessor_params = {
-        'func' : train.get_experience_replay_postprocessor
-
-}
+#postprocessor_params = {
+#        'func' : train.get_experience_replay_postprocessor
+#
+#}
 
 
 
 params = {
 	'model_params' : model_params,
 	'data_params' : dp_config,
-	'postprocessor_params' : postprocessor_params,
-	'optimizer_params' : optimizer_params,
-	'learning_rate_params' : lr_params,
 	'train_params' : train_params,
-        'validate_params' : validate_params
 }
 
-params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5 if test_mode else 10000
 params['allow_growth'] = True
 
 
@@ -576,7 +600,7 @@ params['allow_growth'] = True
 
 if __name__ == '__main__':
 	os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu']
-	train.train_from_params(**params)
+	train.save_data_without_training(**params)
 
 
 

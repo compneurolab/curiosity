@@ -49,7 +49,6 @@ if USER == 'nick':
 else:
     RENDER1_HOST_ADDRESS = get_ip('node4')
 
-
 def generate_latent_standards(model_cfg, learning_rate = 1e-5, optimizer_class = tf.train.AdamOptimizer):
 	'''
 	Some stuff that I imagine will only change in minor ways across latent scripts.
@@ -298,7 +297,7 @@ def query_gen_latent_save_params(location = 'freud', prefix = None, state_desc =
         params['what_to_save_params'] = {
                 'big_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'act_pred', 'fut_pred', 'loss_per_example', 'estimated_world_loss', 'loss_per_step'],
                 'little_save_keys' : ['fut_loss', 'act_loss', 'um_loss', 'loss_per_step'],
-                'big_save_len' : 2,
+                'big_save_len' : 0,
                 'big_save_freq' : 1000,
                 'state_descriptor' : state_desc
         }
@@ -375,15 +374,26 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 				}
 
 
-def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], strides = [2, 1, 2, 1, 2], num_filters = [20, 20, 20, 10, 4], bypass = [None, None, None, None, None], nonlinearity = None):
+def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], strides = [2, 1, 2, 1, 2], num_filters = [20, 20, 20, 10, 4], 
+                                    bypass = [None, None, None, None, None], nonlinearity = None,
+                                    poolsize = None, poolstride = None
+                                    
+                                    
+                                    ):
 	retval = {}
 	if nonlinearity is None:
 		nonlinearity = ['relu' for _ in sizes]
+        if poolsize is None:
+            poolsize = [None for _ in sizes]
+        if poolstride is None:
+            poolstride = [None for _ in sizes]
 	assert len(sizes) ==  len(strides) and len(num_filters) == len(strides) and len(bypass) == len(strides)
 	retval[desc + '_depth'] = len(sizes)
 	retval[desc] = {}
-	for i, (sz, stride, nf, byp, nl) in enumerate(zip(sizes, strides, num_filters, bypass, nonlinearity)):
+	for i, (sz, stride, nf, byp, nl, psz, pstr) in enumerate(zip(sizes, strides, num_filters, bypass, nonlinearity, poolsize, poolstride)):
 		retval[desc][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : nf}, 'bypass' : byp, 'nonlinearity' : nl}
+                if psz is not None:
+                    retval[desc][i+1]['pool'] = {'size' : psz, 'stride' : pstr, 'type' : 'max'}
 	return retval
 
 def generate_mlp_architecture_cfg(num_features = [20, 1], dropout = [None, None], nonlinearities = ['relu', 'identity']):

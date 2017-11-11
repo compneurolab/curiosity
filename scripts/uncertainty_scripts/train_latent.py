@@ -53,24 +53,34 @@ parser.add_argument('--testmode', default = False, type = bool)
 parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
-parser.add_argument('--rendernode', default = 'render1', type = str)
-
+parser.add_argument('--rendernode', default = -1, type = int)
+parser.add_argument('-futfc', 'futfcarchitecture', default = 0, type = int)
+parser.add_argument('-alw', 'actionlossweighting', default = 0., type = float)
+parser.add_argument('-flw', 'futurelossweighting', default = 1., type = float)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'la'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
 NUM_TIMESTEPS = 3
 T_PER_STATE = 2
 
+
+
 args = vars(parser.parse_args())
 
 
 
 render_node = args['rendernode']
-RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
+if render_node == 1:
+    RENDER1_HOST_ADDRESS = '10.102.2.149'
+elif render_node == 5:
+    RENDER1_HOST_ADDRESS = '10.102.2.153'
+else:
+    RENDER1_HOST_ADDRESS = '10.102.2.161'
+
 
 
 STATE_STEPS = [-1, 0]
@@ -93,6 +103,7 @@ def online_agg_func(agg_res, res, step):
 
 def agg_func(res):
     return res
+
 
 test_mode = args['testmode']
 act_thresholds = [-args['actionthreshold'], args['actionthreshold']]
@@ -194,7 +205,41 @@ wm_mlp_choices = [
 
 
 wm_encoding_choice = wm_encoding_choices[args['wmencarchitecture']]
+
+
+wm_encoding_strides = wm_encoding_choice['strides']
+
+dims_encoding = []
+for i in [0,1]:
+    dim_size = IMAGE_SCALE[i]
+    for stride in wm_encoding_strides:
+        dim_size = np.ceil(float(dim_size) / float(stride)
+    dims_encoding.append(dim_size)
+
+encoding_size = np.prod(dims_encoding) * wm_encoding_choice['num_filters'][-1]
+print('Latent encoding size! ' + str(encoding_size))
+
+
+fut_mlp_choices = [
+    {
+        'num_features' : [encoding_size, encoding_size, encoding_size],
+        'nonlinearities' : ['relu', 'relu', 'relu'],
+        'dropout' : [None, None, None]
+    },
+
+    {
+        'num_features' : [2 * encoding_size, encoding_size],
+        'nonlinearities' : ['relu', 'relu'],
+        'dropout' : [None, None]
+    },
+
+
+
+]
+
 wm_mlp_choice = wm_mlp_choices[args['wmfcarchitecture']]
+fut_mlp_choice = fut_mlp_choices[args['futfcarchitecture']]
+
 
 
 
@@ -204,6 +249,8 @@ wm_cfg = {
         'image_shape' : list(IMAGE_SCALE) + [3],
         'states_given' : [-2, -1, 0, 1],
         'actions_given' : [-2, -1, 1],
+        'fm_states_given' : [-2, -1],
+        'fm_actions_given' : [-2, -1, 0],
         'act_dim' : ACTION_DIM,
         'encode' : cfg_generation.generate_conv_architecture_cfg(**wm_encoding_choice),
         'action_model' : {
@@ -212,6 +259,11 @@ wm_cfg = {
                 'loss_factor' : 1.,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**wm_mlp_choice)
         },
+        'future_model' : {
+                'loss_func' : models.l2_loss_per_example,
+                'loss_factor' : 1.,
+                'mlp' : cfg_generation.generate_mlp_architecture_cfg(**fut_mlp_choice)
+            },
         'norepeat' : True
 }
 
@@ -321,7 +373,15 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
+        'loss_signal_func' : models.get_mixed_loss,
+        'loss_signal_kwargs' : {
+                'weighting' : {
+                    'action' : args['actionlossweighting'],
+                    'future' : args['futurelossweighting'],
+                    }
+
+            }
+        
 }
 
 model_cfg = {
@@ -418,7 +478,7 @@ def get_static_data_provider(data_params, model_params, action_model):
 
 
 train_params = {
-	'updater_func' : update_step.FreezeUpdater,
+	'updater_func' : update_step.LatentFreezeUpdater,
 	'updater_kwargs' : {
 		'state_desc' : 'depths1',
                 'freeze_wm' : False,
@@ -432,13 +492,13 @@ train_params = {
 }
 
 
-def get_ms_models(cfg):
-	world_model = models.MoreInfoActionWorldModel(cfg['world_model'])
+def get_latent_models(cfg):
+	world_model = models.LatentMoreInfoActionWorldModel(cfg['world_model'])
 	uncertainty_model = models.MSExpectedUncertaintyModel(cfg['uncertainty_model'], world_model)
 	return {'world_model' : world_model, 'uncertainty_model' : uncertainty_model}
 
 model_params = {
-                'func' : get_ms_models,
+                'func' : get_latent_models,
                 'cfg' : model_cfg,
                 'action_model_desc' : 'uncertainty_model'
         }
@@ -518,13 +578,13 @@ validate_params = {
         'valid0': {
             'func' : update_step.ActionUncertaintyValidatorWithReadouts,
             'kwargs' : {},
-            'num_steps' : 500,
+            'num_steps' : 50,
             'online_agg_func' : online_agg_func,
             'agg_func' : agg_func,
             'data_params' : {
                 'func' : get_static_data_provider,
                 'batch_size' : args['batchsize'],
-                'batcher_constructor' : static_data.ObjectThereFixedPermutationBatcher,
+                'batcher_constructor' : static_data.ObjectThereBatcher,
                 'data_lengths' : data_lengths,
                 'capacity' : 5,
                 'metadata_filename' : OBJTHERE_TEST_METADATA_LOC,
@@ -532,7 +592,6 @@ validate_params = {
                     'seed' : 0,
                     'num_there_per_batch' : 16,
                     'num_not_there_per_batch' : 16,
-                    'reset_batch_num' : 500
                 }
             }
         }
@@ -568,7 +627,7 @@ params = {
 
 params.update(load_and_save_params)
 
-params['save_params']['save_valid_freq'] = 5 if test_mode else 10000
+params['save_params']['save_valid_freq'] = 5 if test_mode else 2000
 params['allow_growth'] = True
 
 

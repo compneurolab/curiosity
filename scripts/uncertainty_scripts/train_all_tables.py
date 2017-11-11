@@ -6,8 +6,8 @@ Random actions, after index mismatch bug.
 
 
 import sys
-sys.path.append('/home/nhaber/projects/curiosity')
-sys.path.append('/home/nhaber/projects/tfutils')
+sys.path.append('/home/nhaber/local_copy/curiosity')
+sys.path.append('/home/nhaber/local_copy/tfutils')
 import tensorflow as tf
 
 from curiosity.interaction import train, environment, data, static_data, cfg_generation, update_step, mode_switching
@@ -54,11 +54,11 @@ parser.add_argument('-ds', '--dataseed', default = 0, type = int)
 parser.add_argument('-nenv', '--numberofenvironments', default=4, type = int)
 parser.add_argument('--loadstep', default = -1, type = int) 
 parser.add_argument('--rendernode', default = 'render1', type = str)
-
-
+parser.add_argument('--objseed', default = 1, type = int)
+parser.add_argument('--tablesize', default = 2., type = float)
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'tab'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -67,7 +67,7 @@ T_PER_STATE = 2
 
 args = vars(parser.parse_args())
 
-
+obj_seed = args['objseed']
 
 render_node = args['rendernode']
 RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
@@ -76,7 +76,9 @@ RENDER1_HOST_ADDRESS = cfg_generation.get_ip(render_node)
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
-OBJTHERE_TEST_METADATA_LOC = '/media/data2/nhaber/test_ts3_objthere_rel200.pkl' 
+
+OBJTHERE_TEST_METADATA_LOC = '/data2/mrowca/datasets/one_room_dataset/static_dataset/test_objthere_rel200_DAMIAN.pkl'
+
 
 s_back = - (min(STATES_GIVEN) + min(STATE_STEPS))
 s_forward = max(STATES_GIVEN) + max(STATE_STEPS)
@@ -321,7 +323,6 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
 }
 
 model_cfg = {
@@ -444,16 +445,23 @@ model_params = {
         }
 
 
-
-one_obj_scene_info = [
+one_obj_plus_table_scene_info = [
         {
         'type' : 'SHAPENET',
         'scale' : args['objsize'],
         'mass' : 1.,
         'scale_var' : .01,
         'num_items' : 1,
+        },
+        {
+        'type' : 'TABLE',
+        'scale' : args['tablesize'],
+        'mass' : 50.,
+        'scale_var' : .01,
+        'num_items' : 1,
         }
-        ]
+]
+
 
 
 force_scaling = 200.
@@ -477,7 +485,7 @@ dp_config = {
                 'n_environments': n_env,
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
-                        'random_seed' : 1,
+                        'random_seed' : obj_seed,
                         'unity_seed' : 1,
                         'room_dims' : room_dims,
                         'state_memory_len' : {
@@ -504,7 +512,7 @@ dp_config = {
                         'gather_at_beginning' : history_len + T_PER_STATE + NUM_TIMESTEPS
                 },
 
-                'scene_list' : [one_obj_scene_info],
+                'scene_list' : [one_obj_plus_table_scene_info],
                 'scene_lengths' : [1024 * 32],
                 'do_torque' : False,
 		'use_absolute_coordinates' : False
@@ -539,7 +547,7 @@ validate_params = {
 }
 
 
-load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'freud', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
+load_and_save_params = cfg_generation.query_gen_latent_save_params(location = 'cluster', prefix = EXP_ID_PREFIX, state_desc = 'depths1', portnum = cfg_generation.NODE_5_PORT)
 
 
 load_and_save_params['save_params']['save_to_gfs'] = ['batch', 'msg', 'recent', 'map_draw']

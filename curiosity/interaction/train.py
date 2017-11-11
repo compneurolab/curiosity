@@ -46,7 +46,7 @@ def get_latent_models(cfg):
 
 def get_batching_data_provider(data_params, model_params, action_model):
 	action_to_message = lambda action, env : environment.normalized_action_to_ego_force_torque(action, env, data_params['action_limits'], wall_safety = .5, do_torque = data_params['do_torque'],
-		use_absolute_coordinates = data_params.get('use_absolute_coordinates', True))
+		use_absolute_coordinates = data_params.get('use_absolute_coordinates', True), max_interaction_distance = data_params.get('max_interaction_distance'))
 	env = environment.Environment(action_to_message_fn = action_to_message, ** data_params['environment_params'])
 	scene_infos = data.SillyLittleListerator(data_params['scene_list'])
 	steps_per_scene = data.SillyLittleListerator(data_params['scene_lengths'])
@@ -361,11 +361,17 @@ def train_from_params(
 
         if 'n_environments' in data_params:
             data_provider = []
+            random_seed_input = data_params['environment_params']['random_seed']
             for itr in range(data_params['n_environments']):
                 #data_params['environment_params']['unity_seed'] += 1
-                model_params['cfg']['seed'] += 1
+                #model_params['cfg']['seed'] += 1
+                if type(random_seed_input) == list:
+                    print('MULTI OBJECT TRAINING! seed: ' + str(random_seed_input[itr]))
+                    assert len(random_seed_input) == data_params['n_environments']
+                    data_params['environment_params']['random_seed'] = random_seed_input[itr]
                 data_provider.append(data_params['func'](
                         data_params, model_params, action_model))
+            data_params['environment_params']['random_seed'] = random_seed_input
         else:
 	    data_provider = data_params['func'](
                 data_params, model_params, action_model)

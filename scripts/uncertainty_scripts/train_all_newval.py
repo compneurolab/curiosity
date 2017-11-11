@@ -58,7 +58,7 @@ parser.add_argument('--rendernode', default = 'render1', type = str)
 
 
 N_ACTION_SAMPLES = 1000
-EXP_ID_PREFIX = 'ar'
+EXP_ID_PREFIX = 'anv'
 NUM_BATCHES_PER_EPOCH = 1e8
 IMAGE_SCALE = (128, 170)
 ACTION_DIM = 5
@@ -321,7 +321,6 @@ um_cfg = {
 	'loss_factor' : args['lossfac'],
 	'n_action_samples' : N_ACTION_SAMPLES,
 	'heat' : args['heat'],
-        'just_random' : 1
 }
 
 model_cfg = {
