@@ -517,6 +517,10 @@ dp_config = {
                 'action_limits' : np.array([1., 1.] + [force_scaling for _ in range(ACTION_DIM - 2)]),
                 'environment_params' : {
                         'random_seed' : 1,
+                        'standard_shapes': ['Arrow', 'AssymCone', 'Capsule', 'Cone',
+                            'Cube', 'Cuboid', 'Cylinder', 'Disk', 'Ellipsoid', 
+                            'FlatCone', 'Mentos', 'Pyramid', 'RectStick', 
+                            'RoundStick', 'Spear', 'Sphere'],
                         'unity_seed' : 1,
                         'room_dims' : room_dims,
                         'state_memory_len' : {

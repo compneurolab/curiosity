@@ -362,6 +362,8 @@ def train_from_params(
         if 'n_environments' in data_params:
             data_provider = []
             random_seed_input = data_params['environment_params']['random_seed']
+            if 'standard_shapes' in data_params['environment_params']:
+                standard_shapes = data_params['environment_params'].pop('standard_shapes')
             for itr in range(data_params['n_environments']):
                 #data_params['environment_params']['unity_seed'] += 1
                 #model_params['cfg']['seed'] += 1
@@ -369,6 +371,8 @@ def train_from_params(
                     print('MULTI OBJECT TRAINING! seed: ' + str(random_seed_input[itr]))
                     assert len(random_seed_input) == data_params['n_environments']
                     data_params['environment_params']['random_seed'] = random_seed_input[itr]
+                if type(standard_shapes) == list:
+                    data_params['environment_params']['standard_shape'] = standard_shapes[itr]
                 data_provider.append(data_params['func'](
                         data_params, model_params, action_model))
             data_params['environment_params']['random_seed'] = random_seed_input

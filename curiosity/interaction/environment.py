@@ -74,7 +74,7 @@ def query_results_to_unity_data(query_results, scale, mass, var = .01, seed = 0)
                 item['isLight'] = res['isLight']
                 item['anchor_type'] = res['anchor_type']
                 #print(res['aws_address'])
-                item['aws_address'] = 'PhysXResources/StandardShapes/Solids0/Spear.prefab' #res['aws_address']
+                item['aws_address'] = res['aws_address']
                 item['mass'] = mass
                 item['scale'] = {"option": "Absol_size", "scale": scale, "var": var, "seed": seed, 'apply_to_inst' : True}
                 item['_id_str'] = str(res['_id'])
@@ -314,7 +314,8 @@ class Environment:
                         termination_condition = lambda env : False,
                         environment_timeout=60,
                         client_timeout=None,
-			gpu_num = 0
+                        gpu_num = 0,
+                        standard_shape = None,
                 ):
                 #TODO: SCREEN_DIMS does nothing right now
                 self.timeout = environment_timeout
@@ -322,6 +323,10 @@ class Environment:
                 self.selected_build = selected_build
                 self.term_condition = termination_condition
                 self.rng = np.random.RandomState(random_seed)
+                if standard_shape is not None:
+                    assert isinstance(standard_shape, str), standard_shape
+                    self.standard_shape = 'PhysXResources/StandardShapes/Solids0/' \
+                            + standard_shape + '.prefab'
                 self.SCREEN_HEIGHT, self.SCREEN_WIDTH = SCREEN_DIMS
                 self.RANDOM_SEED = unity_seed
                 self.shaders = shaders
@@ -425,7 +430,13 @@ class Environment:
                 print('second query')
                 query_res = list(self.coll.find({'_id': {'$in': goodidvals}}, projection=keys))
                 print('making items')
-                return query_results_to_unity_data(query_res, scale, mass, var = var, seed = self.RANDOM_SEED + 1)
+                query_unity_data = query_results_to_unity_data(query_res, \
+                        scale, mass, var = var, seed = self.RANDOM_SEED + 1)
+                if self.standard_shape is not None:
+                    print('Using standard shape %s' % self.standard_shape)
+                    for qu_data in query_unity_data:
+                        qu_data['aws_address'] = self.standard_shape
+                return query_unity_data
 
         # update config for next scene switch. like reset() in gym.
         def next_config(self, * round_info):
