@@ -74,7 +74,7 @@ def query_results_to_unity_data(query_results, scale, mass, var = .01, seed = 0)
                 item['isLight'] = res['isLight']
                 item['anchor_type'] = res['anchor_type']
                 #print(res['aws_address'])
-                item['aws_address'] = res['aws_address'] #'/home/mrowca/workspace/ThreeDWorld-private/Assets/Resources/FlexResources/StandardShapes/Solids0/CubeL.prefab' #res['aws_address']
+                item['aws_address'] = 'PhysXResources/StandardShapes/Solids0/Spear.prefab' #res['aws_address']
                 item['mass'] = mass
                 item['scale'] = {"option": "Absol_size", "scale": scale, "var": var, "seed": seed, 'apply_to_inst' : True}
                 item['_id_str'] = str(res['_id'])

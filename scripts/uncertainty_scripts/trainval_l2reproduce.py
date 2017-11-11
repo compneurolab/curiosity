@@ -66,7 +66,7 @@ if USER == 'nick':
     RENDER1_HOST_ADDRESS = '10.102.2.161'
 else:
     RENDER1_HOST_ADDRESS = cfg_generation.get_ip('kanefsky') #'10.102.2.161'
-SELECTED_BUILD = 'multi_locket_rot.x86_64'
+SELECTED_BUILD = 'multi_locked_rot.x86_64'
 STATE_STEPS = [-1, 0]
 STATES_GIVEN = [-2, -1, 0, 1]
 ACTIONS_GIVEN = [-2, -1, 1]
@@ -503,7 +503,7 @@ one_obj_scene_info = [
         ]
 
 
-force_scaling = 0.000001 #200.
+force_scaling = 200.
 room_dims = (5, 5)
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']
