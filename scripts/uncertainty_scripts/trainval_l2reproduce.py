@@ -504,7 +504,7 @@ one_obj_scene_info = [
         ]
 
 
-force_scaling = 200.
+force_scaling = 100.
 room_dims = (5, 5)
 my_rng = np.random.RandomState(0)
 history_len = args['historylen']

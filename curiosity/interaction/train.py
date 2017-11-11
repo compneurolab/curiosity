@@ -364,6 +364,8 @@ def train_from_params(
             random_seed_input = data_params['environment_params']['random_seed']
             if 'standard_shapes' in data_params['environment_params']:
                 standard_shapes = data_params['environment_params'].pop('standard_shapes')
+            else:
+                standard_shapes = None
             for itr in range(data_params['n_environments']):
                 #data_params['environment_params']['unity_seed'] += 1
                 #model_params['cfg']['seed'] += 1

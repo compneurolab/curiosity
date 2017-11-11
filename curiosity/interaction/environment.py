@@ -327,6 +327,8 @@ class Environment:
                     assert isinstance(standard_shape, str), standard_shape
                     self.standard_shape = 'PhysXResources/StandardShapes/Solids0/' \
                             + standard_shape + '.prefab'
+                else:
+                    self.standard_shape = None
                 self.SCREEN_HEIGHT, self.SCREEN_WIDTH = SCREEN_DIMS
                 self.RANDOM_SEED = unity_seed
                 self.shaders = shaders
