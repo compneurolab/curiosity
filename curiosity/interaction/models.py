@@ -1016,6 +1016,7 @@ class MoreInfoActionWorldModel(object):
         self.num_obj_there = []
         self.obj_not_there_loss = []
         self.object_there = []
+        obj_there_per_dim_list = []
         avg_acc_obj_there = []
         avg_acc_obj_not_there = []
         for t in range(num_timesteps):
@@ -1023,17 +1024,29 @@ class MoreInfoActionWorldModel(object):
             force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
             obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
             obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
-            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
-            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
-            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
-            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+            obj_there_per_dim_list.append(obj_there_per_dim)
+#            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+#            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+#            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
+#            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
             self.num_obj_there.append(tf.reduce_sum(obj_there)) 
             self.object_there.append(obj_there)                
-                
+        
+
+        avg_acc_obj_there = sum([tf.reduce_sum(obj_there_per_dim_list[t] * acc_01_list[t], axis = 0)\
+                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+        avg_acc_obj_not_there = sum([tf.reduce_sum((1. - obj_there_per_dim_list[t]) * acc_01_list[t], axis = 0)\
+                                                  for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+        self.obj_there_loss = sum([tf.reduce_sum(self.object_there[t] * self.act_loss_per_example[t], axis = 0)\
+                                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+        self.obj_not_there_loss = sum([tf.reduce_sum((1. - self.object_there[t]) * self.act_loss_per_example[t], axis = 0)\
+                                for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+
+
         self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
-                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there[0],
-                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there[0]}
+                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there,
+                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there}
         self.save_to_gfs = ['act_pred']
                 
 

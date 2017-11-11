@@ -195,6 +195,25 @@ def obj_not_present_agent_oob_termination_condition(env):
                 print('requesting restart because oob')
         return not_present or oob
 
+def obj_not_present_conservative_oob_termination_condition(env, safety = .5):
+    available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
+    not_present = (len(available_objects) == 0)
+    if not_present:
+        print('requesting restart because object dropped out')
+        return True
+    obj = available_objects[0]
+    obj_loc = np.array(obj[2])
+    agent_loc = np.array(env.observation['info']['avatar_position'])
+    for loc, desc in [(agent_loc, 'agent'), (obj_loc, 'object')]:
+        for dim, bound in [(0, env.ROOM_WIDTH), (2, env.ROOM_LENGTH)]:
+            if loc[dim] < -safety or loc[dim] > bound + safety:
+                print('requesting restart because ' + desc + ' horizontally oob')
+                return True
+        if loc[1] < -safety or loc[1] > bound + safety:
+            print('requesting restart because ' + desc + ' vertically oob')
+            return True
+    return False
+
 def obj_not_present_termination_condition(env):
         available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
         not_present = (len(available_objects) == 0)
