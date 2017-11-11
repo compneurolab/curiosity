@@ -378,10 +378,7 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 
 def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], strides = [2, 1, 2, 1, 2], num_filters = [20, 20, 20, 10, 4], 
                                     bypass = [None, None, None, None, None], nonlinearity = None,
-                                    poolsize = None, poolstride = None
-                                    
-                                    
-                                    ):
+                                    poolsize = None, poolstride = None):
 	retval = {}
 	if nonlinearity is None:
 		nonlinearity = ['relu' for _ in sizes]
