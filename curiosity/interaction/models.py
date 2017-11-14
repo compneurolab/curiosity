@@ -1214,7 +1214,7 @@ class LatentMoreInfoActionWorldModel(object):
                             for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
 
 
-                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
+                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 'fut_loss' : self.fut_loss, 
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
                         'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there,
                         'acc_obj_not_there_noprint' : avg_acc_obj_not_there, 'obj_there_fut_loss_noprint' : obj_there_fut_loss,
