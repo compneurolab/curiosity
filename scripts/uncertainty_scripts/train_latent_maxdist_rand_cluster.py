@@ -60,7 +60,7 @@ parser.add_argument('--maxdist', default=2., type = float)
 parser.add_argument('-alw', '--actionlossweighting', default = 0., type = float)
 parser.add_argument('-flw', '--futurelossweighting', default = 1., type = float)
 parser.add_argument('-futfc', '--futfcarchitecture', default = 0, type = int)
-
+parser.add_argument('--batchnormalize', default = False, type = bool)
 
 
 
@@ -107,7 +107,7 @@ act_thresholds = [-.1, .1]
 um_thresholds = [args['uncertaintythreshold']]
 n_classes_um = len(um_thresholds) + 1
 batch_size = args['batchsize']
-
+bn = args['batchnormalize']
 
 encoding_choices = [
 
@@ -118,7 +118,8 @@ encoding_choices = [
             'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64],
             'poolsize' : [None, 3, None, 3, None, 3, None, 3],
             'poolstride' : [None, 2, None, 2, None, 2, None, 2],
-            'bypass' : [None, None, None, None, None, None, None, None]
+            'bypass' : [None, None, None, None, None, None, None, None],
+            'batch_normalize' : [bn, bn, bn, bn, bn, bn, bn, bn]
         },
 
         {
@@ -127,7 +128,8 @@ encoding_choices = [
              'num_filters' : [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
              'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None],
              'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
-             'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]   
+             'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2],
+             'batch_normalize' : [bn, bn, bn, bn, bn, bn, bn, bn, bn, bn, bn, bn]
         },                                                                                  
 
         {       
@@ -136,7 +138,8 @@ encoding_choices = [
              'num_filters' : [64, 64, 64, 64, 128, 128, 128, 128, 192, 192, 192, 192],
              'bypass' : [None, None, None, None, None, None, None, None, None, None, None, None],
              'poolsize' : [None, 3, None, 3, None, 3, None, 3, None, 3, None, 3],
-             'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2]           
+             'poolstride' : [None, 2, None, 2, None, 2, None, 2, None, 2, None, 2],
+             'batch_normalize' : [bn, bn, bn, bn, bn, bn, bn, bn, bn, bn, bn, bn]
         },                                                                                          
 
 
@@ -386,7 +389,7 @@ def get_static_data_provider(data_params, model_params, action_model):
 
 
 train_params = {
-	'updater_func' : update_step.FreezeUpdater,
+	'updater_func' : update_step.LatentFreezeUpdater,
 	'updater_kwargs' : {
 		'state_desc' : 'images1',
                 'freeze_wm' : False,
