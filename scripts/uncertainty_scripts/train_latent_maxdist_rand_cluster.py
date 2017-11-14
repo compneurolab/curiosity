@@ -61,7 +61,7 @@ parser.add_argument('-alw', '--actionlossweighting', default = 0., type = float)
 parser.add_argument('-flw', '--futurelossweighting', default = 1., type = float)
 parser.add_argument('-futfc', '--futfcarchitecture', default = 0, type = int)
 parser.add_argument('--batchnormalize', default = False, type = bool)
-
+parser.add_argument('--futurefactor', default=-1., type = float)
 
 
 
@@ -214,6 +214,9 @@ fut_mlp_choices = [
 
 fut_mlp_choice = fut_mlp_choices[args['futfcarchitecture']]
 
+future_loss_factor = args['futurefactor']
+future_loss_factor = 1./float(encoding_size) if future_loss_factor < 0. else future_loss_factor
+
 
 wm_cfg = {
         'num_timesteps' : NUM_TIMESTEPS,
@@ -233,7 +236,7 @@ wm_cfg = {
         },
         'future_model' : {
                 'loss_func' : models.l2_loss_per_example,
-                'loss_factor' : 1./float(encoding_size),
+                'loss_factor' : future_loss_factor,
                 'mlp' : cfg_generation.generate_mlp_architecture_cfg(**fut_mlp_choice)
         },
 

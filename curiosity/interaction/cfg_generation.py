@@ -389,7 +389,7 @@ def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], str
         if batch_normalize is None:
             batch_normalize = [False for _ in sizes]
         else:
-            assert len(batch_normalize) = len(sizes)
+            assert len(batch_normalize) == len(sizes)
 	assert len(sizes) ==  len(strides) and len(num_filters) == len(strides) and len(bypass) == len(strides)
 	retval[desc + '_depth'] = len(sizes)
 	retval[desc] = {}
