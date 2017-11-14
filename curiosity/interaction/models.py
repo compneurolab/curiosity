@@ -1016,6 +1016,7 @@ class MoreInfoActionWorldModel(object):
         self.num_obj_there = []
         self.obj_not_there_loss = []
         self.object_there = []
+        obj_there_per_dim_list = []
         avg_acc_obj_there = []
         avg_acc_obj_not_there = []
         for t in range(num_timesteps):
@@ -1023,17 +1024,29 @@ class MoreInfoActionWorldModel(object):
             force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
             obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
             obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
-            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
-            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
-            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
-            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+            obj_there_per_dim_list.append(obj_there_per_dim)
+#            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+#            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+#            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
+#            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
             self.num_obj_there.append(tf.reduce_sum(obj_there)) 
             self.object_there.append(obj_there)                
-                
+        
+
+        avg_acc_obj_there = sum([tf.reduce_sum(obj_there_per_dim_list[t] * acc_01_list[t], axis = 0)\
+                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+        avg_acc_obj_not_there = sum([tf.reduce_sum((1. - obj_there_per_dim_list[t]) * acc_01_list[t], axis = 0)\
+                                                  for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+        self.obj_there_loss = sum([tf.reduce_sum(self.object_there[t] * self.act_loss_per_example[t], axis = 0)\
+                                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+        self.obj_not_there_loss = sum([tf.reduce_sum((1. - self.object_there[t]) * self.act_loss_per_example[t], axis = 0)\
+                                for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+
+
         self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
-                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there[0],
-                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there[0]}
+                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there,
+                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there}
         self.save_to_gfs = ['act_pred']
                 
 
@@ -1056,8 +1069,14 @@ class LatentMoreInfoActionWorldModel(object):
 		states_shape = [num_timesteps + t_back + t_forward] + image_shape
 		self.states = tf.placeholder(tf.uint8, [None] + states_shape)
                 states_cast = tf.cast(self.states, tf.float32)
+                postprocess_method = cfg.get('postprocess')
+                if postprocess_method == 'depths1':
+                    states_cast = postprocess_depths(states_cast)
+                elif postprocess_method == 'images1':
+                    states_cast = postprocess_std(states_cast)
+                else:
+                    assert postprocess_method is None
 		acts_shape = [num_timesteps + max(max(actions_given), 0) - min(actions_given), act_dim]
-		print(acts_shape)
 		self.action = tf.placeholder(tf.float32, [None] + acts_shape)#could actually be smaller for action prediction, but for a more general task keep the same size
 		self.action_post = tf.placeholder(tf.float32, [None] + acts_shape)
 		act_back = - min(actions_given)		
@@ -1084,8 +1103,6 @@ class LatentMoreInfoActionWorldModel(object):
 		um_begin_idx, um_end_idx = cfg.get('um_state_idxs', (1, 3))
 		um_act_idx = cfg.get('um_act_idx', 2)
 		self.s_i = self.states[:, um_begin_idx:um_end_idx]
-		print('dtype inside wm')
-                print(self.s_i.dtype)
                 self.action_for_um = self.action[:, um_act_idx]
 
 		#good job. now encode each state
@@ -1104,8 +1121,13 @@ class LatentMoreInfoActionWorldModel(object):
 			#reuse weights after first time doing computation
 			reuse_weights = True
 
+
+
+                self.encoding_for_um = flat_encodings_pre_mlp[states_given[1]] 
+
 		#great. now let's make our action predictions and count our losses
 		act_loss_list = []
+		acc_01_list = []
 		reuse_weights = False
 		for t in range(num_timesteps):
 			encoded_states_given = [flat_encodings[t + s] for s in states_given]
@@ -1115,8 +1137,8 @@ class LatentMoreInfoActionWorldModel(object):
 			with tf.variable_scope('action_model'):
 				pred = hidden_loop_with_bypasses(x, m, cfg['action_model']['mlp'], reuse_weights = reuse_weights, train = True)
 			lpe, loss = cfg['action_model']['loss_func'](act_tv, pred, cfg['action_model'])
-                        print('what what')
-                        print(lpe.get_shape().as_list())
+                        acc_01 = binned_01_accuracy_per_example(act_tv, pred, cfg['action_model'])
+			acc_01_list.append(tf.cast(acc_01, tf.float32))
 			reuse_weights = True
 			self.act_loss_per_example.append(lpe)
 			self.act_pred.append(pred)
@@ -1153,44 +1175,52 @@ class LatentMoreInfoActionWorldModel(object):
                 else:
                     self.act_loss = tf.reduce_mean(fut_loss_list)
                 self.fut_var_list = [var for var in tf.global_variables() if 'future_model' in var.name]
-
-                
-                
-                
                 
                 #adding on readouts
                 self.obj_there_loss = []
                 self.num_obj_there = []
                 self.obj_not_there_loss = []
-                self.obj_there_fut_loss = []
-                self.obj_not_there_fut_loss = []
                 self.object_there = []
+                obj_there_per_dim_list = []
+                avg_acc_obj_there = []
+                avg_acc_obj_not_there = []
                 for t in range(num_timesteps):
                     act_tv = self.action_post[:, t + act_back]
                     force_norm = tf.reduce_sum(act_tv[:, 2:] * act_tv[:, 2:], axis = 1, keep_dims = True)
                     obj_there = tf.cast(tf.greater(force_norm, .0001), tf.float32)
-                    print('debug readout stuff')
-                    print(obj_there.get_shape().as_list())
-                    print(self.act_loss_per_example[t].get_shape().as_list())
-                    self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
-                    self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
-                    self.obj_there_fut_loss.append(tf.reduce_sum(obj_there * self.fut_loss_per_example[t]) / tf.reduce_sum(obj_there))
-                    self.obj_not_there_fut_loss.append(tf.reduce_sum((1. - obj_there) * self.fut_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
-                    self.num_obj_there.append(tf.reduce_sum(obj_there))
-                    self.object_there.append(obj_there)
+                    obj_there_per_dim = tf.tile(obj_there, [1, act_dim])
+                    obj_there_per_dim_list.append(obj_there_per_dim)
+                    #            avg_acc_obj_there.append(tf.reduce_sum(obj_there_per_dim * acc_01_list[t], axis = 0) / tf.reduce_sum(obj_there))
+                    #            avg_acc_obj_not_there.append(tf.reduce_sum((1. - obj_there_per_dim) * acc_01_list[t], axis = 0) / tf.reduce_sum(1. - obj_there))
+                    #            self.obj_there_loss.append(tf.reduce_sum(obj_there * self.act_loss_per_example[t]) / tf.reduce_sum(obj_there))
+                    #            self.obj_not_there_loss.append(tf.reduce_sum((1. - obj_there) * self.act_loss_per_example[t]) / tf.reduce_sum(1. - obj_there))
+                    self.num_obj_there.append(tf.reduce_sum(obj_there)) 
+                    self.object_there.append(obj_there)                
                 
-                print('what is going on with loss per example?')
-                print([l.get_shape().as_list() for l in self.act_loss_per_example])
-                
-                
-                
-                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 'fut_loss' : self.fut_loss,
+                avg_acc_obj_there = sum([tf.reduce_sum(obj_there_per_dim_list[t] * acc_01_list[t], axis = 0)\
+                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+                avg_acc_obj_not_there = sum([tf.reduce_sum((1. - obj_there_per_dim_list[t]) * acc_01_list[t], axis = 0)\
+                                    for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+                self.obj_there_loss = sum([tf.reduce_sum(self.object_there[t] * self.act_loss_per_example[t], axis = 0)\
+                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+                self.obj_not_there_loss = sum([tf.reduce_sum((1. - self.object_there[t]) * self.act_loss_per_example[t], axis = 0)\
+                            for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+
+
+                obj_there_fut_loss = sum([tf.reduce_sum(self.object_there[t] * self.fut_loss_per_example[t], axis = 0)\
+                                        for t in range(num_timesteps)]) / sum([tf.reduce_sum(self.object_there[t]) for t in range(num_timesteps)])
+
+		obj_not_there_fut_loss = sum([tf.reduce_sum((1. - self.object_there[t]) * self.fut_loss_per_example[t], axis = 0)\
+                            for t in range(num_timesteps)]) / sum([tf.reduce_sum(1. - self.object_there[t]) for t in range(num_timesteps)])
+
+
+                self.readouts = {'act_pred' : self.act_pred, 'act_loss' : self.act_loss, 'fut_loss' : self.fut_loss, 
                         'obj_there_loss_noprint' : self.obj_there_loss, 'obj_not_there_loss_noprint' : self.obj_not_there_loss,
-                        'num_obj_there_noprint' : self.num_obj_there, 'obj_there_fut_loss_noprint' : self.obj_there_fut_loss,
-                        'obj_not_there_fut_loss_noprint' : self.obj_not_there_fut_loss
-                        }
+                        'num_obj_there_noprint' : self.num_obj_there, 'acc_obj_there_noprint' : avg_acc_obj_there,
+                        'acc_obj_not_there_noprint' : avg_acc_obj_not_there, 'obj_there_fut_loss_noprint' : obj_there_fut_loss,
+			'obj_not_there_fut_loss_noprint' : obj_not_there_fut_loss
+				}
                 self.save_to_gfs = ['act_pred']
- 
 
 
 

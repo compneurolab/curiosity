@@ -443,7 +443,7 @@ class LatentFreezeUpdater:
         self.fut_step = tf.get_variable('fut_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
         self.um_step = tf.get_variable('ext_uncertainty_step', [], tf.int32, initializer = tf.constant_initializer(0,dtype = tf.int32))
         self.targets = {}
-        self.state_desc = 'depths1'
+        self.state_desc = updater_params.get('state_desc', 'depths1')
         if not freeze_wm:
             act_lr_params, act_lr = get_learning_rate(self.act_step, **learning_rate_params['world_model']['act_model'])
             fut_lr_params, fut_lr = get_learning_rate(self.fut_step, **learning_rate_params['world_model']['fut_model'])
@@ -468,6 +468,8 @@ class LatentFreezeUpdater:
 
 
     def update(self, sess, visualize = False):
+        if self.um.just_random:
+            print('Selecting action at random')
         batch = {}
         for i, dp in enumerate(self.data_provider):
             provider_batch = dp.dequeue_batch()
@@ -476,7 +478,7 @@ class LatentFreezeUpdater:
                     batch[k].append(provider_batch[k])
                 else:
                     batch[k] = [provider_batch[k]]
-        for k in ['action', 'action_post', 'depths1']:
+        for k in ['action', 'action_post', self.state_desc]:
             batch[k] = np.concatenate(batch[k], axis=0)
         feed_dict = {
                 self.wm.states : batch[self.state_desc],

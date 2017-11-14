@@ -376,10 +376,7 @@ def generate_uncertainty_model_cfg(state_time_length = 2, image_shape = (64, 64)
 
 def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], strides = [2, 1, 2, 1, 2], num_filters = [20, 20, 20, 10, 4], 
                                     bypass = [None, None, None, None, None], nonlinearity = None,
-                                    poolsize = None, poolstride = None
-                                    
-                                    
-                                    ):
+                                    poolsize = None, poolstride = None, batch_normalize = None):
 	retval = {}
 	if nonlinearity is None:
 		nonlinearity = ['relu' for _ in sizes]
@@ -387,10 +384,15 @@ def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], str
             poolsize = [None for _ in sizes]
         if poolstride is None:
             poolstride = [None for _ in sizes]
+        if batch_normalize is None:
+            batch_normalize = [False for _ in sizes]
+        else:
+            assert len(batch_normalize) == len(sizes)
 	assert len(sizes) ==  len(strides) and len(num_filters) == len(strides) and len(bypass) == len(strides)
 	retval[desc + '_depth'] = len(sizes)
 	retval[desc] = {}
-	for i, (sz, stride, nf, byp, nl, psz, pstr) in enumerate(zip(sizes, strides, num_filters, bypass, nonlinearity, poolsize, poolstride)):
+	for i, (sz, stride, nf, byp, nl, psz, pstr, bn) in enumerate(zip(sizes, strides, num_filters, bypass,\
+                            nonlinearity, poolsize, poolstride, batch_normalize)):
 		retval[desc][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : nf}, 'bypass' : byp, 'nonlinearity' : nl}
                 if psz is not None:
                     retval[desc][i+1]['pool'] = {'size' : psz, 'stride' : pstr, 'type' : 'max'}
