@@ -458,6 +458,10 @@ class Environment:
                     print('Using standard shape %s' % self.standard_shape)
                     for qu_data in query_unity_data:
                         qu_data['aws_address'] = self.standard_shape
+                #FLEX DEBUG: REMOVE!!!
+                #for qu_data in query_unity_data:
+                #    qu_data['aws_address'] = 'FlexResources/StandardShapes/Solids0/'\
+                #            + 'CubeL.prefab'
                 return query_unity_data
 
         # update config for next scene switch. like reset() in gym.
