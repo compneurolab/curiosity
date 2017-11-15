@@ -109,6 +109,9 @@ n_classes_um = len(um_thresholds) + 1
 batch_size = args['batchsize']
 bn = args['batchnormalize']
 
+print('batch normalization in cfg script: ' + str(bn))
+
+
 encoding_choices = [
 
 

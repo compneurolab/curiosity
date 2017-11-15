@@ -395,7 +395,7 @@ def generate_conv_architecture_cfg(desc = 'encode', sizes = [3, 3, 3, 3, 3], str
 	retval[desc] = {}
 	for i, (sz, stride, nf, byp, nl, psz, pstr, bn) in enumerate(zip(sizes, strides, num_filters, bypass,\
                             nonlinearity, poolsize, poolstride, batch_normalize)):
-		retval[desc][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : nf}, 'bypass' : byp, 'nonlinearity' : nl}
+		retval[desc][i + 1] = {'conv' : {'filter_size' : sz, 'stride' : stride, 'num_filters' : nf, 'batch_normalize' : bn}, 'bypass' : byp, 'nonlinearity' : nl}
                 if psz is not None:
                     retval[desc][i+1]['pool'] = {'size' : psz, 'stride' : pstr, 'type' : 'max'}
 	return retval

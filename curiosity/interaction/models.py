@@ -1164,7 +1164,9 @@ class LatentMoreInfoActionWorldModel(object):
                         pred = hidden_loop_with_bypasses(x, m, cfg['future_model']['mlp'], reuse_weights = reuse_weights, train = True)
                     print('sizes')
                     print(pred)
-                    lpe, loss = cfg['future_model']['loss_func'](fut_tv, pred, cfg['future_model'])
+                    encoding_dim = fut_tv.get_shape().as_list()[-1]
+                    normalized_fut_tv = np.sqrt(encoding_dim) * tf.nn.l2_normalize(fut_tv, dim = 1)
+                    lpe, loss = cfg['future_model']['loss_func'](normalized_fut_tv, pred, cfg['future_model'])
                     
                     reuse_weights = True
                     self.fut_loss_per_example.append(lpe)
