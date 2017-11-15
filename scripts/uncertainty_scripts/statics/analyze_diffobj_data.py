@@ -30,10 +30,11 @@ force_scaling = 200
 
 
 #SMALLER_TEST_FILENAMES = ['/media/data2/nhaber/rel' + str(int(force_scaling)) + '_' + str(tasknum) + '.hdf5' for tasknum in [2000, 2001, 2002]]
-the_chosen_ones = range(1, 13) + [14, 17, 19, 22]
-SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
-SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
-JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/maxdist/val_diffobj_all_meta.pkl'
+#the_chosen_ones = range(1, 13) + [14, 17, 19, 22]
+the_chosen_ones = range(16)
+SMALLER_TEST_FILENAMES = ['/media/data4/nhaber/one_room_dataset/damianobjects/val_diffobj' + str(i) + '.hdf5' for i in the_chosen_ones]
+SMALLER_META_FILENAMES = ['/media/data4/nhaber/one_room_dataset/damianobjects/val_diffobj' + str(i) + '_meta.pkl' for i in the_chosen_ones]
+JOINED_META_FILENAME = '/media/data4/nhaber/one_room_dataset/damianobjects/val_diffobj_all_meta.pkl'
 
 BATCH_SIZE = 32
 #T_PER_STATE = 2

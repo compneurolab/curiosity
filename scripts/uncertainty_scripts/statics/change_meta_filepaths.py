@@ -12,7 +12,7 @@ import os
 
 
 #where to find it right now. dumps the new stuff here with new filenames.
-current_meta_path = '/media/data4/nhaber/one_room_dataset/maxdist'
+current_meta_path = '/media/data4/nhaber/one_room_dataset/damianobjects'
 
 #the meta files to change
 current_metas = ['val_diffobj_all_meta.pkl']

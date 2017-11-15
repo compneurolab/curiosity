@@ -134,6 +134,7 @@ def normalized_action_to_ego_force_torque(action, env, limits, wall_safety = Non
 
         available_objects = [o for o in env.observation['info']['observed_objects'] if not o[5] and int(o[1]) != -1 and not o[4]]
         if len(available_objects) > 1:
+                print(available_objects)
                 raise Exception('This action parametrization only meant for one object')
         elif len(available_objects) == 1:
             obj_id = available_objects[0][1]
@@ -612,10 +613,14 @@ class Environment:
                             'avatar_rotation']:
                         rec = json.loads(self.observation['info'][key])
                         self.observation['info'][key] = [rec['x'], rec['y'], rec['z']]
+                    for obj in self.observation['info']['observed_objects']:
+                        for i in [2,3,6,7]:
+                            rec = json.loads(obj[i])
+                            obj[i] = [rec['x'], rec['y'], rec['z']]
                     self.environment_pid = self.observation['info']['environment_pid']
                     for (k, shape) in self.rescale_dict.iteritems():
                         self.observation[k] = imresize(self.observation[k], shape)
-                except:
+                except IOError:
                     print('Current environment is broken. Starting new one...')
                     self.tc.close()
                     self.tc = self.init_tdw_client()
