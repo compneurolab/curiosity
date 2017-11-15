@@ -130,7 +130,7 @@ class UniformRandomBatcher:
 		return retval
 
 
-def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0, good_until = {}, state_desc = 'depths1'):
+def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_mod = 1, action_repeat_offset = 0, good_until = {}, state_desc = 'depths1', there_from_last_msg = False):
 	min_idx = max(data_lengths['obs'][state_desc], data_lengths['action'], data_lengths['action_post']) - 1
 	batch_size = 32
 	obj_there_idxs = []
@@ -143,17 +143,23 @@ def get_objthere_metadata(hdf5_filenames, save_loc, data_lengths, action_repeat_
 		print(do_until)
 		if do_until <= 0:
 			break
+                prev_msg = None
 		for idx in range(min_idx, do_until, batch_size):
 			msgs = msgs_all[idx : idx + batch_size]
 			for k, msg in enumerate(msgs):
 				msg = json.loads(msg)
 				if msg is None or (idx + k) % action_repeat_mod != action_repeat_offset:
-					continue
-				if msg['msg']['action_type'] == 'OBJ_ACT':
+                                    prev_msg = msg
+				    continue
+                                if not there_from_last_msg or prev_msg is None:
+                                    prev_msg = msg
+                                    continue
+                                relevant_msg = prev_msg if there_from_last_msg else msg
+                                if relevant_msg['msg']['action_type'] == 'OBJ_ACT':
 					obj_there_idxs.append((file_num, idx + k))
 				else:
 					obj_not_there_idxs.append((file_num, idx + k))
-        print(len(obj_there_idxs))
+                                prev_msg = msg
 	metadata = {'filenames' : hdf5_filenames, 'obj_there_idxs' : obj_there_idxs, 'obj_not_there_idxs' : obj_not_there_idxs, 'data_lengths' : data_lengths}
 	with open(save_loc, 'w') as stream:
 		cPickle.dump(metadata, stream)
