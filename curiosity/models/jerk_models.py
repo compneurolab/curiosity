@@ -3242,10 +3242,10 @@ def flex_l2_particle_loss(outputs, gpu_id, min_particle_distance, alpha = 0.5,
             return {'velocity_loss': tf.reduce_mean(velocity_loss),
                     'preserve_distance_loss': tf.reduce_mean(preserve_distance_loss)}
         else:
-            return [alpha * tf.reduce_mean(velocity_loss) + \
-                    (1 - alpha) * tf.reduce_mean(preserve_distance_loss)]
+            return alpha * tf.reduce_mean(velocity_loss) + \
+                    (1 - alpha) * tf.reduce_mean(preserve_distance_loss)
     else:
-        return [tf.reduce_mean(velocity_loss)]
+        return tf.reduce_mean(velocity_loss)
 
 def flex_nn_particle_loss(outputs, gpu_id, min_particle_distance, **kwargs):
     import curiosity.utils.tf_nndistance as nndist

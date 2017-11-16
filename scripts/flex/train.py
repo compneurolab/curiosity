@@ -1,14 +1,10 @@
 '''
-Now with new data provider, and 2->2 architecture.
+Experimental setup to train a future predictor on flex particle states
 '''
 import numpy as np
 import os
 import tensorflow as tf
 import sys
-sys.path.append('tfutils')
-sys.path.append('curiosity')
-import numpy as np
-
 from tfutils import base, optimizer
 from curiosity.data.short_long_sequence_data import ShortLongSequenceDataProvider
 import curiosity.models.jerk_models as modelsource
@@ -19,12 +15,10 @@ LOCAL = False
 if LOCAL:
     DATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfdata'
     VALDATA_PATH = '/data2/mrowca/datasets/eight_world_dataset/new_tfvaldata'
-    CACHE_DIR = '/data2/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/data2/mrowca/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 else:
     DATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfdata'
     VALDATA_PATH = '/mnt/fs1/datasets/eight_world_dataset/new_tfvaldata'
-    CACHE_DIR = '/mnt/fs0/mrowca/cache' + str(CACHE_NUM)
     STATS_FILE = '/mnt/fs1/datasets/eight_world_dataset/new_stats/stats_std.pkl'
 BIN_PATH = '' #'/mnt/fs1/datasets/eight_world_dataset/'
 BIN_FILE = '' #'/mnt/fs1/datasets/eight_world_dataset/bin_data_file.pkl'
@@ -59,11 +53,7 @@ CFG = [
         #modelsource.particle_2d_cfg(n_classes * DEPTH_DIM, nonlin='relu'),
         #modelsource.particle_cfg(n_classes, nonlin='relu'),
         ]
-CACHE_DIRS = [CACHE_DIR + str(d) for d in range(4)]
 SEED = 1
-
-if not os.path.exists(CACHE_DIR):
-    os.mkdir(CACHE_DIR)
 
 def table_norot_grab_func(path):
     all_filenames = os.listdir(path)
@@ -167,7 +157,6 @@ save_params = [{
     'cache_filters_freq': np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 100).astype(np.int32),
     'save_metrics_freq': np.round(256 * N_TRAIN_FILES * 4 / MODEL_BATCH_SIZE * 10).astype(np.int32),
     'save_initial_filters' : False,
-    'cache_dir' : CACHE_DIR,
     'save_to_gfs' : SAVE_TO_GFS
 }] * N_GPUS
 
@@ -312,7 +301,6 @@ for i, _ in enumerate(model_params):
     save_params[i]['exp_id'] = EXP_ID[i]
     load_params[i]['exp_id'] = EXP_ID[i]
 
-    save_params[i]['cache_dir'] = CACHE_DIRS[i]
     loss_params[i]['loss_func_kwargs']['gpu_id'] = i
     #loss_params[i]['loss_func_kwargs']['bin_data_file'] = BIN_PATH + EXP_ID[i] + '.pkl'
     model_params[i]['gpu_id'] = i
