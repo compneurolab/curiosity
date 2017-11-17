@@ -130,10 +130,32 @@ def test_from_params(
 	models = models_constructor(model_cfg)
 	
 	action_model = models[model_params['action_model_desc']]
-	
-	data_provider = data_params['func'](data_params, model_params, action_model)
-	
-	validater = validate_params['func'](models, data_provider, ** validate_params['kwargs'])
+#	manage_saving(save_params, what_to_save_params, models)
+
+        if 'n_environments' in data_params:
+            data_provider = []
+            random_seed_input = data_params['environment_params']['random_seed']
+            if 'standard_shapes' in data_params['environment_params']:
+                standard_shapes = data_params['environment_params'].pop('standard_shapes')
+            else:
+                standard_shapes = None
+            for itr in range(data_params['n_environments']):
+                #data_params['environment_params']['unity_seed'] += 1
+                #model_params['cfg']['seed'] += 1
+                if type(random_seed_input) == list:
+                    print('MULTI OBJECT TRAINING! seed: ' + str(random_seed_input[itr]))
+                    assert len(random_seed_input) == data_params['n_environments']
+                    data_params['environment_params']['random_seed'] = random_seed_input[itr]
+                if type(standard_shapes) == list:
+                    data_params['environment_params']['standard_shape'] = standard_shapes[itr]
+                data_provider.append(data_params['func'](
+                        data_params, model_params, action_model))
+            data_params['environment_params']['random_seed'] = random_seed_input
+        else:
+	    data_provider = data_params['func'](
+                data_params, model_params, action_model)
+
+        validater = validate_params['func'](models, data_provider, ** validate_params['kwargs'])
 	num_steps = validate_params['num_steps']
 
 	params = {'save_params' : save_params,
@@ -148,7 +170,14 @@ def test_from_params(
 	dbinterface = base.DBInterface(sess = sess, params = params, save_params = save_params, load_params = load_params)
 
         dbinterface.initialize()
-        data_provider.start_runner(sess)
+#        data_provider.start_runner(sess)
+        if isinstance(data_provider, list):
+            for dp in data_provider:
+                dp.start_runner(sess)
+        else:
+            data_provider.start_runner(sess)
+
+
 
 	test(sess, validater, dbinterface, num_steps)
 

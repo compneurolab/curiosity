@@ -107,6 +107,18 @@ def postprocess_batch_for_actionmap(batch, state_desc):
 # 	next_depths =  np.array([batch.next_state['depths1']])
 # 	return prepped['depths1'], prepped['objects1'], actions, action_ids, next_depths
 
+class SaveRecentPostprocessor:
+    def __init__(self, num_back_to_save = 3):
+        self.num_back_to_save = num_back_to_save
+    
+    def postprocess(self, training_results, batch):
+        res = {'recent' : []}
+        for provider_recent in batch['recent']:
+            res['recent'].append({k : v[-self.num_back_to_save : ] for k, v in provider_recent.items()})
+        return res
+
+
+
 class ExperienceReplayPostprocessor:
 	def __init__(self, big_save_keys = None, little_save_keys = None, big_save_len = None, big_save_freq = None, state_descriptor = None):
 		self.big_save_keys = big_save_keys
@@ -605,6 +617,40 @@ class FreezeUpdater:
         res = self.postprocessor.postprocess(res, batch)
         return res, global_step
 
+
+class ReadoutEvaluator:
+    def __init__(self, models, data_provider):
+        self.data_provider = data_provider \
+                if isinstance(data_provider, list) else [data_provider]
+        self.wm = models['world_model']
+        self.um = models['uncertainty_model']
+        self.postprocessor = SaveRecentPostprocessor(num_back_to_save = 3)
+        self.targets = {}
+        self.state_desc = 'images1'
+        for ro in [self.wm.readouts, self.um.readouts]:
+            self.targets.update(ro)
+
+    def run(self, sess, visualize = False):
+        if self.um.just_random:
+            print('Selecting action at random!')
+        batch = {}
+        for i, dp in enumerate(self.data_provider):
+            provider_batch = dp.dequeue_batch()
+            for k in provider_batch:
+                if k in batch:
+                    batch[k].append(provider_batch[k])
+                else:
+                    batch[k] = [provider_batch[k]]
+        for k in ['action', 'action_post', self.state_desc]:
+            batch[k] = np.concatenate(batch[k], axis=0)
+        feed_dict = {
+            self.wm.states : batch[self.state_desc],
+            self.wm.action : batch['action'],
+            self.wm.action_post : batch['action_post']
+        }
+        res = sess.run(self.targets, feed_dict = feed_dict)
+        res = self.postprocessor.postprocess(res, batch)
+        return res
 
 
 
